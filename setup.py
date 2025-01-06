@@ -1,12 +1,12 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="squid-nn",
-    version="0.3.6",
+    name="seam-nn",
+    version="0.1.0",
     author="Evan Seitz",
     author_email="evan.e.seitz@gmail.com",
     packages=find_packages(),
-    description = "SQUID is a TensorFlow package to interpret sequence-based deep learning models for regulatory genomics data with domain-specific surrogate models.",
+    description = "SEAM is a Python package to interpret sequence-based deep learning models for regulatory genomics data with meta-explanations.",
     classifiers=[
         'Programming Language :: Python :: 3',
         'License :: OSI Approved :: MIT License',
@@ -18,11 +18,10 @@ setup(
 	'matplotlib>=3.2.0',
 	'pandas',
         'tqdm',
-        'squid-nn',
         'logomaker',
-        'PyQt5',
+        'pyqt5',
         'psutil',
         'biophython',
-        'tensorflow==2.11.0'
+        'tensorflow'
     ],
 )
