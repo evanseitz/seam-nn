@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="seam-nn",
-    version="0.1.1",
+    version="0.1.2",
     author="Evan Seitz",
     author_email="evan.e.seitz@gmail.com",
     packages=find_packages(),
@@ -23,6 +23,5 @@ setup(
         'psutil',
         'biopython',
         'tensorflow'
-	'squid-nn'
     ],
 )

@@ -31,6 +31,7 @@ Next, activate this environment via `conda activate seam`, and install the follo
 
 ```bash
 pip install seam-nn
+pip install squid-nn
 ```
 
 Finally, when you are done using the environment, always exit via `conda deactivate`.
@@ -47,3 +48,36 @@ If you have any issues installing SEAM, please see:
 For issues installing SQUID, the package used for sequence generation and inference, please see:
 - https://squid-nn.readthedocs.io/en/latest/installation.html
 - https://github.com/evanseitz/squid-nn/issues
+
+Older DNNs may require inference via Tensorflow 1.x or related packages in conflict with SEAM defaults. Users will need to run SEAM piecewise within separate environments:
+1. Tensorflow 1.x environment for generating *in silico* sequence-function-mechanism dataset
+2. Tensorflow 2.x environment for applying SEAM to explain *in silico* sequence-function-mechanism dataset
+
+## Usage:
+SEAM provides a simple interface that takes as input a sequence-based deep-learning model (e.g., a DNN), which is used as an oracle to generate an *in silico* sequence-function-mechanism dataset representing a localized region of sequence space. SEAM uses a meta-explanation framework to interpret the *in silico* sequence-function-mechanism dataset, deciphering the determinants of mechanistic variation in regulatory sequences.
+
+<!-- <img src="./docs/_static/framework.png" alt="fig" width="1000"/> -->
+
+### Examples
+
+**Google Colab examples** for applying SEAM on previously-published deep learning models are available at the following links:
+
+- To be done.
+
+**Python script examples** are provided in the `examples/` folder for locally running SEAM and exporting outputs to file. Additional dependencies for these examples may be required and outlined at the top of each script. Examples include:
+
+- To be done.
+
+<!-- As well, the [seam-manuscript](https://github.com/evanseitz/seam-manuscript) repository contains examples to reproduce results in the manuscript, including the application of SQUID on other DNNs such as ChromBPNet and directly to experimental datasets -->
+
+<!-- Expected run time for the "Variant effect (local) prediction with DeepSTARR–Kipoi" demo (above) is 4 minutes using Google Colab V100 GPU. -->
+
+## Citation:
+If this code is useful in your work, please cite our paper.
+
+bibtex TBD
+
+## License:
+Copyright (C) 2023–2025 Evan Seitz, David McCandlish, Justin Kinney, Peter Koo
+
+The software, code sample and their documentation made available on this website could include technical or other mistakes, inaccuracies or typographical errors. We may make changes to the software or documentation made available on its web site at any time without prior notice. We assume no responsibility for errors or omissions in the software or documentation available from its web site. For further details, please see the LICENSE file.
