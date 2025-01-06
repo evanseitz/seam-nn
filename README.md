@@ -5,7 +5,6 @@ SEAM: systematic explanation of attribution-based mechanisms for regulatory geno
 <!-- [![Documentation Status](https://readthedocs.org/projects/squid-nn/badge/?version=latest)](https://squid-nn.readthedocs.io/en/latest/?badge=latest) -->
 <!-- [![DOI](https://zenodo.org/badge/711703377.svg)](https://zenodo.org/doi/10.5281/zenodo.11060671) -->
 
-<br/>
 <p align="center">
 	<img src="./docs/_static/seam_logo_light.png#gh-light-mode-only" width="250" height="250">
 </p>
