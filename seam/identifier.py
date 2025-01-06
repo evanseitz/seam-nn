@@ -10,6 +10,7 @@ from scipy.spatial import distance
 from scipy.cluster import hierarchy
 import itertools
 from scipy.stats import entropy
+import impress
 
 py_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(py_dir)
@@ -19,20 +20,19 @@ if 1:
     #dir_name = 'examples/examples_clipnet/outputs_local_PIK3R3/heterozygous_pt10/quantity_nfolds9'
     #dir_name = 'examples/examples_deepstarr/outputs_local_AP1-m1-seq22612'
     #dir_name = 'examples/examples_deepstarr/outputs_local_Ohler1-m0-seq20647' # cut=0.3
-    dir_name = 'examples/examples_deepstarr/outputs_local_AP1-m0-seq13748/archives/AP1-rank0_origVersion'
+    #dir_name = 'examples/examples_deepstarr/outputs_local_AP1-m0-seq13748/archives/AP1-rank0_origVersion'
     #dir_name = 'examples/examples_deepstarr/outputs_local_Ohler1-m0-seq22627'
     #dir_name = 'examples/examples_deepstarr/outputs_local_Ohler6-m0-seq171' # cut=0.06
     #dir_name = 'examples/examples_deepstarr/outputs_local_DRE-m0-seq1134'
     #dir_name = 'examples/examples_deepstarr/outputs_local_DRE-m2-seq22619'
     #dir_name = 'examples/examples_deepstarr/outputs_local_DRE-m2-seq24760'
-    #dir_name = 'examples/examples_deepstarr/outputs_local_AP1-m1-seq21069'
+    dir_name = 'examples/examples_deepstarr/outputs_local_AP1-m0-seq13748'
 
 
 
 # Import Mechanism Summary Matrix (MSM) generated previously in meta_explainer.py
-#df = pd.read_csv(os.path.join(parent_dir, dir_name + '/clusters_deepshap_hierarchical_maxclust30_sortMedian/compare_clusters.csv'))
-df = pd.read_csv(os.path.join(parent_dir, dir_name + '/clusters_deepshap_umap_kmeans200_crop_110_137_sortMedian/compare_clusters.csv'))
-
+df = pd.read_csv(os.path.join(parent_dir, dir_name + '/clusters_deepshap_hierarchical_maxclust30_sortMedian/compare_clusters.csv'))
+#df = pd.read_csv(os.path.join(parent_dir, dir_name + '/clusters_deepshap_umap_kmeans200_crop_110_137_sortMedian/compare_clusters.csv'))
 #df = pd.read_csv(os.path.join(parent_dir, dir_name + '/clusters_hierarchical_distance10/compare_clusters.csv'))
 column = 'Entropy'
 
@@ -52,31 +52,41 @@ def plot_with_updated_toolbar(matrix, original_indices, title="Covariance Matrix
         original_indices (list): The original row/column indices corresponding to the reordered matrix.
         title (str): Title of the plot.
     """
-    fig, ax = plt.subplots(figsize=(10, 8))
-    sns.heatmap(matrix, cmap='seismic', center=0, cbar_kws={'label': 'Covariance'}, ax=ax)
+    if 0:
+        fig, ax = plt.subplots(figsize=(10, 8))
+        sns.heatmap(matrix, cmap='seismic', center=0, cbar_kws={'label': 'Covariance'}, ax=ax)
 
-    def format_coord(x, y):
-        try:
-            # Convert x, y to integer indices
-            col, row = int(x), int(y)
-            # Ensure indices are within bounds
-            if 0 <= col < matrix.shape[1] and 0 <= row < matrix.shape[0]:
-                # Map reordered indices back to original indices
-                original_x = original_indices[col]
-                original_y = original_indices[row]
-                value = matrix.iloc[row, col]  # Get the covariance value
-                return f"x={original_x}, y={original_y}, z={value:.2f}"
-            else:
-                return f"x={x:.2f}, y={y:.2f}"  # Default for out-of-bounds
-        except (ValueError, IndexError):
-            return f"x={x:.2f}, y={y:.2f}"  # Default for invalid input
+        def format_coord(x, y):
+            try:
+                # Convert x, y to integer indices
+                col, row = int(x), int(y)
+                # Ensure indices are within bounds
+                if 0 <= col < matrix.shape[1] and 0 <= row < matrix.shape[0]:
+                    # Map reordered indices back to original indices
+                    original_x = original_indices[col]
+                    original_y = original_indices[row]
+                    value = matrix.iloc[row, col]  # Get the covariance value
+                    return f"x={original_x}, y={original_y}, z={value:.2f}"
+                else:
+                    return f"x={x:.2f}, y={y:.2f}"  # Default for out-of-bounds
+            except (ValueError, IndexError):
+                return f"x={x:.2f}, y={y:.2f}"  # Default for invalid input
 
-    ax.format_coord = format_coord
-    plt.title(title)
+        ax.format_coord = format_coord
+        plt.title(title)
+
+    else:
+        matrix = matrix.to_numpy().reshape(matrix.shape[0], 1, matrix.shape[0], 1)
+        fig = impress.plot_pairwise_matrix(matrix, view_window=None, alphabet=['A','C','G','T'],
+                                           cbar_title='Covariance',
+                                           gridlines=False,
+                                           save_dir=py_dir,
+                                           )
+
 
 if 1:
     plot_with_updated_toolbar(cov_matrix, cov_matrix.index.tolist(), title="Original Covariance Matrix")
-    plt.show
+    plt.show() # ZULU: if savefig=True, don't show
 
 # Identify and remove the largest cluster
 def remove_largest_cluster(tfbs_clusters):

@@ -16,6 +16,7 @@ from scipy.spatial import distance
 from scipy.cluster import hierarchy
 import squid.utils as squid_utils # pip install squid-nn
 from tqdm import tqdm
+from impress_mavenn import heatmap_pairwise
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -137,6 +138,83 @@ def plot_logo(logo_df, logo_type, axis=None, aesthetic_lvl=1, ref_seq=None, font
     plt.xlim(-0.5, map_length+.5)
     plt.tight_layout()
     return (logo, axis)
+
+
+def plot_pairwise_matrix(theta_lclc, view_window=None, alphabet=['A','C','G','T'], threshold=None, save_dir=None, cbar_title='Pairwise', gridlines=True):    
+    """Function for visualizing MAVE-NN pairwise model parameters.
+
+    Parameters
+    ----------
+    theta_lclc : numpy.ndarray
+        Pairwise model parameters (shape: (L,C,L,C)).
+    view_window : [int, int]
+        Index of start and stop position along sequence to probe;
+        i.e., [start, stop], where start < stop and both entries
+        satisfy 0 <= int <= L.
+    alphabet : list
+        The alphabet used to determine the C characters in the logo such that
+        each entry is a string; e.g., ['A','C','G','T'] for DNA.
+    threshold : float
+        Define threshold window centered around zero for removing potential noise
+        from parameters for cleaner pairwise matrix visualization
+    save_dir : str
+        Directory for saving figures to file.
+
+    Returns
+    -------
+    matplotlib.pyplot.Figure
+    """
+    if threshold is not None:
+        temp = theta_lclc.flatten()
+        temp[(temp >= -1.*threshold) & (temp <= threshold)] = 0
+        theta_lclc = temp.reshape(theta_lclc.shape)
+
+    if gridlines is True:
+        show_seplines = True
+        sepline_kwargs = {'linestyle': '-',
+                          'linewidth': .5,
+                          'color':'gray'}
+    else:
+        show_seplines = False
+        sepline_kwargs = {'linestyle': '-',
+                          'linewidth': .5,
+                          'color':'gray'}
+
+    # plot maveen pairwise matrix
+    fig, ax = plt.subplots(figsize=[10,5])
+    ax, cb = heatmap_pairwise(values=theta_lclc,
+                              alphabet=alphabet,
+                              ax=ax,
+                              gpmap_type='pairwise',
+                              cmap_size='2%',
+                              show_alphabet=False,
+                              cmap='seismic',
+                              cmap_pad=.1,
+                              show_seplines=show_seplines,
+                              sepline_kwargs = sepline_kwargs,
+                              )           
+
+    if view_window is not None:
+        ax.xaxis.set_ticks(np.arange(0, view_window[1]-view_window[0], 2))
+        ax.set_xticklabels(np.arange(view_window[0], view_window[1], 2))  
+    cb.set_label(r'%s' % cbar_title,
+                  labelpad=8, ha='center', va='center', rotation=-90)
+    cb.outline.set_visible(False)
+    cb.ax.tick_params(direction='in', size=20, color='white')
+    ax.set_xlabel('Nucleotide position')
+
+    if 1: # set up isometric colorbar
+        theta_max = [abs(np.amin(theta_lclc)), abs(np.amax(theta_lclc))]
+        #plt.cm.ScalarMappable.set_clim(cb, vmin=-1.*np.amax(theta_max), vmax=np.amax(theta_max))
+        cb.mappable.set_clim(vmin=-1. * np.amax(theta_max), vmax=np.amax(theta_max))
+
+    plt.tight_layout()
+    if save_dir is not None:
+        plt.savefig(os.path.join(save_dir, '%s_matrix.png' % cbar_title.lower()), facecolor='w', dpi=200)
+        plt.close()
+    #else:
+        #plt.show()
+    return fig 
 
 
 
