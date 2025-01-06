@@ -7,12 +7,11 @@ SEAM: systematic explanation of attribution-based mechanisms for regulatory geno
 
 <br/>
 <p align="center">
-	<img src="./docs/_static/seam_logo_light.png#gh-light-mode-only" width="200" height="200">
+	<img src="./docs/_static/seam_logo_light.png#gh-light-mode-only" width="300" height="300">
 </p>
 <p align="center">
-	<img src="./docs/_static/seam_logo_dark.png#gh-dark-mode-only" width="200" height="200">
+	<img src="./docs/_static/seam_logo_dark.png#gh-dark-mode-only" width="300" height="300">
 </p>
-<br/>
 
 **SEAM** (**S**ystematic **E**xplanation of **A**ttribution-based for **M**echanisms) is a Python suite to use meta-explanations to interpret sequence-based deep learning models for regulatory genomics data. For installation instructions, tutorials, and documentation, please refer to the SEAM website, https://seam-nn.readthedocs.io/. For an extended discussion of this approach and its applications, please refer to our paper:
 
