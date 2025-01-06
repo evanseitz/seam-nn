@@ -6,7 +6,7 @@ setup(
     author="Evan Seitz",
     author_email="evan.e.seitz@gmail.com",
     packages=find_packages(),
-    description = "SEAM is a Python package to interpret sequence-based deep learning models for regulatory genomics data using meta-explanations.",
+    description = "SEAM is a Python package to use meta-explanations to interpret sequence-based deep learning models for regulatory genomics data.",
     classifiers=[
         'Programming Language :: Python :: 3',
         'License :: OSI Approved :: MIT License',
@@ -23,5 +23,6 @@ setup(
         'psutil',
         'biopython',
         'tensorflow'
+	'squid-nn'
     ],
 )
