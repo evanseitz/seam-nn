@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="seam-nn",
-    version="0.1.0",
+    version="0.1.1",
     author="Evan Seitz",
     author_email="evan.e.seitz@gmail.com",
     packages=find_packages(),
@@ -21,7 +21,7 @@ setup(
         'logomaker',
         'pyqt5',
         'psutil',
-        'biophython',
+        'biopython',
         'tensorflow'
     ],
 )
