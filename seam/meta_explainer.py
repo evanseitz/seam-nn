@@ -34,7 +34,7 @@ except ImportError:
     # move 'generate_regulatory_df' into impress.py
 
 # ZULU: clean up below function and the duplicate in _null.py and send both to utils.py
-def generate_regulatory_df(mave, clusters_labels, clusters_idx, ref_seq): 
+def generate_regulatory_df(mave, clusters_labels, clusters_idx, ref_seq):
     # mave should already have sequence delimited
     mave['Cluster'] = clusters_labels
     seqs_all = mave['Sequence']
@@ -74,61 +74,53 @@ ref_idx = 0
 plot_profiles = False
 profiles_ylim = None
 
-if 1:
+if 0:
     #dir_name = 'examples_deepstarr/outputs_local_AP1-m1-seq22612'
     #dir_name = 'examples_deepstarr/outputs_local_Ohler1-m0-seq20647'
-    dir_name = 'examples_deepstarr/outputs_local_AP1-m0-seq13748/archives/AP1-rank0_origVersion'
+    #dir_name = 'examples_deepstarr/outputs_local_AP1-m0-seq13748/archives/AP1-rank0_origVersion'
     #dir_name = 'examples_deepstarr/outputs_local_Ohler1-m0-seq22627'
     #dir_name = 'examples_deepstarr/outputs_local_Ohler6-m0-seq171'
     #dir_name = 'examples_deepstarr/outputs_local_DRE-m2-seq4071'
-    #dir_name = 'examples_deepstarr/outputs_local_AP1-m1-seq21069'
+    dir_name = 'examples_deepstarr/outputs_local_Ohler6-m0-seq30181'
     #dir_name = 'examples_deepstarr/outputs_local_Ohler1-m0-seq20647/_other_librarySizes/librarySize_150k'
     ref_seq = 'First row'
-    seq_stop = 249
     #attr_map = 'ism'
     #attr_map = 'saliency'
     #attr_map = 'smoothgrad'
     #attr_map = 'intgrad'
-    attr_map = 'deepshap'
-    #map_length = 249
+    attr_map = 'deepshap' # map_length = 249
 elif 0:
     #dir_name = 'examples_deepstarr/outputs_global_AP1-N'
     dir_name = 'examples_deepstarr/outputs_global_CREB-NN'
     ref_seq = None
-    seq_stop = 249
-    attr_map = 'deepshap'
+    attr_map = 'deepshap' # map_length = 249
 elif 0:
     dir_name = 'outputs_local_spliceAI_U2SURP/max'
     # U2SURP:
     ref_seq = 'GGGGGGACTACTGTATTATAAAAACTAATAATTGTCTTCTTTTCTCCCCTTTAAGTGGACGCGCCTTCAAGAAGAAATAGATCATCTGGTGGTAATACAGTTTTTTGCTCTTTTAATCGATAAATTT'
-    seq_stop = 127
-    attr_map = 'saliency'
+    attr_map = 'saliency' # map_length = 127
 elif 0:
     dir_name = 'examples_enformer/outputs_local_DNase_PPIF_promoter/seed2'
     #dir_name = 'examples_enformer/outputs_local_CAGE_PPIF_promoter/seed2'
     ref_seq = 'First row'
-    attr_map = 'saliency'
-    #map_length = 1024 # enhancer
-    #map_length = 768 # promoter
-elif 0:
+    attr_map = 'saliency' # map_length = 1024 for enhancer; 768 for promoter
+elif 1:
     #dir_name = 'examples_chrombpnet/outputs_local_PPIF_promoter_counts/mut_pt10/seed2_N100k_allFolds'#fold4'
     #dir_name = 'examples_chrombpnet/outputs_local_PPIF_promoter_counts/mut_pt10/seed1and2_N200k_allFolds'
-    dir_name = 'examples_chrombpnet/outputs_local_PPIF_promoter_counts/mut_pt40/N100k_fold0'
+    #dir_name = 'examples_chrombpnet/outputs_local_PPIF_promoter_counts/mut_pt40/N100k_fold0'
+    dir_name = 'examples_chrombpnet/outputs_local_PPIF_enhancer_counts/seed1_allFolds'
     ref_seq = 'First row'
-    attr_map = 'deepshap'
-    #map_length = 2048
+    attr_map = 'deepshap' # map_length = 2048
 elif 0:
     dir_name = 'outputs_local_enformer_DNase_PPIF_promoter/seed5_mutatePro_targetPro/promoter'
     ref_seq = 'First row'
-    attr_map = 'saliency'
-    #map_length = 768
+    attr_map = 'saliency' # map_length = 768
 elif 0:
     mode = 'quantity'
     #mode = 'profile' # {note for clipnet: cut=0.0001, 0.0002, 0.0004, 0.0008, 0.001, 0.003, 0.007}
     dir_name = 'examples_clipnet/outputs_local_PIK3R3/heterozygous_pt01/%s_nfolds9' % mode
     ref_seq = 'First row'
-    attr_map = 'deepshap'
-    #map_length = 1000
+    attr_map = 'deepshap' # map_length = 1000
 elif 0:
     #dir_name = 'examples_tfbind/outputs_8mer_SIX6'
     dir_name = 'examples_tfbind/outputs_8mer_Hnf4a' # 43728: GTAAACA
@@ -179,20 +171,20 @@ else:
         cut_value = 8#10 # choose max cutoff distance for dendrogram
     else:
         cut_criterion = 'maxclust'
-        cut_value = 200#100#500 # choose the desired number of clusters (same use as 'n_clusters' above)
+        cut_value = 100#100#500 # choose the desired number of clusters (same use as 'n_clusters' above)
     plot_dendro = True#False
     n_clusters = None # unused (see 'cut_value' above)
 
-    
+
 attr_logo_fixed = True
-attr_logo_adaptive = True
+attr_logo_adaptive = False#True
 seq_logo_pwm = False
 seq_logo_enrich = False#True
 plot_profiles = False # plot overlay of profiles associated with each cluster; requires file 'y_profiles.npy' corresponding to predictions for sequences in 'mave.csv' (both in same directory)
 plot_bias = False#False # plot the per-cluster bias logos in the 'clusters_bias' folder
 sort_median = True # sort the boxplots and regulatory matrix by the median DNN score of each cluster
-bias_removal = False # removes bias based on subtracting the average of background attribution maps from each cluster 
-mut_rate = .10 #.01 # mutation rate used for generating sequence library (if 'bias_removal' = True)
+bias_removal = True # removes bias based on subtracting the average of background attribution maps from each cluster 
+mut_rate = 0.10#0.01#.10 #.01 # mutation rate used for generating sequence library (if 'bias_removal' = True)
 subset_clusters = False # focus on a specific subset of clusters (selected after first viewing all clusters; see below)
 # ZULU: currently, sort_median must be false if subset_clusters is True
 
@@ -250,7 +242,7 @@ if n_clusters is not None:
     output_name = output_name + str(int(n_clusters))
 
 
-if 1: # use cropped attribution maps
+if 0: # use cropped attribution maps
     # PPIF promoter:#seq_start = 186 #seq_stop = 406 # PPIF enhancer:
     if 1: # AP1-rank0 (DeepSTARR)
         seq_start = 110
@@ -299,7 +291,7 @@ elif 10 <= map_length < 50:
 elif 50 <= map_length < 250:
     figsize = [20, 2.5]
 else:
-    figsize = [20, 1.5]
+    figsize = [20, 1.5] #3.5 for CLIPNET figure
 
 if embedding is not None:
     manifold = np.load(manifold_fname)
@@ -314,15 +306,18 @@ except: # try to load numpy mmemap
 
 
 seq_length = seq_stop - seq_start
-try:
-    if seq_start != 0 and seq_stop != len(mave['Sequence'][0]):
-        mave['Sequence'].str.slice(seq_start, seq_stop)
-        maps = maps[:,seq_start:seq_stop,:]
-        if ref_seq is not None:
-            ref_seq = ref_seq[seq_start:seq_stop]
-            ref_oh = squid_utils.seq2oh(ref_seq, alphabet)
-except:
-    pass
+#try:
+if seq_start != 0 and seq_stop != len(mave['Sequence'][0]):
+    mave['Sequence'].str.slice(seq_start, seq_stop)
+    maps = maps[:,seq_start:seq_stop,:]
+    if ref_seq is not None:
+        ref_seq = ref_seq[seq_start:seq_stop]
+        ref_oh = utilities.seq2oh(ref_seq, alphabet)
+else:
+    ref_oh = utilities.seq2oh(ref_seq, alphabet)
+#except:
+#    pass
+
 
 
 print('Clustering data...')
@@ -661,7 +656,10 @@ if 1: # render logos for all clusters
         if 1: # render the map with the highest prediction score using global y_min/max (useful for optimization analysis)
             max_idx = mave['DNN'].argmax()
             print('Max idx:', max_idx)
-            max_map = squid_utils.arr2pd(maps[max_idx], alphabet)
+            try:
+                max_map = squid_utils.arr2pd(maps[max_idx], alphabet)
+            except: #ZULU
+                max_map = squid_utils.arr2pd(maps[max_idx])
             logo_fig = impress.plot_logo(max_map, logo_type='attribution', ref_seq=None, aesthetic_lvl=aesthetic_lvl, y_min_max=[y_min, y_max], figsize=figsize)
             plt.savefig(os.path.join(outputs_dir, 'individual_logo_maxpred.png'), facecolor='w', dpi=dpi)
             plt.close()

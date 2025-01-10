@@ -32,7 +32,7 @@ def arr2pd(x, alphabet=['A','C','G','T']):
     return x
 
 
-def oh2seq(one_hot, alphabet=['A','C','G','T']):
+def oh2seq(one_hot, alphabet=['A','C','G','T'], encoding=1):
     """Function to convert one-hot encoding to a sequence.
 
     Parameters
@@ -42,22 +42,54 @@ def oh2seq(one_hot, alphabet=['A','C','G','T']):
     alphabet : list
         The alphabet used to determine the C characters in the logo such that
         each entry is a string; e.g., ['A','C','G','T'] for DNA.
+    encoding: int
+        Convert homozogous (1) or heterozygous (2) DNA sequence to one-hot
+        or two-hot encoding, respectively.
 
     Returns
     -------
     seq : string
         Input sequence with length L.
     """
-    seq = []
-    for i in range(np.shape(one_hot)[0]):
-        for j in range(len(alphabet)):
-            if one_hot[i][j] == 1:
-                seq.append(alphabet[j])
-    seq = ''.join(seq)
+    if encoding==1:
+        seq = []
+        for i in range(np.shape(one_hot)[0]):
+            for j in range(len(alphabet)):
+                if one_hot[i][j] == 1:
+                    seq.append(alphabet[j])
+        seq = ''.join(seq)
+
+    elif encoding==2:
+        seq = []
+        for i in range(one_hot.shape[0]):
+            if np.array_equal(one_hot[i,:], np.array([2, 0, 0, 0])):
+                seq.append('A')
+            elif np.array_equal(one_hot[i,:], np.array([0, 2, 0, 0])):
+                seq.append('C')
+            elif np.array_equal(one_hot[i,:], np.array([0, 0, 2, 0])):
+                seq.append('G')
+            elif np.array_equal(one_hot[i,:], np.array([0, 0, 0, 2])):
+                seq.append('T')
+            elif np.array_equal(one_hot[i,:], np.array([0, 0, 0, 0])):
+                seq.append('N')
+            elif np.array_equal(one_hot[i,:], np.array([1, 1, 0, 0])):
+                seq.append('M')
+            elif np.array_equal(one_hot[i,:], np.array([1, 0, 1, 0])):
+                seq.append('R')
+            elif np.array_equal(one_hot[i,:],np.array([1, 0, 0, 1])):
+                seq.append('W')
+            elif np.array_equal(one_hot[i,:], np.array([0, 1, 1, 0])):
+                seq.append('S')
+            elif np.array_equal(one_hot[i,:], np.array([0, 1, 0, 1])):
+                seq.append('Y')
+            elif np.array_equal(one_hot[i,:], np.array([0, 0, 1, 1])):
+                seq.append('K')
+        seq = ''.join(seq)
+
     return seq
 
 
-def seq2oh(seq, alphabet=['A','C','G','T']):
+def seq2oh(seq, alphabet=['A','C','G','T'], encoding=1):
     """Function to convert a sequence to one-hot encoding.
 
     Parameters
@@ -67,93 +99,41 @@ def seq2oh(seq, alphabet=['A','C','G','T']):
     alphabet : list
         The alphabet used to determine the C characters in the logo such that
         each entry is a string; e.g., ['A','C','G','T'] for DNA.
+    encoding: int
+        Convert homozogous (1) or heterozygous (2) DNA sequence to one-hot
+        or two-hot encoding, respectively.
 
     Returns
     -------
     one_hot : numpy.ndarray
         One-hot encoding corresponding to input sequence (shape : (L,C)).
     """
-    L = len(seq)
-    one_hot = np.zeros(shape=(L,len(alphabet)), dtype=np.float32)
-    for idx, i in enumerate(seq):
-        for jdx, j in enumerate(alphabet):
-            if i == j:
-                one_hot[idx,jdx] = 1
-    return one_hot
+    if encoding==1:
+        L = len(seq)
+        one_hot = np.zeros(shape=(L,len(alphabet)), dtype=np.float32)
+        for idx, i in enumerate(seq):
+            for jdx, j in enumerate(alphabet):
+                if i == j:
+                    one_hot[idx,jdx] = 1
+    elif encoding==2:
+        seq_list = list(seq.upper()) # get sequence into an array
+        # one hot the sequence
+        encoding = {
+            "A": np.array([2, 0, 0, 0]),
+            "C": np.array([0, 2, 0, 0]),
+            "G": np.array([0, 0, 2, 0]),
+            "T": np.array([0, 0, 0, 2]),
+            "N": np.array([0, 0, 0, 0]),
+            "M": np.array([1, 1, 0, 0]),
+            "R": np.array([1, 0, 1, 0]),
+            "W": np.array([1, 0, 0, 1]),
+            "S": np.array([0, 1, 1, 0]),
+            "Y": np.array([0, 1, 0, 1]),
+            "K": np.array([0, 0, 1, 1]),
+        }
+        one_hot = [encoding.get(seq, seq) for seq in seq_list]
+        one_hot = np.array(one_hot)
 
-
-def twohot2seq(two_hot):
-    """Function to convert two-hot encoding to a DNA sequence.
-
-    Parameters
-    ----------
-    two_hot : numpy.ndarray
-        Input one-hot encoding of sequence (shape : (L,C))
-
-    Returns
-    -------
-    seq : string
-        Input sequence with length L.
-    """
-    seq = []
-    for i in range(two_hot.shape[0]):
-
-        if np.array_equal(two_hot[i,:], np.array([2, 0, 0, 0])):
-            seq.append('A')
-        elif np.array_equal(two_hot[i,:], np.array([0, 2, 0, 0])):
-            seq.append('C')
-        elif np.array_equal(two_hot[i,:], np.array([0, 0, 2, 0])):
-            seq.append('G')
-        elif np.array_equal(two_hot[i,:], np.array([0, 0, 0, 2])):
-            seq.append('T')
-        elif np.array_equal(two_hot[i,:], np.array([0, 0, 0, 0])):
-            seq.append('N')
-        elif np.array_equal(two_hot[i,:], np.array([1, 1, 0, 0])):
-            seq.append('M')
-        elif np.array_equal(two_hot[i,:], np.array([1, 0, 1, 0])):
-            seq.append('R')
-        elif np.array_equal(two_hot[i,:],np.array([1, 0, 0, 1])):
-            seq.append('W')
-        elif np.array_equal(two_hot[i,:], np.array([0, 1, 1, 0])):
-            seq.append('S')
-        elif np.array_equal(two_hot[i,:], np.array([0, 1, 0, 1])):
-            seq.append('Y')
-        elif np.array_equal(two_hot[i,:], np.array([0, 0, 1, 1])):
-            seq.append('K')
-    seq = ''.join(seq)
-    return seq
-
-
-def seq2twohot(seq):
-    """Function to convert heterozygous DNA sequence to two-hot encoding.
-
-    Parameters
-    ----------
-    seq : string
-        Input sequence with length L.
-
-    Returns
-    -------
-    one_hot : numpy.ndarray
-        Input one-hot encoding of sequence (shape : (L,C))
-    """
-    seq_list = list(seq.upper()) # get sequence into an array
-    # one hot the sequence
-    encoding = {
-        "A": np.array([2, 0, 0, 0]),
-        "C": np.array([0, 2, 0, 0]),
-        "G": np.array([0, 0, 2, 0]),
-        "T": np.array([0, 0, 0, 2]),
-        "N": np.array([0, 0, 0, 0]),
-        "M": np.array([1, 1, 0, 0]),
-        "R": np.array([1, 0, 1, 0]),
-        "W": np.array([1, 0, 0, 1]),
-        "S": np.array([0, 1, 1, 0]),
-        "Y": np.array([0, 1, 0, 1]),
-        "K": np.array([0, 0, 1, 1]),
-    }
-    one_hot = [encoding.get(seq, seq) for seq in seq_list]
-    one_hot = np.array(one_hot)
     return one_hot
 
 
