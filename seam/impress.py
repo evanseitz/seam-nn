@@ -9,6 +9,7 @@ import matplotlib.patches as mpatches
 from matplotlib.ticker import MaxNLocator
 from matplotlib.figure import Figure
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib.colors import TwoSlopeNorm, Normalize
 import logomaker
 import pandas as pd
 import seaborn as sns
@@ -16,7 +17,6 @@ from scipy.spatial import distance
 from scipy.cluster import hierarchy
 import squid.utils as squid_utils # pip install squid-nn
 from tqdm import tqdm
-from impress_mavenn import heatmap_pairwise
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -141,12 +141,12 @@ def plot_logo(logo_df, logo_type, axis=None, aesthetic_lvl=1, ref_seq=None, font
 
 
 def plot_pairwise_matrix(theta_lclc, view_window=None, alphabet=['A','C','G','T'], threshold=None, save_dir=None, cbar_title='Pairwise', gridlines=True):    
-    """Function for visualizing MAVE-NN pairwise model parameters.
+    """Function for visualizing pairwise matrix.
 
     Parameters
     ----------
     theta_lclc : numpy.ndarray
-        Pairwise model parameters (shape: (L,C,L,C)).
+        Pairwise matrix parameters (shape: (L,C,L,C)).
     view_window : [int, int]
         Index of start and stop position along sequence to probe;
         i.e., [start, stop], where start < stop and both entries
@@ -171,9 +171,12 @@ def plot_pairwise_matrix(theta_lclc, view_window=None, alphabet=['A','C','G','T'
 
     if gridlines is True:
         show_seplines = True
+        #sepline_kwargs = {'linestyle': '-',
+        #                  'linewidth': .5,
+        #                  'color':'gray'}
         sepline_kwargs = {'linestyle': '-',
-                          'linewidth': .5,
-                          'color':'gray'}
+                          'linewidth': .3,
+                          'color':'lightgray'}
     else:
         show_seplines = False
         sepline_kwargs = {'linestyle': '-',
@@ -210,170 +213,463 @@ def plot_pairwise_matrix(theta_lclc, view_window=None, alphabet=['A','C','G','T'
 
     plt.tight_layout()
     if save_dir is not None:
-        plt.savefig(os.path.join(save_dir, '%s_matrix.png' % cbar_title.lower()), facecolor='w', dpi=200)
+        plt.savefig(os.path.join(save_dir, '%s_matrix.pdf' % cbar_title.lower()), facecolor='w', dpi=600)
         plt.close()
     #else:
         #plt.show()
-    return fig 
+    return fig
 
 
+def _get_45deg_mesh(mat):
+    """Create X and Y grids rotated -45 degreees.
+    Adapted from https://github.com/jbkinney/mavenn/blob/master/mavenn/src/visualization.py
+    Original authors: Tareen, A., Kinney, J.
+    """
+    # Define rotation matrix
+    theta = -np.pi / 4
+    R = np.array([[np.cos(theta), -np.sin(theta)],
+                  [np.sin(theta), np.cos(theta)]])
 
-def plot_clusters_matches_sns(df, column='Entropy', sort=True, threshold=50, dpi=200, save_dir=None):
-    """Function for visualizing all cluster positional statistics, including marginal distrubutions.
+    # Define unrotated coordinates on
+    K = len(mat) + 1
+    grid1d = np.arange(0, K) - .5
+    X = np.tile(np.reshape(grid1d, [K, 1]), [1, K])
+    Y = np.tile(np.reshape(grid1d, [1, K]), [K, 1])
+    xy = np.array([X.ravel(), Y.ravel()])
+
+    # Rotate coordinates
+    xy_rot = R @ xy
+    X_rot = xy_rot[0, :].reshape(K, K)
+    Y_rot = xy_rot[1, :].reshape(K, K).T
+
+    return X_rot, Y_rot
+
+
+def heatmap_pairwise(values,
+                     alphabet,
+                     seq=None,
+                     seq_kwargs=None,
+                     ax=None,
+                     gpmap_type="pairwise",
+                     show_position=False,
+                     position_size=None,
+                     position_pad=1,
+                     show_alphabet=True,
+                     alphabet_size=None,
+                     alphabet_pad=1,
+                     show_seplines=True,
+                     sepline_kwargs=None,
+                     xlim_pad=.1,
+                     ylim_pad=.1,
+                     cbar=True,
+                     cax=None,
+                     clim=None,
+                     clim_quantile=1,
+                     ccenter=0,
+                     cmap='coolwarm',
+                     cmap_size="5%",
+                     cmap_pad=0.1):
+    """
+    Adapted from https://github.com/jbkinney/mavenn/blob/master/mavenn/src/visualization.py
+    Original authors: Tareen, A., Kinney, J.
+
+    Draw a heatmap illustrating pairwise or neighbor values, e.g. representing
+    model parameters, mutational effects, etc.
+
+    Note: The resulting plot has aspect ratio of 1 and is scaled so that pixels
+    have half-diagonal lengths given by ``half_pixel_diag = 1/(C*2)``, and
+    blocks of characters have half-diagonal lengths given by
+    ``half_block_diag = 1/2``. This is done so that the horizontal distance
+    between positions (as indicated by x-ticks) is 1.
 
     Parameters
     ----------
-    df : pandas.DataFrame, shape=(num_clusters x num_positions, 3)
-        DataFrame corresponding to all mismatches (or matches) to reference sequence (or cluster consensus sequence).
-        DataFrame is output by clusterer.py as 'compare_clusters.csv'
-    column : str
-        If 'Entropy', figure labels describe the Shannon entropy of characters at each position per cluster
-        If 'Reference', figure labels describe the number of mismatches to reference sequence
-        (recommended for local mutagenesis libraries).
-        If 'Consensus', figure labels describe the number of matches to each cluster's respective consensus sequence
-        (recommended for global mutagenesis libraries).
-    sort : bool
-        If True, the ordering of clusters will be sorted using the similarity of their positional elements.
-    threshold : int in [0,100]
-        Threshold value for whether to include positional elements in summation displayed in marginal plots.
-        If 'reference' is True, all percent mismatches above the threshold will be summed.
-        If 'reference' is False, all percent matches above the threshold will be summed,
-        not including values at 100% to avoid obscuring the display due to presence of the conserved sequence pattern.
-    dpi : int
-        Controls the DPI used for rendering the figure.
-    save_dir : str
-        Directory for saving figures to file.
+    values: (np.array)
+        An array, shape ``(L,C,L,C)``, containing pairwise or neighbor values.
+        Note that only values at coordinates ``[l1, c1, l2, c2]`` with
+        ``l2`` > ``l1`` will be plotted. NaN values will not be plotted.
+
+    alphabet: (str, np.ndarray)
+        Alphabet name ``'dna'``, ``'rna'``, or ``'protein'``, or 1D array
+        containing characters in the alphabet.
+
+    seq: (str, None)
+        The sequence to show, if any, using dots plotted on top of the heatmap.
+        Must have length ``L`` and be comprised of characters in ``alphabet``.
+
+    seq_kwargs: (dict)
+        Arguments to pass to ``Axes.scatter()`` when drawing dots to illustrate
+        the characters in ``seq``.
+
+    ax: (matplotlib.axes.Axes)
+        The ``Axes`` object on which the heatmap will be drawn.
+        If ``None``, one will be created. If specified, ``cbar=True``,
+        and ``cax=None``, ``ax`` will be split in two to make room for a
+        colorbar.
+
+    gpmap_type: (str)
+        Determines how many pairwise parameters are plotted.
+        Must be ``'pairwise'`` or ``'neighbor'``. If ``'pairwise'``, a
+        triangular heatmap will be plotted. If ``'neighbor'``, a heatmap
+        resembling a string of diamonds will be plotted.
+
+    show_position: (bool)
+        Whether to annotate the heatmap with position labels.
+
+    position_size: (float)
+        Font size to use for position labels. Must be >= 0.
+
+    position_pad: (float)
+        Additional padding, in units of ``half_pixel_diag``, used to space
+        the position labels further from the heatmap.
+
+    show_alphabet: (bool)
+        Whether to annotate the heatmap with character labels.
+
+    alphabet_size: (float)
+        Font size to use for alphabet. Must be >= 0.
+
+    alphabet_pad: (float)
+        Additional padding, in units of ``half_pixel_diag``, used to space
+        the alphabet labels from the heatmap.
+
+    show_seplines: (bool)
+        Whether to draw lines separating character blocks for different
+        position pairs.
+
+    sepline_kwargs: (dict)
+        Keywords to pass to ``Axes.plot()`` when drawing seplines.
+
+    xlim_pad: (float)
+        Additional padding to add (in absolute units) both left and right of
+        the heatmap.
+
+    ylim_pad: (float)
+        Additional padding to add (in absolute units) both above and below the
+        heatmap.
+
+    cbar: (bool)
+        Whether to draw a colorbar next to the heatmap.
+
+    cax: (matplotlib.axes.Axes, None)
+        The ``Axes`` object on which the colorbar will be drawn, if requested.
+        If ``None``, one will be created by splitting ``ax`` in two according
+        to ``cmap_size`` and ``cmap_pad``.
+
+    clim: (list, None)
+        List of the form ``[cmin, cmax]``, specifying the maximum ``cmax``
+        and minimum ``cmin`` values spanned by the colormap. Overrides
+        ``clim_quantile``.
+
+    clim_quantile: (float)
+        Must be a float in the range [0,1]. ``clim`` will be automatically
+        chosen to include this central quantile of values.
+
+    ccenter: (float)
+        Value at which to position the center of a diverging
+        colormap. Setting ``ccenter=0`` often makes sense.
+
+    cmap: (str, matplotlib.colors.Colormap)
+        Colormap to use.
+
+    cmap_size: (str)
+        Fraction of ``ax`` width to be used for the colorbar. For formatting
+        requirements, see the documentation for
+        ``mpl_toolkits.axes_grid1.make_axes_locatable()``.
+
+    cmap_pad: (float)
+        Space between colorbar and the shrunken heatmap ``Axes``. For formatting
+        requirements, see the documentation for
+        ``mpl_toolkits.axes_grid1.make_axes_locatable()``.
+
+    Returns
+    -------
+    ax: (matplotlib.axes.Axes)
+        ``Axes`` object containing the heatmap.
+
+    cb: (matplotlib.colorbar.Colorbar, None)
+        Colorbar object linked to ``ax``, or ``None`` if no colorbar was drawn.
     """
 
-    try:
-        df = pd.read_csv(df)
-    except:
-        pass
+    L, C, L2, C2 = values.shape
 
-    revels = df.pivot(columns='Position', index='Cluster', values=column)
+    values = values.copy()
 
-    if sort is True: # reorder dataframe based on dendrogram sorting: 
-        row_linkage = hierarchy.linkage(distance.pdist(revels), method='average')
-        dendrogram = hierarchy.dendrogram(row_linkage, no_plot=True, color_threshold=-np.inf)
-        reordered_ind = dendrogram['leaves']
-        revels = df.pivot(columns='Position', index='Cluster', values=column)
-        revels = revels.reindex(reordered_ind)
+    ls = np.arange(L).astype(int)
+    l1_grid = np.tile(np.reshape(ls, (L, 1, 1, 1)),
+                      (1, C, L, C))
+    l2_grid = np.tile(np.reshape(ls, (1, 1, L, 1)),
+                      (L, C, 1, C))
 
-    nC = df['Cluster'].max() + 1
-    nP = df['Position'].max() + 1
+    # If user specifies gpmap_type="neighbor", remove non-neighbor entries
+    if gpmap_type == "neighbor":
+        nan_ix = ~(l2_grid - l1_grid == 1)
 
-    # from https://stackoverflow.com/questions/65917235/how-to-create-a-heatmap-with-marginal-histograms-similar-to-a-jointplot
-    joint = sns.jointplot(data=df, x='Position', y='Cluster', kind='hist', bins=(nC, nP))
-    joint.ax_marg_y.cla()
-    joint.ax_marg_x.cla()
+    elif gpmap_type == "pairwise":
+        nan_ix = ~(l2_grid - l1_grid >= 1)
 
-    palette = sns.color_palette('rocket', n_colors=100)
-    if column == 'Entropy':
-        label = 'Shannon entropy (bits)'
-    elif column == 'Reference':
-        label = 'Mismatches to reference sequence'
-        palette.reverse()
-    elif column == 'Consensus':
-        label = 'Matches to per-cluster consensus'
+    # Set values at invalid positions to nan
+    values[nan_ix] = np.nan
 
-    heat = sns.heatmap(data=revels, ax=joint.ax_joint, cbar=False, cmap=palette,
-                    cbar_kws={'format': '%.0f%%',
-                                'label': label,
-                                'location': 'bottom', #left
-                                'orientation': 'horizontal'},
-                                )
+    # Reshape values into a matrix
+    mat = values.reshape((L*C, L*C))
+    mat = mat[:-C, :]
+    mat = mat[:, C:]
+    K = (L - 1) * C
 
-    # filter out all mismatches/matches based on threshold value (%):
-    if column == 'Reference':
-        df[column] = (df[column] >= threshold).astype(int) # binary mask
-    elif column == 'Consensus':
-        if threshold == 100:
-            threshold_low = 99.9
-        else:
-            threshold_low = threshold
-        df[column] = ((df[column] > threshold_low) & (df[column] < 100)).astype(int) # binary mask
+    # Verify that mat is the right size
+    assert mat.shape == (K, K), \
+        f'mat.shape={mat.shape}; expected{(K,K)}. Should never happen.'
 
-    marg_color = 'dimgray'
-    joint.ax_marg_y.barh(np.arange(0.5, nC), df.groupby(['Cluster'])[column].sum().to_numpy(), color=marg_color)
-    joint.ax_marg_x.bar(np.arange(0.5, nP), df.groupby(['Position'])[column].sum().to_numpy(), color=marg_color)
-    joint.ax_marg_x.yaxis.tick_right()
+    # Get indices of finite elements of mat
+    ix = np.isfinite(mat)
 
-    if nP > 100:
-        x_skip = 10
+    # Set color lims to central 95% quantile
+    if clim is None:
+        clim = np.quantile(mat[ix], q=[(1 - clim_quantile) / 2,
+                                    1 - (1 - clim_quantile) / 2])
+
+    # Create axis if none already exists
+    if ax is None:
+        fig, ax = plt.subplots()
     else:
-        x_skip = 1
-    xtick_labels = []
-    xtick_range = np.arange(0.5, nP, x_skip)
-    for i in xtick_range:
-        if int(i)%x_skip == 0:
-            xtick_labels.append(str(int(i-0.5)))
-    joint.ax_joint.set_xticks(xtick_range)
-    joint.ax_joint.set_xticklabels(xtick_labels, rotation=0)
+        fig = ax.figure
 
-    if nC > 10:
-        y_skip = 6
+    # Needed to center colormap at zero
+    if ccenter is not None:
+
+        # Reset ccenter if is not compatible with clim
+        if (clim[0] > ccenter) or (clim[1] < ccenter):
+            ccenter = 0.5 * (clim[0] + clim[1])
+
+        norm = TwoSlopeNorm(vmin=clim[0], vcenter=ccenter, vmax=clim[1])
+
     else:
-        y_skip = 1
-    ytick_labels = []
-    ytick_range = np.arange(0.5, nC, y_skip)
-    y_idx = 0
-    for i in ytick_range:
-        if int(i)%y_skip == 0:
-            if sort is True:
-                ytick_labels.append(str(reordered_ind[y_idx]))
-            else:
-                ytick_labels.append(str(int(i-0.5)))
-        y_idx += y_skip
-    joint.ax_joint.set_yticks(ytick_range)
-    joint.ax_joint.set_yticklabels(ytick_labels, rotation=0)
+        norm = Normalize(vmin=clim[0], vmax=clim[1])
 
-    joint.ax_joint.tick_params(axis='both', which='major', labelsize=6)
-    joint.ax_marg_x.tick_params(axis='both', which='major', labelsize=6)
-    joint.ax_marg_y.tick_params(axis='both', which='major', labelsize=6)
-    joint.ax_marg_x.yaxis.set_major_locator(MaxNLocator(integer=True))
-    joint.ax_marg_y.xaxis.set_major_locator(MaxNLocator(integer=True))
+    # Get rotated mesh
+    X_rot, Y_rot = _get_45deg_mesh(mat)
 
-    # remove ticks between heatmap and histograms:
-    joint.ax_marg_x.tick_params(axis='x', bottom=False, labelbottom=False)
-    joint.ax_marg_y.tick_params(axis='y', left=False, labelleft=False)
-    if 0: # remove ticks showing the heights of the histograms
-        joint.ax_marg_x.tick_params(axis='y', left=False, labelleft=False)
-        joint.ax_marg_y.tick_params(axis='x', bottom=False, labelbottom=False)
-        joint.ax_marg_x.set_frame_on(False)
-        joint.ax_marg_y.set_frame_on(False)
+    # Normalize
+    half_pixel_diag = 1 / (2*C)
+    pixel_side = 1 / (C * np.sqrt(2))
+    X_rot = X_rot * pixel_side + half_pixel_diag
+    Y_rot = Y_rot * pixel_side
 
-    # plot colorbar externally (hack):
-    fig = plt.figure()
-    gs = gridspec.GridSpec(1, 2, width_ratios=[30,1])
-    mg0 = SeabornFig2Grid(joint, fig, gs[0])
-    ax2 = plt.subplot(gs[1])
-    ax2.get_figure().colorbar(mpl.cm.ScalarMappable(norm=plt.Normalize(0, 100), cmap=mpl.colors.ListedColormap(list(palette))),
-                cax=ax2, orientation='vertical', label=label,
-                format='%.0f%%')
 
-    # plot marginal legend externally:
-    if column == 'Reference':
-        if threshold == 100:
-            threshold_operator = '='
-        else:
-            threshold_operator = '>'
-        marginal_patch = mpatches.Patch(color=marg_color, label=r'Marginals: mismatches %s %s%s' % (threshold_operator, threshold, '%'))
-    elif column == 'Consensus':
-        marginal_patch = mpatches.Patch(color=marg_color, label=r'Marginals: %s%s < matches < 100%s' % (threshold_low, '%', '%'))
-    elif column == 'Entropy': #ZULU
-        print('TBD')
-    fig.legend(handles=[marginal_patch], frameon=False, prop={'size': 8}, loc='upper left')
+    # Set parameters that depend on gpmap_type
+    ysep_min = -0.5 - .001 * half_pixel_diag
+    xlim = [-xlim_pad, L - 1 + xlim_pad]
+    if gpmap_type == "pairwise":
+        ysep_max = L / 2 + .001 * half_pixel_diag
+        ylim = [-0.5 - ylim_pad, (L - 1) / 2 + ylim_pad]
+    else:
+        ysep_max = 0.5 + .001 * half_pixel_diag
+        ylim = [-0.5 - ylim_pad, 0.5 + ylim_pad]
 
-    plt.rcParams['savefig.dpi'] = dpi
-    plt.tight_layout()
-    if save_dir is not None:
-        if column == 'Reference':
-            fig.savefig(os.path.join(save_dir, 'figure_clusters_mismatches.png'))
-        elif column == 'Consensus':
-            fig.savefig(os.path.join(save_dir, 'figure_clusters_matches.png'))
-        elif column == 'Entropy':
-            fig.savefig(os.path.join(save_dir, 'figure_clusters_entropy.png'))
-    plt.show()
+    # Not sure why I have to do this
+    Y_rot = -Y_rot
+
+    # Draw rotated heatmap
+    im = ax.pcolormesh(X_rot,
+                       Y_rot,
+                       mat,
+                       cmap=cmap,
+                       norm=norm)
+
+    # Remove spines
+    for loc, spine in ax.spines.items():
+        spine.set_visible(False)
+
+    # Set sepline kwargs
+    if show_seplines:
+        if sepline_kwargs is None:
+            sepline_kwargs = {'color': 'gray',
+                              'linestyle': '-',
+                              'linewidth': .5}
+
+        # Draw white lines to separate position pairs
+        for n in range(0, K+1, C):
+
+            # TODO: Change extent so these are the right length
+            x = X_rot[n, :]
+            y = Y_rot[n, :]
+            ks = (y >= ysep_min) & (y <= ysep_max)
+            ax.plot(x[ks], y[ks], **sepline_kwargs)
+
+            x = X_rot[:, n]
+            y = Y_rot[:, n]
+            ks = (y >= ysep_min) & (y <= ysep_max)
+            ax.plot(x[ks], y[ks], **sepline_kwargs)
+
+    if 1: # Plot an outline around the triangular boundary
+        boundary_kwargs = {'linestyle': '-',
+                          'linewidth': .7,
+                          'color':'k'}
+
+        # Manually draw the left edge of the triangle
+        top_x = X_rot[0, :]
+        top_y = Y_rot[0, :]
+        ax.plot(top_x, top_y, **boundary_kwargs)
+
+        # Manually draw the rigth edge of the triangle
+        right_x = [X_rot[0, -1], X_rot[-1, -1]]
+        right_y = [Y_rot[0, -1], Y_rot[-1, -1]]
+        ax.plot(right_x, right_y, **boundary_kwargs)
+
+        # Draw the zigzag bottom edge (manually tracing the bottom row cells)
+        bottom_x = []
+        bottom_y = []
+        for i in range(len(X_rot) - 1):
+            # Append bottom-left corner of the current cell
+            bottom_x.append(X_rot[i + 1, i])
+            bottom_y.append(Y_rot[i + 1, i])
+            # Append bottom-right corner of the current cell
+            bottom_x.append(X_rot[i + 1, i + 1])
+            bottom_y.append(Y_rot[i + 1, i + 1])
+        ax.plot(bottom_x, bottom_y, **boundary_kwargs)
+
+        # Fill in remaining segment
+        last_x = [top_x[0], bottom_x[0]]
+        last_y = [top_y[0], bottom_y[0]]
+        ax.plot(last_x, last_y, **boundary_kwargs)
+
+
+    # Set lims
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+
+    # Set aspect
+    ax.set_aspect("equal")
+
+    # Remove yticks
+    ax.set_yticks([])
+
+    # Set xticks
+    xticks = np.arange(L).astype(int)
+    ax.set_xticks(xticks)
+
+    # If drawing characters
+    if show_alphabet:
+
+        # Draw c1 alphabet
+        for i, c in enumerate(alphabet):
+            x1 = 0.5 * half_pixel_diag \
+                 + i * half_pixel_diag \
+                 - alphabet_pad * half_pixel_diag
+            y1 = - 0.5 * half_pixel_diag \
+                 - i * half_pixel_diag \
+                 - alphabet_pad * half_pixel_diag
+            ax.text(x1, y1, c, va='center',
+                    ha='center', rotation=-45, fontsize=alphabet_size)
+
+        # Draw c2 alphabet
+        for i, c in enumerate(alphabet):
+            x2 = 0.5 + 0.5 * half_pixel_diag \
+                 + i * half_pixel_diag \
+                 + alphabet_pad * half_pixel_diag
+            y2 = - 0.5 + 0.5 * half_pixel_diag \
+                 + i * half_pixel_diag \
+                 - alphabet_pad * half_pixel_diag
+            ax.text(x2, y2, c, va='center',
+                    ha='center', rotation=45, fontsize=alphabet_size)
+
+    # Display positions if requested (only if model is pairwise)
+    l1_positions = np.arange(0, L-1)
+    l2_positions = np.arange(1, L)
+    half_block_diag = C * half_pixel_diag
+    if show_position and gpmap_type == "pairwise":
+
+        # Draw l2 positions
+        for i, l2 in enumerate(l2_positions):
+            x2 = 0.5 * half_block_diag \
+                 + i * half_block_diag \
+                 - position_pad * half_pixel_diag
+            y2 = 0.5 * half_block_diag \
+                 + i * half_block_diag \
+                 + position_pad * half_pixel_diag
+            ax.text(x2, y2, f'{l2:d}', va='center',
+                    ha='center', rotation=45, fontsize=position_size)
+
+        # Draw l1 positions
+        for i, l1 in enumerate(l1_positions):
+            x1 = (L - 0.5) * half_block_diag \
+                 + i * half_block_diag \
+                 + position_pad * half_pixel_diag
+            y1 = (L - 1.5) * half_block_diag \
+                 - i * half_block_diag \
+                 + position_pad * half_pixel_diag
+            ax.text(x1, y1, f'{l1:d}', va='center',
+                    ha='center', rotation=-45, fontsize=position_size)
+
+    elif show_position and gpmap_type == "neighbor":
+
+        # Draw l2 positions
+        for i, l2 in enumerate(l2_positions):
+            x2 = 0.5 * half_block_diag \
+                 + 2 * i * half_block_diag \
+                 - position_pad * half_pixel_diag
+            y2 = 0.5 * half_block_diag \
+                 + position_pad * half_pixel_diag
+            ax.text(x2, y2, f'{l2:d}', va='center',
+                    ha='center', rotation=45, fontsize=position_size)
+
+        # Draw l1 positions
+        for i, l1 in enumerate(l1_positions):
+            x1 = 1.5 * half_block_diag \
+                 + 2* i * half_block_diag \
+                 + position_pad * half_pixel_diag
+            y1 = + 0.5 * half_block_diag \
+                 + position_pad * half_pixel_diag
+            ax.text(x1, y1, f'{l1:d}', va='center',
+                    ha='center', rotation=-45, fontsize=position_size)
+
+    # Mark wt sequence
+    if seq:
+        # Set seq_kwargs if not set in constructor
+        if seq_kwargs is None:
+            seq_kwargs = {'marker': '.', 'color': 'k', 's': 2}
+
+        # Iterate over pairs of positions
+        for l1 in range(L):
+            for l2 in range(l1+1, L):
+
+                # Break out of loop if gmap_type is "neighbor" and l2 > l1+1
+                if (l2-l1 > 1) and gpmap_type == "neighbor":
+                    continue
+
+                # Iterate over pairs of characters
+                for i1, c1 in enumerate(alphabet):
+                    for i2, c2 in enumerate(alphabet):
+
+                        # If there is a match to the wt sequence,
+                        if seq[l1] == c1 and seq[l2] == c2:
+
+                            # Compute coordinates of point
+                            x = half_pixel_diag + \
+                                (i1 + i2) * half_pixel_diag + \
+                                (l1 + l2 - 1) * half_block_diag
+                            y = (i2 - i1) * half_pixel_diag + \
+                                (l2 - l1 - 1) * half_block_diag
+
+                            # Plot point
+                            ax.scatter(x, y, **seq_kwargs)
+
+
+    # Create colorbar if requested, make one
+    if cbar:
+        if cax is None:
+            cax = make_axes_locatable(ax).new_horizontal(size=cmap_size,
+                                                         pad=cmap_pad)
+            fig.add_axes(cax)
+        cb = plt.colorbar(im, cax=cax)
+
+        # Otherwise, return None for cb
+    else:
+        cb = None
+
+    return ax, cb
+
 
 
 def plot_clusters_matches_2d_gui(df, figure, sort=None, column='Entropy', delta=False, mut_rate=10, alphabet=['A','C','G','T'], sort_index=None):
@@ -518,60 +814,6 @@ def plot_clusters_matches_2d_gui(df, figure, sort=None, column='Entropy', delta=
     cbar.ax.tick_params(labelsize=6)
 
     return (ax, cax, reordered_ind, revels)
-
-
-class SeabornFig2Grid():
-    # https://stackoverflow.com/questions/69833665/seaborn-subplot-of-jointplots-doesnt-work
-    def __init__(self, seaborngrid, fig,  subplot_spec):
-        self.fig = fig
-        self.sg = seaborngrid
-        self.subplot = subplot_spec
-        if isinstance(self.sg, sns.axisgrid.FacetGrid) or \
-            isinstance(self.sg, sns.axisgrid.PairGrid):
-            self._movegrid()
-        elif isinstance(self.sg, sns.axisgrid.JointGrid):
-            self._movejointgrid()
-        self._finalize()
-
-    def _movegrid(self):
-        """ Move PairGrid or Facetgrid """
-        self._resize()
-        n = self.sg.axes.shape[0]
-        m = self.sg.axes.shape[1]
-        self.subgrid = gridspec.GridSpecFromSubplotSpec(n,m, subplot_spec=self.subplot)
-        for i in range(n):
-            for j in range(m):
-                self._moveaxes(self.sg.axes[i,j], self.subgrid[i,j])
-
-    def _movejointgrid(self):
-        """ Move Jointgrid """
-        h= self.sg.ax_joint.get_position().height
-        h2= self.sg.ax_marg_x.get_position().height
-        r = int(np.round(h/h2))
-        self._resize()
-        self.subgrid = gridspec.GridSpecFromSubplotSpec(r+1,r+1, subplot_spec=self.subplot)
-
-        self._moveaxes(self.sg.ax_joint, self.subgrid[1:, :-1])
-        self._moveaxes(self.sg.ax_marg_x, self.subgrid[0, :-1])
-        self._moveaxes(self.sg.ax_marg_y, self.subgrid[1:, -1])
-
-    def _moveaxes(self, ax, gs):
-        # from https://stackoverflow.com/a/46906599/4124317
-        ax.remove()
-        ax.figure=self.fig
-        self.fig.axes.append(ax)
-        self.fig.add_axes(ax)
-        ax._subplotspec = gs
-        ax.set_position(gs.get_position(self.fig))
-        ax.set_subplotspec(gs)
-
-    def _finalize(self):
-        plt.close(self.sg.fig)
-        self.fig.canvas.mpl_connect("resize_event", self._resize)
-        self.fig.canvas.draw()
-
-    def _resize(self, evt=None):
-        self.sg.fig.set_size_inches(self.fig.get_size_inches())
 
 
 def center_mean(x): # equivalent to center_values in Logomaker

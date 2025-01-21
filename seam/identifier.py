@@ -19,19 +19,26 @@ parent_dir = os.path.dirname(py_dir)
 if 1:
     #dir_name = 'examples/examples_clipnet/outputs_local_PIK3R3/heterozygous_pt10/quantity_nfolds9'
     #dir_name = 'examples/examples_deepstarr/outputs_local_AP1-m1-seq22612'
-    #dir_name = 'examples/examples_deepstarr/outputs_local_Ohler1-m0-seq20647' # cut=0.3
+    dir_name = 'examples/examples_deepstarr/outputs_local_Ohler1-m0-seq20647' # cut=0.3; view_window=[50,171] for Figure
     #dir_name = 'examples/examples_deepstarr/outputs_local_AP1-m0-seq13748/archives/AP1-rank0_origVersion'
     #dir_name = 'examples/examples_deepstarr/outputs_local_Ohler1-m0-seq22627'
     #dir_name = 'examples/examples_deepstarr/outputs_local_Ohler6-m0-seq171' # cut=0.06
     #dir_name = 'examples/examples_deepstarr/outputs_local_DRE-m0-seq1134'
     #dir_name = 'examples/examples_deepstarr/outputs_local_DRE-m2-seq22619'
     #dir_name = 'examples/examples_deepstarr/outputs_local_DRE-m2-seq24760'
-    dir_name = 'examples/examples_deepstarr/outputs_local_AP1-m0-seq13748'
+    #dir_name = 'examples/examples_deepstarr/outputs_local_AP1-m0-seq13748'
 
-
+if 1:
+    view_window = [50,171]
+else:
+    view_window = None
 
 # Import Mechanism Summary Matrix (MSM) generated previously in meta_explainer.py
 df = pd.read_csv(os.path.join(parent_dir, dir_name + '/clusters_deepshap_hierarchical_maxclust30_sortMedian/compare_clusters.csv'))
+if 1: # Only needed if sorting by median
+    all_clusters_df = pd.read_csv(os.path.join(parent_dir, dir_name + '/clusters_deepshap_hierarchical_maxclust30_sortMedian/all_clusters.csv'))
+    mave = pd.read_csv(os.path.join(parent_dir, dir_name + '/mave.csv')) # only needed if sorting by median
+
 #df = pd.read_csv(os.path.join(parent_dir, dir_name + '/clusters_deepshap_umap_kmeans200_crop_110_137_sortMedian/compare_clusters.csv'))
 #df = pd.read_csv(os.path.join(parent_dir, dir_name + '/clusters_hierarchical_distance10/compare_clusters.csv'))
 column = 'Entropy'
@@ -76,8 +83,13 @@ def plot_with_updated_toolbar(matrix, original_indices, title="Covariance Matrix
         plt.title(title)
 
     else:
-        matrix = matrix.to_numpy().reshape(matrix.shape[0], 1, matrix.shape[0], 1)
-        fig = impress.plot_pairwise_matrix(matrix, view_window=None, alphabet=['A','C','G','T'],
+        matrix = matrix.to_numpy()
+
+        if view_window:
+            matrix = matrix[view_window[0]:view_window[1], view_window[0]:view_window[1]]
+
+        matrix = matrix.reshape(matrix.shape[0], 1, matrix.shape[0], 1)
+        fig = impress.plot_pairwise_matrix(matrix, view_window=view_window, alphabet=['A','C','G','T'],
                                            cbar_title='Covariance',
                                            gridlines=False,
                                            save_dir=py_dir,
@@ -279,11 +291,25 @@ if 1:
     background_entropy = entropy(np.array([null_rate, (1-null_rate)/3, (1-null_rate)/3,(1-null_rate)/3]), base=2) #e.g., 0.096 for r=0.01
     entropy_threshold = background_entropy*0.5
 
-    if 1:  # Reorder dataframe based on visual patterns
+    if 0:  # Reorder dataframe based on visual patterns
         row_linkage = hierarchy.linkage(distance.pdist(revels), method='ward')
         dendrogram = hierarchy.dendrogram(row_linkage, no_plot=True, color_threshold=-np.inf)
         reordered_ind = dendrogram['leaves']
         revels = revels.reindex(reordered_ind)
+    elif 1: # Sort by median DNN prediction
+
+        boxplot_data = []
+
+        mave['Cluster'] = all_clusters_df['Cluster']
+        clusters_idx = np.arange(all_clusters_df['Cluster_sort'].max()+1)
+        for k in clusters_idx:
+            k_idxs =  mave.loc[mave['Cluster'] == k].index
+            boxplot_data.append(mave['DNN'][k_idxs])
+        cluster_medians = [np.median(sublist) for sublist in boxplot_data] # calculate the median for each boxplot (must change this if clusters were sorted using a different metric in meta_explainer.py)
+        sort_index = sorted(range(len(cluster_medians)), key=lambda i: cluster_medians[i]) # get the indices of the boxplots sorted based on the median values
+        reordered_ind = sort_index
+        revels = revels.reindex(reordered_ind)
+
     else:
         reordered_ind = revels.index # i.e., the original indices
 
@@ -347,6 +373,7 @@ if 1:
 
     # Initialize binary matrix
     states = revels.index.tolist()
+    print('states:', states)
     tfbs_names = list(sorted_tfbs_clusters.keys())
     binary_matrix = pd.DataFrame(0, index=states, columns=tfbs_names)
 
@@ -357,6 +384,13 @@ if 1:
             state_entropies = revels.loc[state, positions]
             if (state_entropies < entropy_threshold).any():  # Check for any overlap
                 binary_matrix.at[state, tfbs] = 1
+
+    '''if 1: # plot states in their original order (based on clusters in entropy matrix)
+        # Determine the original order of states using reordered_ind
+        original_order = sorted(range(len(reordered_ind)), key=lambda i: reordered_ind[i])
+
+        # Reorder binary_matrix rows to reflect the original order of States
+        binary_matrix = binary_matrix.iloc[original_order]'''
 
     # Create a heatmap for the binary matrix
     plt.figure(figsize=(10, 8))  # Adjust the figure size as needed
@@ -370,8 +404,8 @@ if 1:
     plt.ylabel("State", fontsize=12)
 
     # Rotate x-axis labels for better readability
-    plt.xticks(rotation=45, ha="right", fontsize=10)
-    plt.yticks(fontsize=10)
+    #plt.xticks(rotation=45, ha="right", fontsize=10)
+    #plt.yticks(fontsize=10)
 
     # Add a black border around the entire matrix
     ax = plt.gca()  # Get current axis
@@ -386,6 +420,10 @@ if 1:
 
     # Show the plot
     plt.tight_layout()
-    plt.show()
+    if 0:
+        plt.show()
+    else:
+        plt.savefig(os.path.join(py_dir, 'state_matrix.png'), facecolor='w', dpi=600)
+        plt.close()
 
 
