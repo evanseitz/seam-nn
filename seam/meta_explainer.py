@@ -1,867 +1,524 @@
-import os, sys
-sys.dont_write_bytecode = True
-import time
+# Standard libraries
+import os
+import sys
 import numpy as np
 import pandas as pd
-import matplotlib
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
-from matplotlib.ticker import MaxNLocator
-import warnings
-warnings.filterwarnings("ignore", category=matplotlib.MatplotlibDeprecationWarning)
-from matplotlib.ticker import FormatStrFormatter
-from Bio import motifs # 'pip install biopython'
-import logomaker
-import squid.utils as squid_utils # 'pip install squid-nn'
-import seaborn as sns # pip install seaborn
-from scipy.stats import entropy
 from tqdm import tqdm
-import gc
-py_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(py_dir)
 
-try:
-    from . import utilities
-except ImportError:
-    import utilities
+# Bioinformatics libraries
+from Bio import motifs  # pip install biopython
+import logomaker  # pip install logomaker
+import squid.utils as squid_utils  # pip install squid-nn
+import seaborn as sns  # pip install seaborn
+from scipy.stats import entropy
 
-try:
-    from . import impress
-except ImportError:
-    import impress
 
-# to do items:
-    # move 'generate_regulatory_df' into impress.py
+class MetaExplainer:
+    """
+    MetaExplainer: A class for analyzing and visualizing attribution map clusters
+    
+    This class builds on the Clusterer class to provide detailed analysis and 
+    visualization of attribution map clusters, including:
+    
+    Analysis Features:
+    - Mechanism Summary Matrix (MSM) generation
+    - Sequence logos and attribution logos
+    - Cluster membership tracking
+    - Bias removal and normalization
+    
+    Visualization Features:
+    - DNN score distributions per cluster
+    - Sequence logos (PWM and enrichment)
+    - Attribution logos (fixed and adaptive scaling)
+    - Mechanism Summary Matrices
+    - Cluster profile plots
+    
+    Requirements:
+    - All requirements from Clusterer class
+    - Biopython
+    - Logomaker
+    - Seaborn
+    - SQUID-NN
+    """
+    
+    def __init__(self, clusterer, mave_df, ref_idx=0,
+                bias_removal=False, mut_rate=0.10, aesthetic_lvl=1):
+        """Initialize MetaExplainer with a Clusterer instance and data."""
+        # Store inputs
+        self.clusterer = clusterer  # clusterer.cluster_labels should contain labels_n
+        self.mave = mave_df
+        self.ref_idx = ref_idx
+        self.bias_removal = bias_removal
+        self.mut_rate = mut_rate
+        self.aesthetic_lvl = aesthetic_lvl
+        
+        # Initialize other attributes
+        self.alphabet = None
+        self.msm = None
+        self.cluster_bias = None
+        self.consensus_df = None
+        self.membership_df = None
+        
+        # Validate and process inputs
+        self._validate_inputs()
+        self._process_inputs()
 
-# ZULU: clean up below function and the duplicate in _null.py and send both to utils.py
-def generate_regulatory_df(mave, clusters_labels, clusters_idx, ref_seq):
-    # mave should already have sequence delimited
-    mave['Cluster'] = clusters_labels
-    seqs_all = mave['Sequence']
-    seq_length = len(mave['Sequence'][0])
-    regulatory_df = pd.DataFrame(columns = ['Cluster', 'Position', 'Reference', 'Consensus', 'Entropy'], index=range(len(clusters_idx)*seq_length))
-    occ_idx = 0
-    for k in tqdm(clusters_idx, desc='Clusters'):
-        k_idxs =  mave.loc[mave['Cluster'] == k].index
-        seqs_k = seqs_all[k_idxs]
-        seq_array_cluster = motifs.create(seqs_k, alphabet=alphabet)
-        pfm_cluster = seq_array_cluster.counts # position frequency matrix
-        consensus_seq = pfm_cluster.consensus
-        consensus_oh = squid_utils.seq2oh(consensus_seq, alphabet)
-        # calculate matches to reference sequence:
-        if ref_seq is not None:
-            pos_occ1 = np.diagonal(np.eye(len(ref_seq))*ref_oh.dot(np.array(pd.DataFrame(pfm_cluster)).T))
-            pos_occ1 = 100 - (pos_occ1/len(k_idxs))*100
-        # calculate matches to cluster's consensus sequence:
-        pos_occ2 = np.diagonal(np.eye(len(consensus_seq))*consensus_oh.dot(np.array(pd.DataFrame(pfm_cluster)).T))
-        pos_occ2 = (pos_occ2/len(k_idxs))*100
-        for pos in range(seq_length):
-            occ = seqs_k.str.slice(pos, pos+1)
-            vc = occ.value_counts(normalize=True).sort_index()
-            regulatory_df.at[occ_idx, 'Cluster'] = k
-            regulatory_df.at[occ_idx, 'Position'] = pos
-            regulatory_df.at[occ_idx, 'Entropy'] = entropy(np.array(vc), base=2) # calculate Shannon entropy
-            if ref_seq is not None:
-                regulatory_df.at[occ_idx, 'Reference'] = pos_occ1[pos]
+    def _validate_inputs(self):
+        """Validate input data and parameters."""
+        # Ensure mave_df has required columns
+        required_cols = {'Sequence', 'DNN'}
+        if not required_cols.issubset(self.mave.columns):
+            raise ValueError(f"mave_df must contain columns: {required_cols}")
+        
+        # Validate cluster labels exist
+        if not hasattr(self.clusterer, 'cluster_labels') or self.clusterer.cluster_labels is None:
+            raise ValueError("Clusterer must have valid cluster_labels. Did you run clustering?")
+        
+        # Get reference sequence from index
+        self.ref_seq = self.mave['Sequence'].iloc[self.ref_idx]
+                
+        # Determine alphabet from sequences
+        self.alphabet = sorted(list(set(self.mave['Sequence'][0:100].apply(list).sum())))
+        
+    def _process_inputs(self):
+        """Process inputs and initialize derived data structures."""
+        # Create membership tracking DataFrame
+        self.membership_df = pd.DataFrame({
+            'Cluster': self.clusterer.cluster_labels,
+            'Original_Index': range(len(self.mave))
+        })
+        
+        # Add cluster assignments to mave DataFrame
+        self.mave = self.mave.copy()  # Create a copy to avoid modifying original
+        self.mave['Cluster'] = self.clusterer.cluster_labels
+        
+        # Initialize cluster indices from unique cluster labels
+        self.cluster_indices = np.unique(self.clusterer.cluster_labels)
+        
+    def get_cluster_order(self, sort_method='median', sort_indices=None):
+        """Get cluster ordering based on specified method."""
+        if sort_method is None:
+            return self.cluster_indices  # Return actual indices instead of range
+                
+        if sort_method == 'predefined' and sort_indices is not None:
+            return np.array(sort_indices)
+                
+        if sort_method == 'hierarchical':
+            if not hasattr(self, 'msm') or self.msm is None:
+                raise ValueError("MSM required for hierarchical sorting. Call generate_msm() first.")
+            from scipy.cluster import hierarchy
+            from scipy.spatial import distance
+            matrix_data = self.msm.pivot(columns='Position', index='Cluster', values='Entropy')
+            linkage = hierarchy.linkage(distance.pdist(matrix_data), method='ward')
+            dendro = hierarchy.dendrogram(linkage, no_plot=True, color_threshold=-np.inf)
+            return self.cluster_indices[dendro['leaves']]  # Map back to actual indices
+                
+        if sort_method == 'median':
+            # Calculate median DNN score for each cluster
+            cluster_medians = []
+            for k in self.cluster_indices:
+                k_idxs = self.mave.loc[self.mave['Cluster'] == k].index
+                cluster_medians.append(self.mave.loc[k_idxs, 'DNN'].median())
+            
+            # Sort clusters by median DNN score
+            sorted_order = np.argsort(cluster_medians)
+            return self.cluster_indices[sorted_order]  # Map back to actual indices
+        
+        raise ValueError(f"Unknown sort_method: {sort_method}")
+    
+    def plot_cluster_stats(self, plot_type='box', metric='prediction', save_path=None, 
+                        sort_by_median=True, show_ref=True, show_fliers=False, fontsize=8, dpi=200):
+        """Plot cluster statistics with various visualization options.
+        
+        Parameters
+        ----------
+        plot_type : {'box', 'bar'}
+            Type of visualization:
+            - 'box': Show distribution as box plots (predictions only)
+            - 'bar': Show bar plot of predictions or counts
+        metric : {'prediction', 'counts'}
+            What to visualize (only used for bar plots):
+            - 'prediction': DNN prediction scores
+            - 'counts': cluster occupancy/size
+        save_path : str, optional
+            Path to save figure. If None, display instead
+        sort_by_median : bool
+            If True, sort clusters by median prediction values
+        show_ref : bool
+            If True and reference sequence exists, highlight its cluster
+        show_fliers : bool
+            If True and plot_type='box', show outlier points
+        fontsize : int
+            Font size for tick labels
+        dpi : int
+            DPI for saved figure
+        """        
+        # Collect data for each cluster
+        boxplot_data = []
+        
+        # Use actual clusters from data instead of cluster_indices
+        actual_clusters = np.sort(self.mave['Cluster'].unique())
+        cluster_to_idx = {k: i for i, k in enumerate(actual_clusters)}
+        
+        for k in actual_clusters:
+            k_idxs = self.mave.loc[self.mave['Cluster'] == k].index
+            if plot_type == 'box' or metric == 'prediction':
+                data = self.mave.loc[k_idxs, 'DNN']
+                boxplot_data.append(data)
+            else:  # counts for bar plot
+                boxplot_data.append([len(k_idxs)])
+                
+        # Sort if requested
+        sorted_indices = None
+        if sort_by_median:
+            sorted_indices = self.get_cluster_order(sort_method='median')
+            sorted_data = []
+            for k in sorted_indices:
+                idx = cluster_to_idx[k]
+                sorted_data.append(boxplot_data[idx])
+            boxplot_data = sorted_data
+            
+            # Update membership tracking
+            mapping_dict = {old_k: new_k for new_k, old_k in 
+                        enumerate(sorted_indices)}
+            self.membership_df['Cluster_Sorted'] = self.membership_df['Cluster'].map(mapping_dict)
+
+        if plot_type == 'box':
+            # Calculate IQR
+            iqr_values = [np.percentile(data, 75) - np.percentile(data, 25) 
+                        for data in boxplot_data if len(data) > 0]
+            average_iqr = np.mean(iqr_values) if iqr_values else 0
+            
+            plt.figure(figsize=(6.4, 4.8))
+            plt.boxplot(boxplot_data[::-1], vert=False, 
+                    showfliers=show_fliers, 
+                    medianprops={'color': 'black'})
+            plt.yticks(range(1, len(boxplot_data) + 1)[::10],
+                    range(len(boxplot_data))[::-1][::10],
+                    fontsize=fontsize)
+            plt.ylabel('Clusters')
+            plt.xlabel('DNN')
+            plt.gca().xaxis.set_major_locator(plt.MaxNLocator(integer=True))
+            plt.title(f'Average IQR: {average_iqr:.2f}')
+            
+            if show_ref and self.ref_seq is not None:
+                ref_cluster = self.membership_df.loc[self.ref_idx, 'Cluster']
+                if sort_by_median:
+                    ref_cluster = mapping_dict[ref_cluster]
+                ref_data = boxplot_data[ref_cluster]
+                if len(ref_data) > 0:
+                    plt.axvline(np.median(ref_data), c='red', 
+                            label='Ref', zorder=-100)
+                    plt.legend(loc='best')
+        
+        else:  # bar plot
+            fig_width = 1.5 if metric == 'counts' else 1.0
+            plt.figure(figsize=(fig_width, 5))
+            
+            y_positions = np.arange(len(boxplot_data))
+            values = [np.median(data) if metric == 'prediction' else data[0] 
+                    for data in boxplot_data]
+            height = 0.8 if metric == 'prediction' else 1.0
+            
+            if show_ref and self.ref_seq is not None:
+                ref_cluster = self.membership_df.loc[self.ref_idx, 'Cluster']
+                if sort_by_median and sorted_indices is not None:
+                    ref_cluster = np.where(sorted_indices == ref_cluster)[0][0]
+                colors = ['red' if i == ref_cluster else 'C0' 
+                        for i in range(len(values))]
+                plt.barh(y_positions, values, height=height, color=colors)
             else:
-                regulatory_df.at[occ_idx, 'Reference'] = pd.NA
-            regulatory_df.at[occ_idx, 'Consensus'] = pos_occ2[pos]
-            occ_idx += 1
-    return regulatory_df
-
-# defaults
-ref_idx = 0
-plot_profiles = False
-profiles_ylim = None
-
-if 0:
-    #dir_name = 'examples_deepstarr/outputs_local_AP1-m1-seq22612'
-    #dir_name = 'examples_deepstarr/outputs_local_Ohler1-m0-seq20647'
-    #dir_name = 'examples_deepstarr/outputs_local_AP1-m0-seq13748/archives/AP1-rank0_origVersion'
-    #dir_name = 'examples_deepstarr/outputs_local_Ohler1-m0-seq22627'
-    #dir_name = 'examples_deepstarr/outputs_local_Ohler6-m0-seq171'
-    #dir_name = 'examples_deepstarr/outputs_local_DRE-m2-seq4071'
-    dir_name = 'examples_deepstarr/outputs_local_Ohler6-m0-seq30181'
-    #dir_name = 'examples_deepstarr/outputs_local_Ohler1-m0-seq20647/_other_librarySizes/librarySize_150k'
-    ref_seq = 'First row'
-    #attr_map = 'ism'
-    #attr_map = 'saliency'
-    #attr_map = 'smoothgrad'
-    #attr_map = 'intgrad'
-    attr_map = 'deepshap' # map_length = 249
-elif 0:
-    #dir_name = 'examples_deepstarr/outputs_global_AP1-N'
-    dir_name = 'examples_deepstarr/outputs_global_CREB-NN'
-    ref_seq = None
-    attr_map = 'deepshap' # map_length = 249
-elif 0:
-    dir_name = 'outputs_local_spliceAI_U2SURP/max'
-    # U2SURP:
-    ref_seq = 'GGGGGGACTACTGTATTATAAAAACTAATAATTGTCTTCTTTTCTCCCCTTTAAGTGGACGCGCCTTCAAGAAGAAATAGATCATCTGGTGGTAATACAGTTTTTTGCTCTTTTAATCGATAAATTT'
-    attr_map = 'saliency' # map_length = 127
-elif 0:
-    dir_name = 'examples_enformer/outputs_local_DNase_PPIF_promoter/seed2'
-    #dir_name = 'examples_enformer/outputs_local_CAGE_PPIF_promoter/seed2'
-    ref_seq = 'First row'
-    attr_map = 'saliency' # map_length = 1024 for enhancer; 768 for promoter
-elif 1:
-    #dir_name = 'examples_chrombpnet/outputs_local_PPIF_promoter_counts/mut_pt10/seed2_N100k_allFolds'#fold4'
-    #dir_name = 'examples_chrombpnet/outputs_local_PPIF_promoter_counts/mut_pt10/seed1and2_N200k_allFolds'
-    #dir_name = 'examples_chrombpnet/outputs_local_PPIF_promoter_counts/mut_pt40/N100k_fold0'
-    dir_name = 'examples_chrombpnet/outputs_local_PPIF_enhancer_counts/seed1_allFolds'
-    ref_seq = 'First row'
-    attr_map = 'deepshap' # map_length = 2048
-elif 0:
-    dir_name = 'outputs_local_enformer_DNase_PPIF_promoter/seed5_mutatePro_targetPro/promoter'
-    ref_seq = 'First row'
-    attr_map = 'saliency' # map_length = 768
-elif 0:
-    mode = 'quantity'
-    #mode = 'profile' # {note for clipnet: cut=0.0001, 0.0002, 0.0004, 0.0008, 0.001, 0.003, 0.007}
-    dir_name = 'examples_clipnet/outputs_local_PIK3R3/heterozygous_pt01/%s_nfolds9' % mode
-    ref_seq = 'First row'
-    attr_map = 'deepshap' # map_length = 1000
-elif 0:
-    #dir_name = 'examples_tfbind/outputs_8mer_SIX6'
-    dir_name = 'examples_tfbind/outputs_8mer_Hnf4a' # 43728: GTAAACA
-    #dir_name = 'examples_tfbind/outputs_8mer_Foxa2' # 11268: AGTAAACA
-    #dir_name = 'examples_tfbind/outputs_8mer_Zfp187'
-    #dir_name = 'examples_tfbind/outputs_8mer_Rfx3'
-    #dir_name = 'examples_tfbind/outputs_8mer_Oct-1'
-    ref_seq = 11268
-    attr_map = 'ism'
-    #map_length = 8
-elif 0:
-    tm = 20 # total mutations per EFS run
-    #dir_name = 'examples_deepmel2/outputs_EFS-idx22-class16-traj0'
-    #dir_name = 'examples_deepmel2/outputs_EFS-idx22-class16-traj20'
-    #dir_name = 'examples_deepmel2/outputs_EFS-idx17-class16-traj20'
-    #dir_name = 'examples_deepmel2/outputs_BEAM-idx45-class16-width2-muts16'
-    #dir_name = 'examples_deepmel2/outputs_REVO-idx22-class16-tw3-wl20-tm20-tr5'
-    dir_name = 'examples_deepmel2/outputs_REVO-idx45-class16-tw4-wl5101520-tm%s-tr3' % tm
-    ref_seq = 'First row'
-    attr_map = 'deepshap'
-    #map_length = 500
-    ref_idx = tm+1
-elif 0:
-    mode = 'profile'
-    #mode = 'counts'
-    dir_name = 'examples_procapnet/outputs_MYC_%s_fold0_r10' % mode
-    ref_seq = 'First row'
-    attr_map = 'deepshap'
-    #map_length = 500
-    profiles_ylim = [-769.2708160400391, 833.5737335205079] # profiles ylim over all seqs in library
-
-aesthetic_lvl = 1 # {0, 1, 2} : modulates the aesthetic appearance of the logo, with the caveat that higher aesthetic levels have higher computation times
-
-if 0:
-    embedding = 'umap'#'pca'#'umap'
-    if 0:
-        clusterer = 'dbscan'
-        n_clusters = None
-    elif 1:
-        clusterer = 'kmeans'
-        n_clusters = 200
-else:
-    embedding = None
-    clusterer = 'hierarchical'
-    link_method = 'ward'
-    if 0:
-        cut_criterion = 'distance'
-        cut_value = 8#10 # choose max cutoff distance for dendrogram
-    else:
-        cut_criterion = 'maxclust'
-        cut_value = 100#100#500 # choose the desired number of clusters (same use as 'n_clusters' above)
-    plot_dendro = True#False
-    n_clusters = None # unused (see 'cut_value' above)
-
-
-attr_logo_fixed = True
-attr_logo_adaptive = False#True
-seq_logo_pwm = False
-seq_logo_enrich = False#True
-plot_profiles = False # plot overlay of profiles associated with each cluster; requires file 'y_profiles.npy' corresponding to predictions for sequences in 'mave.csv' (both in same directory)
-plot_bias = False#False # plot the per-cluster bias logos in the 'clusters_bias' folder
-sort_median = True # sort the boxplots and regulatory matrix by the median DNN score of each cluster
-bias_removal = True # removes bias based on subtracting the average of background attribution maps from each cluster 
-mut_rate = 0.10#0.01#.10 #.01 # mutation rate used for generating sequence library (if 'bias_removal' = True)
-subset_clusters = False # focus on a specific subset of clusters (selected after first viewing all clusters; see below)
-# ZULU: currently, sort_median must be false if subset_clusters is True
-
-#sort_fig = 'visual'
-
-
-inputs_dir = os.path.join(parent_dir, 'examples/%s' % dir_name)
-if ref_seq == 'First row':
-    ref_seq = pd.read_csv(os.path.join(inputs_dir, 'mave.csv'))['Sequence'][0]
-    seq_stop = len(ref_seq)
-    print('Sequence length:', seq_stop)
-elif isinstance(ref_seq, int):
-    ref_seq = pd.read_csv(os.path.join(inputs_dir, 'mave.csv'))['Sequence'][ref_seq]
-    seq_stop = len(ref_seq)
-    print('Sequence length:', seq_stop)
-
-
-dpi = 200
-eig1 = 0
-eig2 = 1
-
-
-def normalize(_d, to_sum=False, copy=True): # normalize all eigenvectors
-    d = _d if not copy else np.copy(_d) # d is an (n x dimension) array
-    d -= np.min(d, axis=0)
-    d /= (np.sum(d, axis=0) if to_sum else np.ptp(d, axis=0)) # normalize to [0,1]
-    return d
-
-
-mave_fname = os.path.join(inputs_dir, 'mave.csv')
-mave = pd.read_csv(mave_fname)
-nS = len(mave)
-maps_fname = os.path.join(inputs_dir, 'maps_%s.npy' % attr_map)
-
-'''if 0: # only needed if column names in mave.csv are inconsistent with those used here
-    mave.rename(columns={'y_DNN': 'DNN', 'x': 'Sequence'}, inplace=True)
-    mave.to_csv(os.path.join(inputs_dir, 'mave_new.csv'), index=False)
-    print('')
-    print("Columns in 'mave.csv' renamed and saved as 'mave_new.csv'. To replace the old version, manually overwrite 'mave.csv' with 'mave_new.csv', then disable this code before rerunning.")
-    print('')
-    exit()'''
-
-#alphabet = ['A','C','G','T']
-alphabet = sorted(list(set(mave['Sequence'][0:100].apply(list).sum())))
-
-
-if embedding is not None:
-    output_name = '%s_%s_%s' % (attr_map, embedding, clusterer)
-else:
-    if clusterer == 'hierarchical':
-        output_name = '%s_%s_%s%s' % (attr_map, clusterer, cut_criterion, cut_value)
-    else:
-        output_name = '%s_%s' % (attr_map, clusterer)
-if n_clusters is not None:
-    output_name = output_name + str(int(n_clusters))
-
-
-if 0: # use cropped attribution maps
-    # PPIF promoter:#seq_start = 186 #seq_stop = 406 # PPIF enhancer:
-    if 1: # AP1-rank0 (DeepSTARR)
-        seq_start = 110
-        seq_stop = 137
-    elif 0: # Global (DeepSTARR)
-        seq_start = 114
-        seq_stop = 143#2#1#3 DRE, AP1-N, CREB-NN
-    elif 0: # PPIF promoter (ChromBPNet)
-        seq_start = 190
-        seq_stop = 690
-
-
-    manifold_fname = os.path.join(inputs_dir, 'manifold_%s_%s_crop_%s_%s.npy' % (attr_map, embedding, seq_start, seq_stop))
-    if sort_median is True:
-        outputs_dir = os.path.join(inputs_dir, 'clusters_%s_crop_%s_%s_sortMedian' % (output_name, seq_start, seq_stop))
-    else:
-        outputs_dir = os.path.join(inputs_dir, 'clusters_%s_crop_%s_%s' % (output_name, seq_start, seq_stop))
-    fontsize = 8 # for 30-nt (cropped) sequence
-    map_length = seq_stop - seq_start
-else: # use full attribution maps
-    manifold_fname = os.path.join(inputs_dir, 'manifold_%s_%s.npy' % (attr_map, embedding))
-    seq_start = 0
-
-    if sort_median is True:
-        outputs_dir = os.path.join(inputs_dir, 'clusters_%s_sortMedian' % output_name)
-    else:
-        outputs_dir = os.path.join(inputs_dir, 'clusters_%s' % output_name)
-    fontsize = 4 # for 249-nt sequence
-
-
-if not os.path.exists(outputs_dir):
-    os.mkdir(outputs_dir)
-
-seq_length = len(mave['Sequence'][0])
-dim = (seq_length)*len(''.join(alphabet))
-if 'map_length' in locals():
-    pass
-else:
-    map_length = seq_length
-print('Attribution length:', map_length)
-
-if map_length < 10:
-    figsize = [3, 1.5]
-elif 10 <= map_length < 50:
-    figsize = [10, 2.5]
-elif 50 <= map_length < 250:
-    figsize = [20, 2.5]
-else:
-    figsize = [20, 1.5] #3.5 for CLIPNET figure
-
-if embedding is not None:
-    manifold = np.load(manifold_fname)
-    manifold = normalize(manifold)
-
-try:
-    maps = np.load(maps_fname)
-    if maps.ndim == 2: # ZULU, consistency
-        maps = maps.reshape((nS, seq_length, len(''.join(alphabet))))
-except: # try to load numpy mmemap
-    maps = np.memmap(maps_fname, dtype='float32', mode='r', shape=(nS, seq_length, len(''.join(alphabet))))
-
-
-seq_length = seq_stop - seq_start
-#try:
-if seq_start != 0 and seq_stop != len(mave['Sequence'][0]):
-    mave['Sequence'].str.slice(seq_start, seq_stop)
-    maps = maps[:,seq_start:seq_stop,:]
-    if ref_seq is not None:
-        ref_seq = ref_seq[seq_start:seq_stop]
-        ref_oh = utilities.seq2oh(ref_seq, alphabet)
-else:
-    ref_oh = utilities.seq2oh(ref_seq, alphabet)
-#except:
-#    pass
-
-
-
-print('Clustering data...')
-if embedding is not None:
-    if clusterer == 'kmeans':
-        from sklearn.cluster import KMeans # pip install -U scikit-learn
-        clusters = KMeans(init='k-means++', n_clusters=n_clusters, random_state=0, n_init=10)
-        clusters.fit(manifold)
-        clusters_labels = clusters.labels_ # membership of each element to a given cluster
-    elif clusterer == 'dbscan':
-        from sklearn.cluster import DBSCAN
-        clusters = DBSCAN(eps=0.01, min_samples=10).fit(manifold)
-        clusters_labels = clusters.labels_ # membership of each element to a given cluster
-
-    clusters_idx = np.arange(max(clusters_labels)+1)
-
-    if 1:
-        plt.scatter(manifold[:,eig1], manifold[:,eig2], c=clusters_labels, cmap='tab10', #edgecolor='none',
-                    s=2.5, linewidth=.1, edgecolors='k')
-        #plt.colorbar()
+                plt.barh(y_positions, values, height=height)
+            
+            plt.yticks(y_positions[::10], y_positions[::10], fontsize=fontsize)
+            plt.ylabel('Cluster')
+            plt.xlabel('DNN' if metric == 'prediction' else 'Count')
+            plt.gca().invert_yaxis()
+            plt.axvline(x=0, color='black', linewidth=0.5, zorder=100)
+        
         plt.tight_layout()
-        plt.savefig(os.path.join(outputs_dir, 'all_clusters.png'), facecolor='w', dpi=600)
-        plt.close()
-
-    all_clusters_df = pd.DataFrame(columns = ['Cluster', 'Psi1', 'Psi2'], index=range(nS))
-    all_clusters_df['Cluster'] = clusters_labels
-    mave['Cluster'] = clusters_labels
-    all_clusters_df['Psi1'].iat[0] = eig1
-    all_clusters_df['Psi2'].iat[0] = eig2
-    sort_fig = 'visual'
-
-
-else: # cluster attribution maps without embedding them
-    if clusterer == 'hierarchical':
-        from scipy.cluster import hierarchy
-        linkage = np.load(os.path.join(inputs_dir, 'hierarchical_linkage_%s_%s.npy' % (link_method,attr_map)))
-
-        if plot_dendro is True: # plot dendrogram
-            sys.setrecursionlimit(100000) # fix: https://stackoverflow.com/questions/57401033/how-to-fixrecursionerror-maximum-recursion-depth-exceeded-while-getting-the-st
-            plt.figure(figsize=(15, 10)) # (25,10)
-            plt.title('Hierarchical Clustering Dendrogram')
-            plt.xlabel('sample index')
-            plt.ylabel('distance')
-            with plt.rc_context({'lines.linewidth': 2}):
-                hierarchy.dendrogram(linkage,
-                                    leaf_rotation=90., # rotates the x-axis labels
-                                    leaf_font_size=8., # font size for the x-axis labels
-                                    )
-            plt.xticks([])
-            plt.gca().spines['top'].set_visible(False)
-            plt.gca().spines['right'].set_visible(False)
-            plt.xlabel('Clusters') 
-            plt.savefig(os.path.join(os.path.dirname(outputs_dir), 'dendrogram.png'), facecolor='w', dpi=dpi)
+        
+        if save_path:
+            plt.savefig(save_path, facecolor='w', dpi=dpi, bbox_inches='tight')
             plt.close()
-        
-        clusters_labels = hierarchy.fcluster(linkage, cut_value, criterion=cut_criterion) # membership of each element to a given cluster
-        clusters_labels -= 1 # zero-index clusters to match other methods
-
-        '''if cut_criterion == 'maxclust': # optionally, print the cut level (the height at which the dendrogram is cut)
-            max_d = 0
-            for i in range(1, len(linkage) + 1):
-                if len(np.unique(hierarchy.fcluster(linkage, i, criterion='maxclust'))) == cut_value:
-                    max_d = linkage[i-1, 2]  # The height (or distance) at the last merge to achieve the desired clusters
-                    break
-            print("Cut level for desired number of clusters:", max_d)'''
-        
-        clusters_idx = np.unique(clusters_labels) #np.arange(max(clusters_labels)) #
-        all_clusters_df = pd.DataFrame(columns = ['Cluster'], index=range(nS))
-        all_clusters_df['Cluster'] = clusters_labels
-        mave['Cluster'] = clusters_labels
-        sort_fig = None
-
-
-if subset_clusters is True: # option to only focus on a subselection of clusters (default=0)
-    ref_cluster = all_clusters_df.loc[ref_idx, 'Cluster']
-    #cluster_sorted_indices = [ref_cluster, 71, 147, 96, 91, 50, 79, 0, 160, 93, 32, 80, 45, 131, 179, 55] # circle
-    cluster_sorted_indices = [0,160,93,32,80,45,131,179,55,ref_cluster]
-    ref_cluster = 9#0 # reset to match updated position in list above
-    all_clusters_df = all_clusters_df[all_clusters_df['Cluster'].isin(cluster_sorted_indices)]
-    mave = mave[mave['Cluster'].isin(cluster_sorted_indices)]
-    clusters_idx = [item for item in clusters_idx if item in cluster_sorted_indices]
-    clusters_labels = [item for item in clusters_labels if item in cluster_sorted_indices]
-    # create a dictionary to map the original clusters to their indices in cluster_sorted_indices
-    cluster_index_map = {cluster: index for index, cluster in enumerate(cluster_sorted_indices)}
-    # sort clusters_idx to match the order in cluster_sorted_indices
-    clusters_idx = sorted(clusters_idx, key=lambda x: cluster_index_map[x])
-    # update 'all_clusters.csv' with new column containing sorted indices (for user reference only)
-    mapping_dict = {old_cluster: new_cluster for new_cluster, old_cluster in enumerate(cluster_sorted_indices)}
-    all_clusters_df['Cluster_sort'] = all_clusters_df['Cluster'].map(mapping_dict)
-    sort_median = False
-    sort_fig = 'predefined'
-
-
-all_clusters_df.to_csv(os.path.join(outputs_dir, 'all_clusters.csv'), index=False)
-
-mave['Sequence'] = mave['Sequence'].str.slice(seq_start, seq_stop)
-#seqs_all = mave['Sequence'].str.slice(seq_start, seq_stop)
-seq_array_background = motifs.create(mave['Sequence'], alphabet=alphabet)#seqs_all)
-pfm_background = seq_array_background.counts
-
-if 1: # render boxplots for all clusters
-    print('Rendering histograms and boxplots...')
-
-    boxplot_data = []
-    for k in tqdm(clusters_idx, desc='Clusters'):
-        if k >= 0: # this line is a placeholder for optionally inserting code for a specific cluster
-            k_idxs =  mave.loc[mave['Cluster'] == k].index
-            #if len(k_idxs) >= 50: #optional threshold to handle oversplitting
-            boxplot_data.append(mave['DNN'][k_idxs])
-
-    # calculate the average IQR
-    iqr_values = [np.percentile(data, 75) - np.percentile(data, 25) for data in boxplot_data]
-    average_iqr = np.mean(iqr_values)
-
-    if sort_median is True: # sort boxplots by ascending median
-        cluster_medians = [np.median(sublist) for sublist in boxplot_data] # calculate the median for each boxplot
-        cluster_sorted_indices = sorted(range(len(cluster_medians)), key=lambda i: cluster_medians[i]) # get the indices of the boxplots sorted based on the median values
-        boxplot_data = [boxplot_data[i] for i in cluster_sorted_indices]
-        clusters_idx = [clusters_idx[i] for i in cluster_sorted_indices]
-        sort_fig = 'predefined'
-        # update 'all_clusters.csv' with new column containing sorted indices (for user reference only)
-        mapping_dict = {old_cluster: new_cluster for new_cluster, old_cluster in enumerate(cluster_sorted_indices)}
-        all_clusters_df['Cluster_sort'] = all_clusters_df['Cluster'].map(mapping_dict)
-        all_clusters_df.to_csv(os.path.join(outputs_dir, 'all_clusters.csv'), index=False)
-    else:
-        cluster_sorted_indices = None
-
-    # render boxplots showing DNN scores across all clusters
-    #fig, ax = plt.subplots(figsize=(10,5))
-    if len(boxplot_data) <= 100:
-        box = plt.boxplot(boxplot_data[::-1], vert=False, showfliers=False, medianprops={'color': 'black'})
-        plt.yticks([i for i in range(1, len(boxplot_data)+1)], [str(i) for i in range(len(boxplot_data))][::-1], fontsize=4)
-    else:
-        for pos, values in enumerate(boxplot_data):
-            values = np.array(values)            
-            median = np.median(values)
-            q1 = np.percentile(values, 25)
-            q3 = np.percentile(values, 75)
-            plt.plot([q1, q3], [pos, pos], color='gray', lw=.5) # plot the IQR line
-            plt.plot(median, pos, 'o', color='k', markersize=1, zorder=100) # plot the median point
-        plt.yticks([])
-        plt.gca().invert_yaxis()
-    plt.ylabel('Clusters')
-    plt.xlabel('DNN')
-    plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
-    plt.title('Average IQR: %.2f' % average_iqr)
-    if ref_seq is not None:
-        if sort_median is True:
-            ref_cluster = cluster_sorted_indices.index(all_clusters_df.loc[ref_idx, 'Cluster'])
-        elif sort_median is False and subset_clusters is False:
-            ref_cluster = all_clusters_df.loc[ref_idx, 'Cluster']
-        plt.axvline(np.median(boxplot_data[ref_cluster]), c='red', label='Ref', zorder=-100)
-        plt.legend(loc='best')
-    plt.tight_layout()
-    plt.savefig(os.path.join(outputs_dir, 'clusters_boxplot.png' % k), facecolor='w', dpi=dpi)
-    plt.cla() 
-    plt.clf()
-    plt.close()
-
-    if 1: # render plots used in manuscript figures
-        # plot just the median values for clusters in a bar plot
-        bar_height = 0.8#1.0 #0.6
-        median_values = []
-        for i in range(len(boxplot_data)):
-            median_values.append(np.median(boxplot_data[i]))
-        plt.figure(figsize=(1,5))
-        y_positions = np.arange(len(median_values))
-        if ref_seq is not None:
-            for i in range(len(median_values)):
-                if i == ref_cluster:
-                    plt.barh(i, median_values[i], color='red', height=bar_height)
-                else:
-                    plt.barh(i, median_values[i], color='C0', height=bar_height)
         else:
-            plt.barh(y_positions, median_values, height=bar_height)
-        plt.gca().invert_yaxis()
-        plt.axvline(x=0, color='black', linewidth=.5, zorder=100)
-        #plt.xlim(np.amin(median_values),np.amax(median_values))
+            plt.show()
 
-        plt.yticks(y_positions, y_positions)
-
-        plt.tight_layout()
-        plt.savefig(os.path.join(outputs_dir, 'clusters_median_barplot.png'), facecolor='w', dpi=dpi)
-        plt.cla()
-        plt.clf()
-        plt.close()
-
-        # plot the occupancy of each cluster in a bar plot
-        occupancy_values = []
-        for i in range(len(boxplot_data)):
-            occupancy_values.append(len(boxplot_data[i]))
-        occupancy_values = occupancy_values[::-1]
-        plt.figure(figsize=(1.5,5))
-        if ref_seq is not None:
-            for i in range(len(occupancy_values)):
-                if i == ref_cluster:
-                    plt.barh(i, occupancy_values[i], color='red', height=1.0)
-                else:
-                    plt.barh(i, occupancy_values[i], color='C0', height=1.0)
-        else:
-            plt.barh(y_positions, occupancy_values, color='C0', height=1.0)
-
-        plt.gca().invert_yaxis()
-        plt.axvline(x=0, color='black', linewidth=.5, zorder=100)
-        plt.tight_layout()
-        plt.savefig(os.path.join(outputs_dir, 'clusters_occupancy_barplot.png'), facecolor='w', dpi=dpi)
-        plt.cla()
-        plt.clf()
-        plt.close()
-
-
-if 1:
-    print('Computing sequence statistics...')
-    regulatory_df = generate_regulatory_df(mave, clusters_labels, clusters_idx, ref_seq)
-
-    regulatory_df.to_csv(os.path.join(outputs_dir, 'compare_clusters.csv'), index=False)
-
-    if 1:
-        regulatory_df_csv = pd.read_csv(os.path.join(outputs_dir, 'compare_clusters.csv'))
-        # plot regulatory matrix using different metrics:
-        fig = plt.figure(figsize=(20, 5))
-        ax, cax, reordered_ind, revels = impress.plot_clusters_matches_2d_gui(regulatory_df_csv, fig, sort=sort_fig, column='Entropy', sort_index=cluster_sorted_indices)
-        ax.set_title('')
-        plt.savefig(os.path.join(outputs_dir, 'compare_clusters_entropy.png'), facecolor='w', dpi=dpi)
-        plt.close()
-        if ref_seq is not None:
-            fig = plt.figure(figsize=(20, 5))
-            ax, cax, reordered_ind, revels = impress.plot_clusters_matches_2d_gui(regulatory_df_csv, fig, sort=sort_fig, column='Reference', sort_index=cluster_sorted_indices)
-            ax.set_title('')
-            plt.savefig(os.path.join(outputs_dir, 'compare_clusters_reference.png'), facecolor='w', dpi=dpi)
-            plt.close()
-
-
-if 1: # create percent mismatch table
-    if ref_seq is not None:
-        print('Calculating percent mismatch table...')
-        mismatch_df = impress.mismatch2csv(regulatory_df_csv, all_clusters_df, mave, ref_seq,
-                                        threshold=90, # minimum percent mismatch at any position
-                                        sort_index=cluster_sorted_indices,
-                                        alphabet=alphabet, save_dir=outputs_dir)
-
-
-if 1: # render logos for all clusters
-
-    if seq_logo_pwm is True or seq_logo_enrich is True:
-        if not os.path.exists(os.path.join(outputs_dir, 'clusters_seq')):
-            os.mkdir(os.path.join(outputs_dir, 'clusters_seq'))
-    if bias_removal is False:
-        clusters_avg_fname = 'clusters_avg'
-        if not os.path.exists(os.path.join(outputs_dir, clusters_avg_fname)):
-            os.mkdir(os.path.join(outputs_dir, clusters_avg_fname))
-    elif bias_removal is True:
-        clusters_bias_fname = 'clusters_bias'
-        if not os.path.exists(os.path.join(outputs_dir, clusters_bias_fname)):
-            os.mkdir(os.path.join(outputs_dir, clusters_bias_fname))
-        clusters_avg_fname = 'clusters_avg_nobias'
-        if not os.path.exists(os.path.join(outputs_dir, clusters_avg_fname)):
-            os.mkdir(os.path.join(outputs_dir, clusters_avg_fname))
-
-    if plot_profiles is True:
-        y_profiles = np.load(os.path.join(inputs_dir, 'y_profiles.npy'))
-        if not os.path.exists(os.path.join(outputs_dir, 'clusters_profiles')):
-            os.mkdir(os.path.join(outputs_dir, 'clusters_profiles'))
-
-    if attr_logo_fixed is True:
-        print('Finding global y_min/max of attribution maps...')
-        y_min, y_max = 0., 0.
-        for k in tqdm(clusters_idx, desc='Clusters'):
-            k_idxs =  mave.loc[mave['Cluster'] == k].index
-            map_avg = np.mean(maps[k_idxs], axis=0)
-            map_avg -= np.expand_dims(np.mean(map_avg, axis=1), axis=1) # position-dependent centering (gauge fix)
-
-            positive_mask = map_avg > 0
-            positive_matrix = map_avg * positive_mask
-            positive_summations = positive_matrix.sum(axis=1)
-            positive_max_position = np.argmax(positive_summations)
-            if positive_summations[positive_max_position] > y_max:
-                y_max = positive_summations[positive_max_position]
-
-            negative_mask = map_avg < 0
-            negative_matrix = map_avg * negative_mask
-            negative_summations = negative_matrix.sum(axis=1)
-            negative_max_position = np.argmin(negative_summations)
-            if negative_summations[negative_max_position] < y_min:
-                y_min = negative_summations[negative_max_position]
-
-    if bias_removal is True:
-        null_rate = 1 - mut_rate
-        background_entropy = entropy(np.array([null_rate, (1-null_rate)/3, (1-null_rate)/3,(1-null_rate)/3]), base=2) #e.g., 0.096 for r=0.01
-        entropy_threshold = background_entropy*0.5
-        cluster_bias = np.zeros(shape=(len(clusters_idx), maps.shape[1], maps.shape[2]))
-        k_name = 0 # necessary for keeping logo filenames in correct order if using 'sort_median' above
-        for k in tqdm(clusters_idx, desc='Bias'):
-            k_idxs = mave.loc[mave['Cluster'] == k].index
-            child_maps = maps[k_idxs]
-            entropic_positions = regulatory_df[(regulatory_df['Cluster'] == k) & 
-                                            (regulatory_df['Entropy'] > entropy_threshold)]['Position'].values
-            if len(entropic_positions) == 0:
-                continue
-            for ep in entropic_positions:
-                for child in child_maps:
-                    cluster_bias[k,ep,:] += child[ep,:]
-            cluster_bias[k] /= len(child_maps)
-
-            if plot_bias is True:
-                try:
-                    cluster_bias_map = squid_utils.arr2pd(cluster_bias[k], alphabet)
-                except:
-                    cluster_bias_map = squid_utils.arr2pd(cluster_bias[k]) # ZULU: may need a separate option for this to deal with two-hot encodings (e.g., CLIPNET)
-                if attr_logo_fixed is True:
-                    y_min_max = [y_min, y_max]
-                else:
-                    y_min_max = None
-                logo_fig = impress.plot_logo(cluster_bias_map, logo_type='attribution', ref_seq=None, aesthetic_lvl=aesthetic_lvl, figsize=figsize, y_min_max=y_min_max)
-                plt.savefig(os.path.join(outputs_dir, 'clusters_bias/cluster_%s.png' % k_name), facecolor='w', dpi=dpi)
-                plt.close()
-            k_name += 1
-        all_bias = np.mean(cluster_bias, axis=0)
-        np.save(os.path.join(outputs_dir, 'bias_matrix.npy'), all_bias)
-
-
-    if attr_logo_fixed is True: # render individual reference map using global y_min/max
-        ref_map = np.copy(maps[ref_idx])
-        if bias_removal is True:
-            ref_map -= all_bias
-        try:
-            ref_map = squid_utils.arr2pd(ref_map, alphabet)
-        except:
-            ref_map = squid_utils.arr2pd(ref_map) # ZULU: may need a separate option for this to deal with two-hot encodings (e.g., CLIPNET)
-        logo_fig = impress.plot_logo(ref_map, logo_type='attribution', ref_seq=None, aesthetic_lvl=aesthetic_lvl, y_min_max=[y_min, y_max], figsize=figsize)
-        if bias_removal is False and ref_seq is not None:
-            plt.savefig(os.path.join(outputs_dir, 'individual_logo_reference_y_fixed.png'), facecolor='w', dpi=dpi)
-        elif bias_removal is True and ref_seq is not None:
-            plt.savefig(os.path.join(outputs_dir, 'individual_logo_reference_y_fixed_nobias.png'), facecolor='w', dpi=dpi)
-        plt.close()
-        if 1: # render the map with the highest prediction score using global y_min/max (useful for optimization analysis)
-            max_idx = mave['DNN'].argmax()
-            print('Max idx:', max_idx)
-            try:
-                max_map = squid_utils.arr2pd(maps[max_idx], alphabet)
-            except: #ZULU
-                max_map = squid_utils.arr2pd(maps[max_idx])
-            logo_fig = impress.plot_logo(max_map, logo_type='attribution', ref_seq=None, aesthetic_lvl=aesthetic_lvl, y_min_max=[y_min, y_max], figsize=figsize)
-            plt.savefig(os.path.join(outputs_dir, 'individual_logo_maxpred.png'), facecolor='w', dpi=dpi)
-            plt.close()
-        if 1: # render the average of all maps
-            try:
-                all_maps_avg = squid_utils.arr2pd(np.mean(maps, axis=0), alphabet)
-            except: #ZULU
-                all_maps_avg = squid_utils.arr2pd(np.mean(maps, axis=0))
-            logo_fig = impress.plot_logo(all_maps_avg, logo_type='attribution', ref_seq=None, aesthetic_lvl=aesthetic_lvl, y_min_max=[y_min, y_max], figsize=figsize)
-            plt.savefig(os.path.join(outputs_dir, 'all_maps_average_y_fixed.png'), facecolor='w', dpi=dpi)
-            plt.close()
-
-
-    if attr_logo_adaptive is True: # render individual reference map using adaptive y-axis
-        ref_map = np.copy(maps[ref_idx])
-        if bias_removal is True:
-            ref_map -= all_bias
-        try:
-            ref_map = squid_utils.arr2pd(ref_map, alphabet)
-        except:
-            ref_map = squid_utils.arr2pd(ref_map) # ZULU: may need a separate option for this to deal with two-hot encodings (e.g., CLIPNET)
-        logo_fig = impress.plot_logo(ref_map, logo_type='attribution', ref_seq=None, aesthetic_lvl=aesthetic_lvl, figsize=figsize)
-        if bias_removal is False and ref_seq is not None:
-            plt.savefig(os.path.join(outputs_dir, 'individual_logo_reference_y_adaptive.png'), facecolor='w', dpi=dpi)
-        elif bias_removal is True and ref_seq is not None:
-            plt.savefig(os.path.join(outputs_dir, 'individual_logo_reference_y_adaptive_nobias.png'), facecolor='w', dpi=dpi)
-        plt.close()
-
-        if 1: # render the average of all maps
-            try:
-                all_maps_avg = squid_utils.arr2pd(np.mean(maps, axis=0), alphabet)
-            except: #ZULU
-                all_maps_avg = squid_utils.arr2pd(np.mean(maps, axis=0))
-            logo_fig = impress.plot_logo(all_maps_avg, logo_type='attribution', ref_seq=None, aesthetic_lvl=aesthetic_lvl, figsize=figsize)
-            plt.savefig(os.path.join(outputs_dir, 'all_maps_average_y_adaptive.png'), facecolor='w', dpi=dpi)
-            plt.close()
-
-    if bias_removal is True:
-        try:
-            bias_map = squid_utils.arr2pd(all_bias, alphabet)
-        except:
-            bias_map = squid_utils.arr2pd(all_bias) # ZULU: may need a separate option for this to deal with two-hot encodings (e.g., CLIPNET)
-        if attr_logo_adaptive is True:
-            logo_fig = impress.plot_logo(bias_map, logo_type='attribution', ref_seq=None, aesthetic_lvl=aesthetic_lvl, figsize=figsize)
-            plt.savefig(os.path.join(outputs_dir, 'bias_y_adaptive.png'), facecolor='w', dpi=dpi)
-            plt.close()
-        if attr_logo_fixed is True:
-            logo_fig = impress.plot_logo(bias_map, logo_type='attribution', ref_seq=None, aesthetic_lvl=aesthetic_lvl,  y_min_max=[y_min, y_max], figsize=figsize)
-            plt.savefig(os.path.join(outputs_dir, 'bias_y_fixed.png'), facecolor='w', dpi=dpi)
-            plt.close()
-
-    print('Rendering logos...')
-
-    consensus_df = pd.DataFrame(columns = ['Cluster','Median','Mean','Centroid','Consensus'], index=range(len(clusters_idx))) # records useful information for later review
-    clusters_avg_matrices = np.zeros(shape=(len(clusters_idx), maps.shape[1], maps.shape[2]))
-    k_name = 0 # necessary for keeping logo filenames in correct order if using 'sort_median' above
-    for k in tqdm(clusters_idx, desc='Clusters'):
-        if k >= 0: # this line is a placeholder for optionally inserting code for a specific cluster
-            k_idxs = mave.loc[mave['Cluster'] == k].index
-            seqs_k = mave['Sequence'][k_idxs]
-
-            # save consensus sequence of each cluster to dataframe
-            seq_array_cluster = motifs.create(seqs_k, alphabet=alphabet)
-            pfm_cluster = seq_array_cluster.counts # position frequency matrix
-            consensus_df.at[k_name, 'Cluster'] = k_name
-            consensus_seq = pfm_cluster.consensus
-            consensus_df.at[k_name, 'Consensus'] = consensus_seq
-            # save the centroid sequence of each cluster to dataframe
-            hamming_distances = [utilities.hamming_distance(consensus_seq, seq) for seq in seqs_k]
-            centroid_index = np.argmin(hamming_distances)
-            centroid_seq = seqs_k.iloc[centroid_index]
-            consensus_df.at[k_name, 'Centroid'] = centroid_seq
-            try:
-                consensus_df.at[k_name, 'Median'] = np.median(boxplot_data[k_name])
-                consensus_df.at[k_name, 'Mean'] = np.mean(boxplot_data[k_name])
-            except:
-                pass
+    def generate_msm(self, gpu=False):
+        """Generate Mechanism Summary Matrix (MSM) for all clusters.
         
-            if plot_profiles is True:
-                fig, ax = plt.subplots(figsize=(20,1.2))#.5))
-                for i in k_idxs:
-                    ax.plot(y_profiles[i,0],
-                        color='C0', linewidth=.5, zorder=0, alpha=0.1)
-                    ax.plot(-1.*y_profiles[i,1],
-                            color='C3', linewidth=.5, zorder=-10, alpha=0.1)
-                #if profiles_ylim is not None:
-                #    ax.set_ylim(profiles_ylim)
-                plt.tight_layout()
-                plt.xlim(250, 750)
-                plt.savefig(os.path.join(outputs_dir, 'clusters_profiles/profiles_%s.png' % k_name), dpi=200)
-                plt.close()
-
-            if seq_logo_pwm is True or seq_logo_enrich is True:
-                seq_array_cluster = motifs.create(seqs_k, alphabet=alphabet)
-                pfm_cluster = seq_array_cluster.counts # position frequency matrix
-                pseudocounts = 0.5
-                pwm_cluster = pfm_cluster.normalize(pseudocounts=pseudocounts) #https://biopython-tutorial.readthedocs.io/en/latest/notebooks/14%20-%20Sequence%20motif%20analysis%20using%20Bio.motifs.html
-                if seq_logo_pwm is True:
-                    if 0: # standard PWM
-                        seq_logo = pd.DataFrame(pwm_cluster)
-                    else: # compute Position Probability Matrix (PPM) and compute information content
-                        ppm_df = pd.DataFrame(pwm_cluster)#, index=list(alphabet))
-                        background = np.array([1.0 / len(alphabet)] * len(alphabet))  # assuming uniform background
-                        ppm_df += 1e-6  # to avoid log(0), add a small value
-                        info_content = np.sum(ppm_df * np.log2(ppm_df / background), axis=1)# + np.log2(4)
-                        seq_logo = ppm_df.multiply(info_content, axis=0)
-
-                if 1:
-                    logo_fig, axis = impress.plot_logo(seq_logo, logo_type='sequence', ref_seq=None, aesthetic_lvl=aesthetic_lvl, center_values=False, figsize=figsize)
-                    logo_dir = os.path.join(outputs_dir, 'clusters_seq/pwm')
-                    if not os.path.exists(logo_dir):
-                        os.mkdir(logo_dir)
-                    plt.savefig(os.path.join(logo_dir, 'cluster_%s.png' % k_name), facecolor='w', dpi=dpi)
-                    plt.cla()
-                    plt.clf()
-                    plt.close()
-
-                if seq_logo_enrich is True: # enrichment logo (see https://logomaker.readthedocs.io/en/latest/examples.html#ars-enrichment-logo)
-                    enrichment_ratio = (pd.DataFrame(pfm_cluster) + pseudocounts) / (pd.DataFrame(pfm_background) + pseudocounts)
-                    seq_logo = np.log2(enrichment_ratio)
-                    logo_fig, axis = impress.plot_logo(seq_logo, logo_type='sequence', ref_seq=ref_seq, aesthetic_lvl=aesthetic_lvl, figsize=figsize)
-                    logo_dir = os.path.join(outputs_dir, 'clusters_seq/enrich')
-                    if not os.path.exists(logo_dir):
-                        os.mkdir(logo_dir)
-                    plt.savefig(os.path.join(logo_dir, 'cluster_%s.png' % k_name), facecolor='w', dpi=dpi)
-                    plt.cla() 
-                    plt.clf()
-                    plt.close()
-
-            if attr_logo_fixed is True or attr_logo_adaptive is True:
-                maps_avg = np.mean(maps[k_idxs], axis=0)
-                if bias_removal is True:
-                    maps_avg -= all_bias
-
-                clusters_avg_matrices[k_name] = maps_avg
-
-                try:
-                    maps_avg = squid_utils.arr2pd(maps_avg, alphabet)
-                except:
-                    maps_avg = squid_utils.arr2pd(maps_avg) # ZULU: may need a separate option for this to deal with two-hot encodings (e.g., CLIPNET)                
-                if attr_logo_adaptive is True:
-                    logo_fig, ax = impress.plot_logo(maps_avg, logo_type='attribution', ref_seq=None, aesthetic_lvl=aesthetic_lvl, figsize=figsize)
-                    logo_dir = os.path.join(outputs_dir, '%s/y_adaptive' % clusters_avg_fname)
-                    if not os.path.exists(logo_dir):
-                        os.mkdir(logo_dir)
-                    plt.savefig(os.path.join(logo_dir, 'cluster_%s.png' % k_name), facecolor='w', dpi=dpi)
-                    plt.cla()
-                    plt.clf()
-                    plt.close()
-                if attr_logo_fixed is True:
-                    if 1:
-                        logo_fig, axis = impress.plot_logo(maps_avg, logo_type='attribution', ref_seq=None, aesthetic_lvl=aesthetic_lvl, y_min_max=[y_min, y_max], figsize=figsize)
-                    else: # color attribution logo using wild-type sequence
-                        logo_fig, axis = impress.plot_logo(maps_avg, logo_type='sequence', ref_seq=ref_seq, aesthetic_lvl=aesthetic_lvl, y_min_max=[y_min, y_max], figsize=figsize)
-                    logo_dir = os.path.join(outputs_dir, '%s/y_fixed' % clusters_avg_fname)
-                    if not os.path.exists(logo_dir):
-                        os.mkdir(logo_dir)
-                    plt.savefig(os.path.join(logo_dir, 'cluster_%s.png' % k_name), facecolor='w', dpi=dpi)
-                    plt.cla() 
-                    plt.clf()
-                    plt.close()
-
-        k_name += 1
-        if k%10==0:
-            plt.close('all')
-            gc.collect()
-    plt.close()
-    consensus_df.to_csv(os.path.join(outputs_dir, 'clusters_consensus.csv'), index=False)
-    np.save(os.path.join(outputs_dir, '%s/clusters_avg_matrices.npy' % clusters_avg_fname), clusters_avg_matrices)
-
-    if 1:
-        if attr_logo_fixed is True:
-            print('Rendering variability logo...')
-            from PIL import Image
-
-            def darken_blend(image1, image2):
-                '''
-                Blend two images using the 'Darken' blend mode. The 'Darken' blend mode
-                compares each pixel of two images and takes the darker value of each pixel.
-                '''
-                arr1 = np.array(image1)
-                arr2 = np.array(image2)
-                darkened_array = np.minimum(arr1, arr2)
-                return Image.fromarray(darkened_array)
-
-            # overlay all PNG images in the specified folder using 'Darken' mode.
-            images = []
-            logo_dir = os.path.join(outputs_dir, '%s/y_fixed' % clusters_avg_fname)
-            for file_name in os.listdir(logo_dir): # load all PNG images from the folder
-                if file_name.endswith('.png'):
-                    image_path = os.path.join(logo_dir, file_name)
-                    images.append(Image.open(image_path))
-
-            if images:
-                result_image = images[0] # initialize the result with the first image
-                for image in tqdm(images[1:], desc='Image'): # apply the darken blend mode to all images
-                    result_image = darken_blend(result_image, image)
-
-                if bias_removal is False:
-                    result_image.save(os.path.join(outputs_dir, 'variability_logo.png'))
-                elif bias_removal is True:
-                    result_image.save(os.path.join(outputs_dir, 'variability_logo_nobias.png'))
-                print('Variability logo saved.')
+        Parameters
+        ----------
+        gpu : bool
+            If True, use GPU acceleration for computations (requires tensorflow)
+        """
+        # Get sequence length from first sequence
+        seq_length = len(self.mave['Sequence'].iloc[0])
+        print(f"Generating MSM for {len(self.cluster_indices)} clusters, {seq_length} positions...")
+        
+        if gpu:
+            import tensorflow as tf
+            device = '/GPU:0' if tf.test.is_built_with_cuda() else '/CPU:0'
+            print(f"Using device: {device}")
+        
+        # Convert sequences to numpy array for faster processing
+        sequences = np.array([list(seq) for seq in self.mave['Sequence']])
+        
+        # Initialize MSM DataFrame
+        n_entries = len(self.cluster_indices) * seq_length
+        self.msm = pd.DataFrame({
+            'Cluster': np.repeat(self.cluster_indices, seq_length),
+            'Position': np.tile(np.arange(seq_length), len(self.cluster_indices)),
+            'Reference': np.nan,
+            'Consensus': np.nan,
+            'Entropy': np.nan
+        })
+        
+        # Precompute one-hot encoding of reference sequence
+        ref_oh = squid_utils.seq2oh(self.ref_seq, self.alphabet)
+        
+        # Process each cluster in parallel
+        from concurrent.futures import ThreadPoolExecutor
+        from functools import partial
+        
+        def process_cluster(k, sequences, ref_oh):
+            # Get sequences in current cluster
+            k_mask = self.mave['Cluster'] == k
+            seqs_k = sequences[k_mask]
+            n_seqs = len(seqs_k)
+            
+            # Create position-wise counts matrix
+            counts = np.zeros((len(self.alphabet), seq_length))
+            for i, base in enumerate(self.alphabet):
+                counts[i] = (seqs_k == base).sum(axis=0)
+            
+            # Calculate position-wise frequencies
+            freqs = counts / n_seqs
+            
+            # Calculate entropy (vectorized)
+            with np.errstate(divide='ignore', invalid='ignore'):
+                pos_entropy = -np.sum(freqs * np.log2(freqs + 1e-10), axis=0)
+                pos_entropy = np.nan_to_num(pos_entropy)
+            
+            # Get consensus sequence
+            consensus_indices = np.argmax(counts, axis=0)
+            consensus_seq = np.array(self.alphabet)[consensus_indices]
+            
+            # Calculate matches
+            consensus_oh = squid_utils.seq2oh(consensus_seq, self.alphabet)
+            consensus_matches = np.diagonal(consensus_oh.dot(counts)) / n_seqs * 100
+            
+            if self.ref_seq is not None:
+                ref_matches = np.diagonal(ref_oh.dot(counts)) / n_seqs * 100
+                ref_mismatches = 100 - ref_matches
             else:
-                print('No PNG images found in the specified folder.')
+                ref_mismatches = np.full(seq_length, np.nan)
+            
+            return k, pos_entropy, consensus_matches, ref_mismatches
+        
+        # Process clusters in parallel
+        with ThreadPoolExecutor() as executor:
+            process_fn = partial(process_cluster, sequences=sequences, ref_oh=ref_oh)
+            results = list(tqdm(
+                executor.map(process_fn, self.cluster_indices),
+                total=len(self.cluster_indices),
+                desc="Processing clusters"
+            ))
+        
+        # Fill MSM with results
+        for k, entropy, consensus, reference in results:
+            mask = self.msm['Cluster'] == k
+            self.msm.loc[mask, 'Entropy'] = np.tile(entropy, 1)
+            self.msm.loc[mask, 'Consensus'] = np.tile(consensus, 1)
+            if self.ref_seq is not None:
+                self.msm.loc[mask, 'Reference'] = np.tile(reference, 1)
+        
+        return self.msm
+    
+    def plot_msm(self, column='Entropy', sort_method=None, delta_entropy=False, sort_indices=None, 
+                square_cells=False, view_window=None, gui=False):
+        """Visualize the Mechanism Summary Matrix (MSM) as a heatmap.
+        
+        Parameters
+        ----------
+        column : str
+            Which MSM metric to visualize:
+            - 'Entropy': Shannon entropy of characters at each position per cluster
+            - 'Reference': Percentage of mismatches to reference sequence
+            - 'Consensus': Percentage of matches to cluster consensus sequence
+        sort_method : {None, 'hierarchical', 'median', 'predefined'}
+            How to order the clusters:
+            - None: Use original cluster ordering
+            - 'hierarchical': Sort clusters by pattern similarity
+            - 'median': Sort clusters by median DNN score
+            - 'predefined': Use provided sort_indices
+        delta_entropy : bool
+            If True and column='Entropy', show change in entropy from background
+            expectation (based on mutation rate)
+        sort_indices : array-like, optional
+            Custom cluster ordering to use when sort_method='predefined'
+        square_cells : bool
+            If True, set cells in MSM to be perfectly square
+        view_window : list of [start, end], optional
+            If provided, crop the x-axis to this window of positions
+        gui : bool
+            If True, return data for GUI processing without plotting
+        """
+        if not hasattr(self, 'msm') or self.msm is None:
+            raise ValueError("MSM not generated. Call generate_msm() first.")
+
+        # Validate inputs
+        valid_columns = {'Entropy', 'Reference', 'Consensus'}
+        if column not in valid_columns:
+            raise ValueError(f"column must be one of: {valid_columns}")
+            
+        valid_sort_methods = {None, 'hierarchical', 'median', 'predefined'}
+        if sort_method not in valid_sort_methods:
+            raise ValueError(f"sort_method must be one of: {valid_sort_methods}")
+            
+        if view_window is not None:
+            if not isinstance(view_window, (list, tuple)) or len(view_window) != 2:
+                raise ValueError("view_window must be a list/tuple of [start, end]")
+            start, end = view_window
+            if start >= end:
+                raise ValueError("view_window start must be less than end")
+        
+        # Prepare data matrix
+        n_clusters = self.msm['Cluster'].max() + 1
+        n_positions = self.msm['Position'].max() + 1
+        matrix_data = self.msm.pivot(columns='Position', 
+                                    index='Cluster', 
+                                    values=column)
+        
+        # Apply view window if specified
+        if view_window is not None:
+            start, end = view_window
+            matrix_data = matrix_data.iloc[:, start:end]
+            n_positions = end - start
+        
+        # Sort clusters if requested
+        cluster_order = self.get_cluster_order(sort_method=sort_method, 
+                                            sort_indices=sort_indices)
+        matrix_data = matrix_data.reindex(cluster_order)
+        
+        if gui:
+            return None, None, cluster_order, matrix_data
+        
+        # Setup plot
+        fig = plt.figure(figsize=(10, 6))
+        main_ax = fig.add_subplot(111)
+        
+        # Get colormap settings
+        cmap_settings = self._get_colormap_settings(column, delta_entropy, matrix_data)
+        if delta_entropy and column == 'Entropy':
+            matrix_data -= cmap_settings.pop('bg_entropy', 0)
+        
+        # Create heatmap
+        heatmap = main_ax.pcolormesh(matrix_data, 
+                                    cmap=cmap_settings['cmap'],
+                                    norm=cmap_settings['norm'])
+        
+        # Set square cells if requested
+        if square_cells:
+            main_ax.set_aspect('equal')
+        
+        # Configure axes
+        main_ax.set_xlabel('Position', fontsize=8)
+        main_ax.set_ylabel('Cluster', fontsize=8)
+        main_ax.invert_yaxis()
+        
+        # Set tick spacing based on data size
+        self._configure_matrix_ticks(main_ax, n_positions, n_clusters, cluster_order)
+        
+        # Update x-axis ticks if using view window
+        if view_window is not None:
+            start, end = view_window
+            x_ticks = main_ax.get_xticks()
+            x_labels = [str(int(i + start)) for i in x_ticks]
+            main_ax.set_xticklabels(x_labels)
+        
+        # Add colorbar
+        from mpl_toolkits.axes_grid1 import make_axes_locatable
+        divider = make_axes_locatable(main_ax)
+        cbar_ax = divider.append_axes('right', size='2%', pad=0.05)
+        cbar = fig.colorbar(heatmap, cax=cbar_ax, orientation='vertical')
+        
+        # Set colorbar limits and label
+        if column in ['Reference', 'Consensus']:
+            heatmap.set_clim(0, 100)
+        elif column == 'Entropy' and not delta_entropy:
+            heatmap.set_clim(0, 2)
+        cbar.ax.set_ylabel(cmap_settings['label'], rotation=270, fontsize=8, labelpad=10)
+        
+        plt.tight_layout()
+
+    def _configure_matrix_ticks(self, ax, n_positions, n_clusters, cluster_order):
+        """Configure tick marks and labels for the MSM visualization.
+        
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes
+            Axes object to configure
+        n_positions : int
+            Number of sequence positions
+        n_clusters : int
+            Number of clusters
+        cluster_order : array-like
+            Order of cluster indices
+        """
+        # Set position (x-axis) ticks
+        x_skip = 10 if n_positions > 100 else 20 if n_positions > 1000 else 1
+        x_ticks = np.arange(0.5, n_positions, x_skip)
+        x_labels = [str(int(i-0.5)) for i in x_ticks]
+        ax.set_xticks(x_ticks)
+        ax.set_xticklabels(x_labels, rotation=0)
+        
+        # Set cluster (y-axis) ticks
+        y_skip = 10 if n_clusters > 10 else 1
+        y_ticks = np.arange(0.5, n_clusters, y_skip)
+        y_labels = [str(cluster_order[int(i-0.5)]) for i in y_ticks]
+        ax.set_yticks(y_ticks)
+        ax.set_yticklabels(y_labels, rotation=0)
+        
+        # Set tick parameters
+        ax.tick_params(axis='both', which='major', labelsize=6)
+
+    def _get_colormap_settings(self, column, delta_entropy=False, matrix_data=None):
+        """Get colormap settings for MSM visualization."""
+        if column == 'Entropy':
+            if delta_entropy:
+                r = self.mut_rate
+                p = np.array([1-r] + [r/(len(self.alphabet)-1)] * (len(self.alphabet)-1))
+                bg_entropy = entropy(p, base=2)
+                
+                if matrix_data is not None:
+                    return {
+                        'cmap': 'seismic',
+                        'norm': TwoSlopeNorm(
+                            vmin=matrix_data.min().min(), 
+                            vcenter=0,
+                            vmax=matrix_data.max().max()
+                        ),
+                        'label': 'ΔH (bits)',
+                        'bg_entropy': bg_entropy
+                    }
+                return {
+                    'cmap': 'seismic',
+                    'norm': None,
+                    'label': 'ΔH (bits)',
+                    'bg_entropy': bg_entropy
+                }
+                
+            return {'cmap': 'rocket_r', 'norm': None, 'label': 'Entropy (bits)'}
+        
+        return {
+            'cmap': 'Blues_r' if column == 'Reference' else 'rocket',
+            'norm': None,
+            'label': 'Percent mismatch' if column == 'Reference' else 'Percent match'
+        }
+
+
+
+# TODO:
+# - remove squid dependency (replace with seam-nn once ready)

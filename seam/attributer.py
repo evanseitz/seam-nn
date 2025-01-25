@@ -111,9 +111,6 @@ class Attributer:
         self.gpu = gpu
         self.num_shuffles = num_shuffles
 
-        # Validate that func returns a scalar
-        self._validate_func(func)
-
         # Set batch size based on method if not specified
         self.batch_size = batch_size or self.DEFAULT_BATCH_SIZES[method]
 
@@ -411,33 +408,6 @@ class Attributer:
         ])
         return [shuffled]
 
-    def _validate_func(self, func):
-        """Validate that the provided function returns a scalar.
-        
-        Args:
-            func: Function to validate
-            
-        Raises:
-            ValueError: If function doesn't return a scalar
-        """
-        # Create small test input
-        test_shape = (2, 10, 4)  # Minimal batch size, sequence length, and alphabet size
-        test_input = tf.random.uniform(test_shape)
-        
-        # Get model output and apply function
-        model_output = self.model(test_input)
-        try:
-            result = func(model_output)
-        except Exception as e:
-            raise ValueError(f"Error applying func to model output: {str(e)}")
-        
-        # Check result shape
-        if tf.rank(result) != 1 or tf.shape(result)[0] != test_shape[0]:
-            raise ValueError(
-                f"func must return a scalar per sequence, got shape {result.shape}. "
-                "Example: func=lambda x: tf.reduce_mean(x[:, :, 0])"
-            )
-
     def compute(self, x, x_ref=None, batch_size=128, save_window=None, **kwargs):
         """Compute attribution maps in batch mode.
         
@@ -666,8 +636,7 @@ def compute_attributions(model, x, x_ref=None, method='saliency', func=tf.math.r
     return attributer.compute(x, x_ref=x_ref, **kwargs)
 
 
-# TO DO:
+# TODO:
 # - add memory mode for ISM (numpy memmap)
 # - test save window
 # - deepshap code in TF2: dinuc_shuffle, etc.
-# - test ISM speed using A100
