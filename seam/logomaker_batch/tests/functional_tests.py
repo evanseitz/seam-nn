@@ -15,11 +15,11 @@ alphabet = ['A', 'C', 'G', 'T']
 if 1: # batch version (new)
     # Create and process all logos
     t1 = time.time()
-    batch_logos = BatchLogo(attributions[0:3,:],
+    batch_logos = BatchLogo(attributions[0:1000,:],
                             #attributions[0:1,80:100,:],
                             alphabet=alphabet,
                             fig_size=[20,2.5],
-                            batch_size=2,
+                            batch_size=50,
                             )
 
     batch_logos.process_all()
@@ -32,7 +32,7 @@ if 1: # batch version (new)
     fig, ax = batch_logos.draw_single(2)  # Draw just logo 2
     plt.show()
 
-if 1: # CPU only version (new) --> DON'T USE THIS OVER THE ABOVE VERSION
+if 0: # CPU only version (new) --> DON'T USE THIS OVER THE ABOVE VERSION
     t1 = time.time()
     logo = LogoClass(squid.utils.arr2pd(attributions[0]),
                   fig_size=[20,2.5],
@@ -41,7 +41,7 @@ if 1: # CPU only version (new) --> DON'T USE THIS OVER THE ABOVE VERSION
     print('Logo time:', t2)
     plt.show()
 
-if 0: # original logomaker version
+if 1: # original logomaker version
     import logomaker
     t1 = time.time()
     logo = logomaker.Logo(squid.utils.arr2pd(attributions[0]),
