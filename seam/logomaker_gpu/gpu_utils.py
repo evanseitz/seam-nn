@@ -1,8 +1,40 @@
 import numpy as np
 from functools import wraps
 
+"""
+GPUTransformer: A utility class designed to accelerate path transformations using GPU.
+
+This class is currently a placeholder for future GPU acceleration of batch logo operations.
+While the current BatchLogo implementation achieves significant speedup through CPU
+optimizations (path caching, efficient transformations, minimal object creation),
+further performance gains could be achieved through GPU acceleration of matrix operations.
+
+Future Implementation Plans:
+- Use TensorFlow to batch-process path vertex transformations
+- Accelerate matrix operations for character scaling and positioning
+- Handle multiple logos simultaneously on GPU
+- Process large batches of transformations in parallel
+
+Current Status:
+- Class checks for GPU availability and TensorFlow installation
+- Provides framework for future GPU-accelerated batch operations
+- Falls back to CPU processing if GPU/TensorFlow unavailable
+- Not currently integrated with BatchLogo class
+
+Example Future Usage:
+    transformer = GPUTransformer()
+    if transformer.use_gpu:
+        # Batch process multiple transformations at once
+        transformed_vertices = transformer.batch_transform_vertices(
+            vertices_list,    # List of character vertices
+            transforms_list,  # List of transformation parameters
+            batch_size=1000   # Process in batches of 1000
+        )
+"""
+
 class GPUTransformer:
     def __init__(self):
+        """Initialize GPU transformer and check hardware availability"""
         self.tf = None
         self.use_gpu = False
         try:

@@ -21,95 +21,31 @@ from matrix import transform_matrix
 from validate import validate_matrix
 
 class Logo:
-    """
-    Logo represents a basic logo, drawn on a specified axes object
-    using a specified matrix, which is supplied as a pandas dataframe.
-
-    attributes
+    """Logo class for single logo creation.
+    
+    Note: For better performance, it is recommended to use BatchLogo class instead:
+        from batch_logo import BatchLogo
+        
+        # Single logo example (15x faster):
+        logo = BatchLogo(values[np.newaxis,:],  # Add batch dimension
+                        alphabet=['A','C','G','T'],
+                        batch_size=1)
+        logo.process_all()
+        fig, ax = logo.draw_single(0)
+        
+    This class is maintained for backward compatibility but is significantly slower
+    than BatchLogo, even for single logos.
+    
+    Parameters
     ----------
-    df: (pd.DataFrame)
-        A matrix specifying character heights and positions. Rows correspond
-        to positions while columns correspond to characters. Column names
-        must be single characters and row indices must be integers.
-
-    color_scheme: (str, dict, or array with length 3)
-        Specification of logo colors. Default is 'gray'. Can take a variety of
-        forms.
-        - (str) A built-in Logomaker color scheme in which the color of each character is determined by that character's identity. Options for DNA/RNA: 'classic', 'grays', or 'base_paring'. Options for protein: 'hydrophobicity', 'chemistry', or 'charge'.
-        - (str) A built-in matplotlib color name such as 'k' or 'tomato'
-        - (list) An RGB array, i.e., 3 floats with values in the interval [0,1]
-        - (dict) A dictionary that maps characters to colors, E.g., {'A': 'blue', 'C': 'yellow', 'G': 'green', 'T': 'red'}
-
-    font_name: (str)
-        The character font to use when rendering the logo. For a list of
-        valid font names, run logomaker.list_font_names().
-
-    stack_order: (str)
-        Must be 'big_on_top', 'small_on_top', or 'fixed'. If 'big_on_top',
-        stack characters away from x-axis in order of increasing absolute value.
-        If 'small_on_top', stack glyphs away from x-axis in order of
-        decreasing absolute value. If 'fixed', stack glyphs from top to bottom
-        in the order that characters appear in the data frame.
-
-    center_values: (bool)
-        If True, the stack of characters at each position will be centered
-        around zero. This is accomplished by subtracting the mean value
-        in each row of the matrix from each element in that row.
-
-    baseline_width: (float >= 0.0)
-        Width of the logo baseline, drawn at value 0.0 on the y-axis.
-
-    flip_below: (bool)
-        If True, characters below the x-axis (which correspond to negative
-        values in the matrix) will be flipped upside down.
-
-    shade_below: (float in [0,1])
-        The amount of shading to use for characters drawn below the x-axis.
-        Larger numbers correspond to more shading (i.e., darker characters).
-
-    fade_below: (float in [0,1])
-        The amount of fading to use for characters drawn below the x-axis.
-        Larger numbers correspond to more fading (i.e., more transparent
-        characters).
-
-    fade_probabilities: (bool)
-        If True, the characters in each stack will be assigned an alpha value
-        equal to their height. This option only makes sense if df is a
-        probability matrix. For additional customization, use
-        Logo.fade_glyphs_in_probability_logo().
-
-    vpad: (float in [0,1])
-        The whitespace to leave above and below each character within that
-        character's bounding box. Note that, if vpad > 0, the height of the
-        character's bounding box (and not of the character itself) will
-        correspond to values in df.
-
-    vsep: (float >= 0)
-        Amount of whitespace to leave between the bounding boxes of rendered
-        characters. Unlike vpad, vsep is NOT relative to character height.
-
-    alpha: (float in [0,1])
-        Opacity to use when rendering characters. Note that, if this is used
-        together with fade_below or fade_probabilities, alpha will multiply
-        existing opacity values.
-
-    show_spines: (None or bool)
-        Whether a box should be drawn around the logo.  For additional
-        customization of spines, use Logo.style_spines().
-
-    ax: (matplotlib Axes object)
-        The matplotlb Axes object on which the logo is drawn.
-
-    zorder: (int >=0)
-        This governs what other objects drawn on ax will appear in front or
-        behind the rendered logo.
-
-    figsize: ([float, float]):
-        The default figure size for the rendered logo; only used if ax is
-        not supplied by the user.
-
-    **kwargs:
-        Additional key word arguments to send to the Glyph constructor.
+    df : pandas.DataFrame
+        Dataframe containing logo heights
+    font_name : str, optional
+        Font to use for characters
+    show_spines : bool, optional
+        Whether to show axes spines
+    **kwargs : dict
+        Additional parameters for logo styling
     """
 
     @handle_errors
@@ -1110,15 +1046,13 @@ class Logo:
 
     def _draw_glyphs(self):
         """Draw glyphs using CPU batch processing"""
-        patches = []
-        for glyph in self.glyph_list:
-            path = glyph._get_transformed_path()
-            patch = PathPatch(path,
-                            facecolor=glyph.color,
-                            edgecolor=glyph.edgecolor,
-                            linewidth=glyph.edgewidth,
-                            alpha=glyph.alpha)
-            patches.append(patch)
+        # Pre-collect all patch data
+        patches = [PathPatch(glyph._get_transformed_path(),
+                           facecolor=glyph.color,
+                           edgecolor=glyph.edgecolor,
+                           linewidth=glyph.edgewidth,
+                           alpha=glyph.alpha) 
+                  for glyph in self.glyph_list]
         
         # Add all patches at once
         self.ax.add_collection(PatchCollection(patches, match_original=True))

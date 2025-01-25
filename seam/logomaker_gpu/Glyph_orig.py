@@ -448,4 +448,44 @@ class Glyph:
                    for n in self.figsize]),
               'all elements of figsize array must be numbers > 0.')
 
+    def _get_transformed_path(self):
+        # Get paths
+        tmp_path = self._path_cache[self.char]['normal']
+        msc_path = self._m_path_cache['path']
+        bbox = self._bbox
+        
+        # Debug initial state
+        if self.pos == 0:  # First position
+            print("\nGLYPH_ORIG TRANSFORMS:")
+            print(f"Initial bbox: {tmp_path.get_extents()}")
+        
+        # If need to flip char, do it within tmp_path
+        if self.flip:
+            transformation = Affine2D().scale(sx=1, sy=-1)
+            tmp_path = transformation.transform_path(tmp_path)
+            if self.pos == 0:
+                print(f"After flip: {tmp_path.get_extents()}")
+        
+        # Get bounding box for temporary character and max_stretched_character
+        tmp_bbox = tmp_path.get_extents()
+        msc_bbox = msc_path.get_extents()
+        
+        if self.pos == 0:
+            print(f"tmp_bbox: {tmp_bbox}")
+            print(f"msc_bbox: {msc_bbox}")
+            print(f"hstretch: {bbox.width / tmp_bbox.width}")
+            print(f"vstretch: {bbox.height / tmp_bbox.height}")
+        
+        # Final transformation
+        transformation = Affine2D() \
+            .translate(tx=-tmp_bbox.xmin, ty=-tmp_bbox.ymin) \
+            .scale(sx=hstretch, sy=vstretch) \
+            .translate(tx=bbox.xmin + char_shift, ty=bbox.ymin)
+        
+        final_path = transformation.transform_path(tmp_path)
+        if self.pos == 0:
+            print(f"Final bbox: {final_path.get_extents()}\n")
+        
+        return final_path
+
 
