@@ -12,6 +12,9 @@ import logomaker  # pip install logomaker
 import squid.utils as squid_utils  # pip install squid-nn
 import seaborn as sns  # pip install seaborn
 from scipy.stats import entropy
+from logomaker_batch.batch_logo import BatchLogo
+from matplotlib.colors import TwoSlopeNorm
+from PIL import Image
 
 
 class MetaExplainer:
@@ -42,12 +45,13 @@ class MetaExplainer:
     - SQUID-NN
     """
     
-    def __init__(self, clusterer, mave_df, ref_idx=0,
+    def __init__(self, clusterer, mave_df, attributions, ref_idx=0,
                 bias_removal=False, mut_rate=0.10, aesthetic_lvl=1):
         """Initialize MetaExplainer with a Clusterer instance and data."""
         # Store inputs
         self.clusterer = clusterer  # clusterer.cluster_labels should contain labels_n
         self.mave = mave_df
+        self.attributions = attributions
         self.ref_idx = ref_idx
         self.bias_removal = bias_removal
         self.mut_rate = mut_rate
@@ -518,7 +522,193 @@ class MetaExplainer:
             'label': 'Percent mismatch' if column == 'Reference' else 'Percent match'
         }
 
+    def generate_logos(self, logo_type='attribution', background_removal=False, 
+                      figsize=(20, 2.5), batch_size=50, font_name='sans',
+                      stack_order='big_on_top', center_values=True, 
+                      y_min_max=None, color_scheme='classic',
+                      sort_method='median'):
+        """Generate sequence or attribution logos for all clusters.
+        
+        Parameters
+        ----------
+        logo_type : str
+            Type of logo to generate. One of:
+            - 'attribution': Meta-attribution maps showing averaged attribution patterns
+              that defined each cluster
+            - 'pwm': Position Weight Matrix logos showing sequence content frequency
+              within each cluster, scaled by information content
+            - 'enrichment': Log2 enrichment of sequence patterns in each cluster
+              relative to background frequencies
+        background_removal : bool
+            If True, subtract background signal from attribution maps before averaging
+        figsize : tuple
+            Figure size for logos (width, height)
+        batch_size : int
+            Number of logos to process in each batch
+        font_name : str, default='sans'
+            Font to use for characters in logos. Use list_font_names() to see available fonts.
+        stack_order : str
+            How to stack characters. One of:
+            - 'big_on_top': Larger values on top (default)
+            - 'small_on_top': Smaller values on top
+            - 'fixed': Fixed order
+        center_values : bool
+            If True, center values around zero
+        y_min_max : tuple or None
+            Fixed (ymin, ymax) range for all logos. If None, each logo uses its own range
+        color_scheme : str
+            Color scheme for characters
+        sort_method : str, default='median'
+            Method to sort clusters. One of:
+            - 'median': Sort by median score
+            - 'hierarchical': Keep hierarchical clustering order
+            - None: Use original order
+        
+        Returns
+        -------
+        BatchLogo
+            Configured BatchLogo instance ready for drawing individual logos.
+            Use .draw_single(cluster_idx) to visualize individual cluster logos.
+        """
+        # Get sorted cluster order
+        cluster_order = self.get_cluster_order(sort_method=sort_method)
+        
+        # Get cluster indices and prepare matrices
+        cluster_matrices = []
+        
+        for k in tqdm(cluster_order, desc='Processing logos'):
+            k_idxs = self.clusterer.labels_ == k
+            seqs_k = self.mave.loc[k_idxs, 'Sequence']
+            
+            if logo_type == 'attribution':
+                # Average attribution maps for this cluster
+                maps_avg = np.mean(self.attributions[k_idxs], axis=0)
+                if background_removal:
+                    maps_avg -= self.background
+                cluster_matrices.append(maps_avg)
+                
+            elif logo_type in ['pwm', 'enrichment']:
+                # Calculate position frequency matrix
+                seq_array = motifs.create(seqs_k, alphabet=self.alphabet)
+                pfm = seq_array.counts
+                pseudocounts = 0.5
+                
+                if logo_type == 'pwm':
+                    # Convert to PPM and calculate information content
+                    ppm = pd.DataFrame(pfm.normalize(pseudocounts=pseudocounts))
+                    background = np.array([1.0 / len(self.alphabet)] * len(self.alphabet))
+                    ppm += 1e-6  # Avoid log(0)
+                    info_content = np.sum(ppm * np.log2(ppm / background), axis=1)
+                    cluster_matrices.append(np.array(ppm.multiply(info_content, axis=0)))
+                    
+                else:  # enrichment
+                    # Calculate enrichment relative to background frequencies
+                    enrichment = (pd.DataFrame(pfm) + pseudocounts) / \
+                               (pd.DataFrame(self.background_pfm) + pseudocounts)
+                    cluster_matrices.append(np.log2(enrichment))
+        
+        # Stack matrices into 3D array for BatchLogo
+        logo_array = np.stack(cluster_matrices)
+        
+        # Create and process BatchLogo instance
+        batch_logos = BatchLogo(
+            logo_array,
+            alphabet=self.alphabet,
+            fig_size=figsize,
+            batch_size=batch_size,
+            font_name=font_name,
+            stack_order=stack_order,
+            center_values=center_values,
+            y_min_max=y_min_max,
+            color_scheme=color_scheme
+        )
+        batch_logos.process_all()
+        
+        return batch_logos
+
 
 
 # TODO:
 # - remove squid dependency (replace with seam-nn once ready)
+# - return indices of attribution maps in each cluster somewhere (callable?)
+# - sort_method should not have an option called "hierarichal", it should be "visual", like in the original code
+# - line up the MSM with the logos, and with the bar plot
+"""
+TODO:
+
+1. Implement logo generation and plotting functionality (lines 755-823 from meta_explainer_orig.py)
+   - PWM logos
+   - Enrichment logos
+   - Attribution logos (fixed and adaptive)
+   - Handle bias removal
+   - Save to appropriate directories
+
+2. Implement variability logo rendering (lines 833-854 from meta_explainer_orig.py)
+   - Use PIL for image processing
+   - Implement darken_blend function
+   - Process all PNGs in directory
+   - Save combined variability logo
+
+3. Add file/directory management (lines 414-420 from meta_explainer_orig.py)
+   - Save cluster consensus info
+   - Handle bias removal directories
+   - Save average matrices
+
+4. Add profile plotting functionality (lines 741-753 from meta_explainer_orig.py)
+   - Plot individual profiles for each cluster
+   - Handle alpha blending for overlays
+   - Save to profiles directory
+
+5. Add configuration parameters from meta_explainer_orig.py:
+   - embedding options (lines 157-176)
+   - logo generation flags (lines 179-189)
+   - sequence handling (lines 194-202)
+
+6. Background removal module needs to be implemented:
+   - Add background computation and storage in MetaExplainer.__init__
+   - Rename all "bias" references to "background"
+   - Add documentation about background separation
+   - Fix AttributeError in generate_logos for self.background
+
+7. Fix y-limits in generate_logos:
+   - Remove y_min_max parameter
+   - Implement automatic y-limit computation like meta_explainer_orig.py
+   - Use positive/negative summations approach from original code
+
+8. Class Storage Standardization:
+   - All key outputs should be both returned and stored as instance variables
+   - Examples to update:
+     - compiler.py: store mave internally
+     - clusterer.py: store clustering results
+     - meta_explainer.py: store msm results
+   - Follow pattern established by attributer.attributions
+
+9. Package Structure Updates:
+   - Update all relative imports in logomaker_batch:
+     - batch_logo.py needs relative imports
+     - gpu_utils.py needs relative imports
+     - colors.py needs relative imports
+     - Any matplotlib utilities need relative imports
+   - Ensure all imports use the pattern: from logomaker_batch.xxx import XXX
+   - Test package imports work both in development and after pip install
+
+NOTE: Several components from meta_explainer_orig.py have already been modernized:
+
+1. generate_regulatory_df has been upgraded to generate_msm() with:
+   - Parallel processing
+   - Vectorized operations
+   - Better memory management
+   - GPU support option
+   - Progress tracking
+   Reference: meta_explainer.py lines 248-318
+
+2. Boxplot functionality and median sorting are now handled by:
+   - plot_cluster_stats() for visualization (lines 130-213)
+   - get_cluster_order() for cluster sorting
+   Both include improved error handling and more configuration options
+
+3. aesthetic_lvl parameter has been deprecated:
+   - Originally used to trade off logo quality for speed
+   - No longer needed due to BatchLogo's optimized rendering
+   - All logos now render at highest quality with minimal performance impact
+"""

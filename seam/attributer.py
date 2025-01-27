@@ -415,7 +415,7 @@ class Attributer:
             x: One-hot sequences (shape: (N, L, A))
             x_ref: One-hot reference sequence (shape: (1, L, A)) for windowed analysis.
                 Not used for DeepSHAP background data, which is handled during initialization.
-            batch_size: Number of predictions per batch
+            batch_size: Number of attribution maps per batch
             save_window: Window [start, stop] for computing attributions. If provided along with x_ref,
                         the input sequences will be padded with the reference sequence outside this window.
                         This allows computing attributions for a subset of positions while maintaining
@@ -453,7 +453,9 @@ class Attributer:
             batch_values = self._process_batch(x_batch, x_ref, save_window, batch_size, **kwargs)
             attribution_values.append(batch_values)
 
-        return np.vstack(attribution_values)
+        attribution_values = np.vstack(attribution_values)
+        self.attributions = attribution_values
+        return attribution_values
 
     def _process_batch(self, x_batch, x_ref=None, save_window=None, batch_size=128, **kwargs):
         """Process a single batch of inputs."""

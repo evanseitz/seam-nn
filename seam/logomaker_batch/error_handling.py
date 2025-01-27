@@ -1,6 +1,8 @@
 from __future__ import division
 from functools import wraps
 import warnings
+import sys
+
 class LogomakerError(Exception):
     """
     Class used by Logomaker to handle errors.

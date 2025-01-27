@@ -1,5 +1,15 @@
 import numpy as np
+
+# Make cupy import optional
+try:
+    import cupy as cp
+    HAS_CUDA = True
+except ImportError:
+    HAS_CUDA = False
+
 from functools import wraps
+from logomaker_batch.matrix import ALPHABET_DICT
+from logomaker_batch.colors import get_rgb
 
 """
 GPUTransformer: A utility class designed to accelerate path transformations using GPU.
@@ -56,6 +66,12 @@ class GPUTransformer:
                 print("Warning: No GPU devices found, falling back to CPU")
         except ImportError:
             print("Warning: TensorFlow not installed, falling back to CPU")
+
+        if not HAS_CUDA:
+            print("CUDA not available. Using CPU fallback.")
+            self.device = 'cpu'
+        else:
+            self.device = 'gpu'
 
     def batch_transform_vertices(self, vertices_list, transforms_list, batch_size=1000):
         """
@@ -142,6 +158,11 @@ class GPUTransformer:
         
         # Unpad results
         return [res[:int(m.sum())] for res, m in zip(result, mask)]
+
+    def transform(self, data):
+        if self.device == 'gpu':
+            return cp.array(data)
+        return np.array(data)
 
 def handle_gpu_error(func):
     @wraps(func)

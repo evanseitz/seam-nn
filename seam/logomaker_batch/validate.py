@@ -1,7 +1,7 @@
 from __future__ import division
 import numpy as np
 import pandas as pd
-from error_handling import check, handle_errors
+from logomaker_batch.error_handling import check, handle_errors
 
 
 @handle_errors

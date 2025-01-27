@@ -12,13 +12,14 @@ from matplotlib.collections import PatchCollection
 from matplotlib.path import Path
 
 # Import stuff from logomaker
-from Glyph import Glyph
+#from Glyph import Glyph
+from logomaker_batch.Glyph import Glyph
 
-# We need to move these utility functions from logomaker into our package
-from error_handling import check, handle_errors
-from colors import get_rgb, get_color_dict
-from matrix import transform_matrix
-from validate import validate_matrix
+# Need to move these utility functions from logomaker into package
+from logomaker_batch.error_handling import check, handle_errors
+from logomaker_batch.colors import get_rgb, get_color_dict
+from logomaker_batch.matrix import transform_matrix
+from logomaker_batch.validate import validate_matrix
 
 class Logo:
     """Logo class for single logo creation.

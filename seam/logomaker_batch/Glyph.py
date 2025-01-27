@@ -12,8 +12,8 @@ import matplotlib.font_manager as fm
 from matplotlib.colors import to_rgb
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
-from error_handling import check, handle_errors
-from colors import get_rgb
+from logomaker_batch.error_handling import check, handle_errors
+from logomaker_batch.colors import get_rgb
 import numpy as np
 from matplotlib.path import Path
 import time

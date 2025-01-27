@@ -6,15 +6,16 @@ import time
 from matplotlib.patches import PathPatch
 from matplotlib.collections import PatchCollection
 from matplotlib.path import Path
-from Logo import Logo
-from gpu_utils import GPUTransformer
-from colors import get_rgb, get_color_dict, CHARS_TO_COLORS_DICT, COLOR_SCHEME_DICT
+from logomaker_batch.Logo import Logo
+from logomaker_batch.gpu_utils import GPUTransformer
+from logomaker_batch.colors import get_rgb, get_color_dict, CHARS_TO_COLORS_DICT, COLOR_SCHEME_DICT
 from tqdm import tqdm
-from Glyph import Glyph
+from logomaker_batch.Glyph import Glyph
 import matplotlib.font_manager as fm
-from error_handling import handle_errors, check
+from logomaker_batch.error_handling import handle_errors, check
 from matplotlib.textpath import TextPath
 from matplotlib.transforms import Affine2D, Bbox
+from logomaker_batch.matrix import transform_matrix
 
 class TimingContext:
     def __init__(self, name, timing_dict):
@@ -29,16 +30,26 @@ class TimingContext:
         self.timing_dict[self.name] = time.time() - self.start
 
 class BatchLogo:
-    # Class-level caches
+    # Initialize class-level caches
     _path_cache = {}
     _m_path_cache = {}
     _transform_cache = {}
     
-    def __init__(self, values, alphabet=None, fig_size=[10,2.5], batch_size=10, gpu=False, **kwargs):
+    def __init__(self, values, alphabet=None, fig_size=[10,2.5], batch_size=50, gpu=False, font_name='sans', **kwargs):
         """Initialize BatchLogo processor"""
         if gpu:
             print("Warning: GPU acceleration not yet implemented, falling back to CPU")
             
+        # Reset caches for each new instance
+        self._path_cache = {}
+        self._m_path_cache = {}
+        self._transform_cache = {}
+
+        # Handle centering if requested
+        center_values = kwargs.pop('center_values', False)
+        if center_values:
+            values = self._center_matrix(values)
+
         self.values = np.array(values)
         self.alphabet = alphabet if alphabet is not None else ['A', 'C', 'G', 'T']
         self.batch_size = batch_size
@@ -56,7 +67,7 @@ class BatchLogo:
         self.figsize = fig_size
         
         # Get font name
-        self.font_name = self.kwargs.pop('font_name', 'sans')
+        self.font_name = font_name
         
         # Get stack order
         self.stack_order = self.kwargs.pop('stack_order', 'big_on_top')
@@ -113,10 +124,11 @@ class BatchLogo:
             if not self._path_cache:
                 # Cache M path first
                 m_path = TextPath((0, 0), 'M', size=1, prop=font_prop)
+                m_extents = m_path.get_extents()
                 self._m_path_cache = {
                     'path': m_path,
-                    'extents': m_path.get_extents(),
-                    'width': m_path.get_extents().width
+                    'extents': m_extents,
+                    'width': m_extents.width,
                 }
                 
                 # Then cache alphabet paths
@@ -150,8 +162,8 @@ class BatchLogo:
                                 
                                 path_data = self._path_cache[char]['normal']
                                 transformed_path = self._get_transformed_path(
-                                    path_data, pos, floor, ceiling, 
-                                    self._m_path_cache['width']
+                                    path_data, pos, floor, ceiling,
+                                    self._m_path_cache['extents'].width
                                 )
                                 
                                 glyph_data.append({
@@ -175,7 +187,7 @@ class BatchLogo:
                                     path_data = self._path_cache[char]['flipped' if self.kwargs['flip_below'] else 'normal']
                                     transformed_path = self._get_transformed_path(
                                         path_data, pos, floor, ceiling,
-                                        self._m_path_cache['width']
+                                        self._m_path_cache['extents'].width
                                     )
                                     
                                     glyph_data.append({
@@ -376,6 +388,11 @@ class BatchLogo:
         
         final_path = transform.transform_path(base_path)
         return final_path
+
+    def _center_matrix(self, values):
+        """Center the values in each position (row) of the matrix"""
+        # For each position, subtract the mean of that position
+        return values - values.mean(axis=-1, keepdims=True)
 
 """
 ARCHITECTURAL DIFFERENCES BETWEEN BATCH_LOGO AND GLYPH_ORIG IMPLEMENTATIONS

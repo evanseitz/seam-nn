@@ -3,8 +3,8 @@ import numpy as np
 import pandas as pd
 
 # Logomaker imports
-from error_handling import check, handle_errors
-from validate import validate_matrix
+from logomaker_batch.error_handling import check, handle_errors
+from logomaker_batch.validate import validate_matrix
 
 # Specifies built-in character alphabets
 ALPHABET_DICT = {
