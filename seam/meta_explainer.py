@@ -697,34 +697,7 @@ class MetaExplainer:
         
         return cluster_seqs[['Sequence', 'DNN']]
 
-    def generate_variability_logo(self, **logo_kwargs):
-        """Generate a variability logo by overlaying all cluster logos."""
-        if not hasattr(self, 'batch_logos'):
-            raise ValueError("Logos not generated yet. Call generate_logos() first.")
-        
-        # Use existing BatchLogo object
-        batch_logos = self.batch_logos
-        
-        # Create a new figure for the variability logo
-        fig, ax = plt.subplots(figsize=logo_kwargs.get('figsize', (20, 2.5)))
-        
-        # Get sequence length from the stored logo array
-        seq_length = batch_logos.values.shape[1]  # (n_clusters, seq_length, n_chars)
-        
-        # For each position and character, combine heights across all clusters
-        for pos in range(seq_length):
-            for char_idx, char in enumerate(self.alphabet):
-                # Get all heights for this character at this position across clusters
-                heights = batch_logos.values[:, pos, char_idx]
-                
-                # Draw character with alpha proportional to frequency of appearance
-                if any(heights):  # Only draw if character appears in any cluster
-                    alpha = len([h for h in heights if h != 0]) / len(heights)
-                    batch_logos.draw_glyph(ax, char, pos, heights.mean(), alpha=alpha)
-        
-        return fig
-
-    def plot_cluster_profiles(self, profiles, save_dir=None, dpi=200):
+    def plot_cluster_profiles(self, profiles, save_dir=None, dpi=200): # TODO: check this
         """Plot overlay of profiles associated with each cluster.
         
         Parameters

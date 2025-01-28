@@ -17,6 +17,7 @@ from matplotlib.textpath import TextPath
 from matplotlib.transforms import Affine2D, Bbox
 from logomaker_batch.matrix import transform_matrix
 
+
 class TimingContext:
     def __init__(self, name, timing_dict):
         self.name = name
@@ -260,21 +261,12 @@ class BatchLogo:
     
     def draw_single(self, idx):
         """Draw a single logo"""
-        timing = {}
-        with TimingContext('total_drawing', timing):
-            if idx not in self.processed_logos:
-                raise ValueError(f"Logo {idx} has not been processed yet. Run process_all() first.")
-            
-            with TimingContext('figure_creation', timing):
-                fig, ax = plt.subplots(figsize=self.figsize)
-            
-            with TimingContext('logo_drawing', timing):
-                self._draw_single_logo(ax, self.processed_logos[idx])
-            
-            with TimingContext('layout', timing):
-                plt.tight_layout()
-        
-        #print("Drawing times:", timing)
+        if idx not in self.processed_logos:
+            raise ValueError(f"Logo {idx} has not been processed yet. Run process_all() first.")
+                
+        fig, ax = plt.subplots(figsize=self.figsize)
+        self._draw_single_logo(ax, self.processed_logos[idx])
+        plt.tight_layout()
         return fig, ax
     
     def _draw_single_logo(self, ax, logo_data):
@@ -398,58 +390,36 @@ class BatchLogo:
         # For each position, subtract the mean of that position
         return values - values.mean(axis=-1, keepdims=True)
 
-    def draw_variability_logo(self, figsize=(20, 2.5)):
+    def draw_variability_logo(self):
         """Draw a variability logo showing all glyphs from all clusters overlaid at each position."""
-        fig, ax = plt.subplots(figsize=figsize)
-        
-        # For each position and character, plot ALL heights from ALL clusters
+        # Process all glyphs into logo_data
         logo_data = {'glyphs': []}
-        
-        # Pre-compute paths and their extents if not already cached
-        if not self._path_cache:
-            font_prop = fm.FontProperties(family=self.font_name)
-            m_path = TextPath((0, 0), 'M', size=1, prop=font_prop)
-            m_extents = m_path.get_extents()
-            self._m_path_cache = {
-                'path': m_path,
-                'extents': m_extents,
-                'width': m_extents.width,
-            }
-            
-            for char in self.alphabet:
-                base_path = TextPath((0, 0), char, size=1, prop=font_prop)
-                flipped_path = Affine2D().scale(sx=1, sy=-1).transform_path(base_path)
-                self._path_cache[char] = {
-                    'normal': {'path': base_path, 'extents': base_path.get_extents()},
-                    'flipped': {'path': flipped_path, 'extents': flipped_path.get_extents()}
-                }
         
         # For each position
         for pos in range(self.L):
             # For each cluster
             for cluster_idx in range(self.values.shape[0]):
                 values = self.values[cluster_idx, pos]
-                # For each character in this position
-                for char_idx, value in enumerate(values):
-                    if value != 0:  # Only plot if height is non-zero
-                        char = self.alphabet[char_idx]
+                ordered_indices = self._get_ordered_indices(values)
+                values = values[ordered_indices]
+                chars = [str(self.alphabet[i]) for i in ordered_indices]
+                
+                # Calculate total negative height first
+                neg_values = values[values < 0]
+                total_neg_height = abs(sum(neg_values)) + (len(neg_values) - 1) * self.kwargs['vsep']
+                
+                # Handle positive values (stack up from 0)
+                floor = self.kwargs['vsep']/2.0
+                for value, char in zip(values, chars):
+                    if value > 0:
+                        ceiling = floor + value
                         
-                        # Handle positive and negative values
-                        if value > 0:
-                            path_data = self._path_cache[char]['normal']
-                            floor = 0
-                            ceiling = value
-                        else:
-                            path_data = self._path_cache[char]['flipped' if self.kwargs['flip_below'] else 'normal']
-                            floor = value
-                            ceiling = 0
-                        
+                        path_data = self._path_cache[char]['normal']
                         transformed_path = self._get_transformed_path(
                             path_data, pos, floor, ceiling,
                             self._m_path_cache['extents'].width
                         )
                         
-                        # Add with low alpha since we're overlaying many glyphs
                         logo_data['glyphs'].append({
                             'path': transformed_path,
                             'color': self.rgb_dict[char],
@@ -459,10 +429,36 @@ class BatchLogo:
                             'floor': floor,
                             'ceiling': ceiling
                         })
+                        floor = ceiling + self.kwargs['vsep']
+                
+                # Handle negative values (stack down from -total_height)
+                if len(neg_values) > 0:
+                    floor = -total_neg_height - self.kwargs['vsep']/2.0
+                    for value, char in zip(values, chars):
+                        if value < 0:
+                            ceiling = floor + abs(value)
+                            
+                            path_data = self._path_cache[char]['flipped' if self.kwargs['flip_below'] else 'normal']
+                            transformed_path = self._get_transformed_path(
+                                path_data, pos, floor, ceiling,
+                                self._m_path_cache['extents'].width
+                            )
+                            
+                            logo_data['glyphs'].append({
+                                'path': transformed_path,
+                                'color': self.rgb_dict[char],
+                                'edgecolor': 'none',
+                                'edgewidth': 0,
+                                'alpha': 1,
+                                'floor': floor,
+                                'ceiling': ceiling
+                            })
+                            floor = ceiling + self.kwargs['vsep']
         
-        # Use existing drawing method
+        # Use the same drawing pattern as draw_single
+        fig, ax = plt.subplots(figsize=self.figsize)
         self._draw_single_logo(ax, logo_data)
-        
+        plt.tight_layout()
         return fig, ax
 
 """
