@@ -30,7 +30,7 @@ class MetaExplainer:
         - Mechanism Summary Matrix (MSM) generation
         - Sequence logos and attribution logos
         - Cluster membership tracking
-        - Bias removal and normalization
+        - Background separation and noise reduction of attribution maps
 
     Visualization
         - DNN score distributions per cluster
@@ -49,7 +49,7 @@ class MetaExplainer:
     """
     
     def __init__(self, clusterer, mave_df, attributions, ref_idx=0,
-                bias_removal=False, mut_rate=0.10, sort_method='median',
+                background_separation=False, mut_rate=0.10, sort_method='median',
                 alphabet=None):
         """Initialize MetaExplainer with clusterer and data.
 
@@ -67,8 +67,8 @@ class MetaExplainer:
             (n_sequences, seq_length, n_characters).
         ref_idx : int, default=0
             Index of reference sequence in mave_df.
-        bias_removal : bool, default=False
-            Whether to remove background signal from logos.
+        background_separation : bool, default=False
+            Whether to separate background signal from logos.
         mut_rate : float, default=0.10
             Mutation rate used for background sequence generation.
         sort_method : {'median', 'visual', None}, default='median'
@@ -85,14 +85,14 @@ class MetaExplainer:
         self.mave = mave_df
         self.attributions = attributions
         self.ref_idx = ref_idx
-        self.bias_removal = bias_removal
+        self.background_separation = background_separation
         self.mut_rate = mut_rate
         self.sort_method = sort_method
         self.alphabet = alphabet or ['A', 'C', 'G', 'T']
         
         # Initialize other attributes
         self.msm = None
-        self.cluster_bias = None
+        self.cluster_background = None
         self.consensus_df = None
         self.membership_df = None
         
@@ -556,18 +556,24 @@ class MetaExplainer:
             'label': 'Percent mismatch' if column == 'Reference' else 'Percent match'
         }
 
-    def generate_logos(self, logo_type='attribution', background_removal=False, 
+    def generate_logos(self, logo_type='attribution', background_separation=False, 
+                      mut_rate=0.01, entropy_threshold_factor=0.5,
                       figsize=(20, 2.5), batch_size=50, font_name='sans',
                       stack_order='big_on_top', center_values=True, 
                       fixed_ylim=False, color_scheme='classic'):
         """Generate sequence or attribution logos for each cluster.
-
+        
         Parameters
         ----------
         logo_type : {'attribution', 'pwm', 'enrichment'}, default='attribution'
             Type of logo to generate.
-        background_removal : bool, default=False
-            Whether to remove background signal from logos.
+        background_separation : bool, default=False
+            Whether to separate background signal from logos.
+            Uses entropy-based background computation focused on highly variable positions.
+        mut_rate : float, default=0.01
+            Mutation rate for background entropy calculation when background_separation=True.
+        entropy_threshold_factor : float, default=0.5
+            Factor to multiply background entropy by for threshold when background_separation=True.
         figsize : tuple of float, default=(20, 2.5)
             Figure size (width, height) in inches.
         batch_size : int, default=50
@@ -591,6 +597,11 @@ class MetaExplainer:
         # Get sorted cluster order using class attribute
         cluster_order = self.get_cluster_order(sort_method=self.sort_method)
         
+        # Compute background if needed
+        if background_separation and logo_type == 'attribution':
+            if not hasattr(self, 'background'):
+                self.compute_background(mut_rate, entropy_threshold_factor)
+        
         # Get cluster matrices
         cluster_matrices = []
         for k in tqdm(cluster_order, desc='Generating matrices'):
@@ -598,9 +609,9 @@ class MetaExplainer:
             seqs_k = self.mave.loc[k_idxs, 'Sequence']
             
             if logo_type == 'attribution':
-                # Average attribution maps for this cluster to create noise-reduced meta-attribution map
+                # Average attribution maps for this cluster
                 maps_avg = np.mean(self.attributions[k_idxs], axis=0)
-                if background_removal:
+                if background_separation:
                     maps_avg -= self.background
                 cluster_matrices.append(maps_avg)
                 
@@ -667,7 +678,6 @@ class MetaExplainer:
         )
         batch_logos.process_all()
         
-        # Store batch_logos for later use
         self.batch_logos = batch_logos
         return batch_logos
 
@@ -732,61 +742,115 @@ class MetaExplainer:
             else:
                 plt.show()
 
+    def compute_background(self, mut_rate=0.01, entropy_threshold_factor=0.5):
+        """Compute background signal based on entropic positions.
+        
+        Parameters
+        ----------
+        mut_rate : float, default=0.01
+            Mutation rate used to calculate background entropy threshold
+        entropy_threshold_factor : float, default=0.5
+            Factor to multiply background entropy by for threshold
+        """
+        # Calculate background entropy threshold
+        null_rate = 1 - mut_rate
+        background_entropy = entropy(
+            np.array([null_rate, (1-null_rate)/3, (1-null_rate)/3, (1-null_rate)/3]), 
+            base=2
+        )
+        entropy_threshold = background_entropy * entropy_threshold_factor
+        
+        # Initialize cluster background matrix
+        n_clusters = len(self.mave['Cluster'].unique())
+        seq_length = self.attributions.shape[1]
+        n_chars = len(self.alphabet)
+        cluster_background = np.zeros(shape=(n_clusters, seq_length, n_chars))
+        
+        # Compute background for each cluster
+        for idx, k in enumerate(self.get_cluster_order()):
+            k_idxs = self.mave['Cluster'] == k
+            child_maps = self.attributions[k_idxs]
+            
+            # Get entropic positions for this cluster
+            # Note: Need regulatory_df equivalent or compute entropy here
+            entropic_positions = self._get_entropic_positions(k, entropy_threshold)
+            
+            if len(entropic_positions) == 0:
+                continue
+            
+            # Compute background for entropic positions
+            for ep in entropic_positions:
+                for child in child_maps:
+                    cluster_background[idx, ep, :] += child[ep, :]
+            cluster_background[idx] /= len(child_maps)
+        
+        # Store average background across clusters
+        self.background = np.mean(cluster_background, axis=0)
+        return self.background
+
+    def _get_entropic_positions(self, cluster, threshold):
+        """Get positions with entropy above threshold for given cluster.
+        
+        Parameters
+        ----------
+        cluster : int
+            Cluster index
+        threshold : float
+            Entropy threshold value
+        
+        Returns
+        -------
+        np.ndarray
+            Array of positions with entropy above threshold
+        """
+        # Get sequences for this cluster
+        k_idxs = self.mave['Cluster'] == cluster
+        seqs = self.mave.loc[k_idxs, 'Sequence']
+        
+        # Convert sequences to position-specific frequency matrix
+        seq_length = len(seqs.iloc[0])
+        char_counts = np.zeros((seq_length, len(self.alphabet)))
+        
+        for seq in seqs:
+            for pos, char in enumerate(seq):
+                char_idx = self.alphabet.index(char)
+                char_counts[pos, char_idx] += 1
+        
+        # Convert to frequencies
+        freqs = char_counts / len(seqs)
+        
+        # Calculate entropy at each position
+        entropies = np.zeros(seq_length)
+        for pos in range(seq_length):
+            pos_freqs = freqs[pos]
+            # Avoid log(0) by only considering non-zero frequencies
+            valid_freqs = pos_freqs[pos_freqs > 0]
+            entropies[pos] = -np.sum(valid_freqs * np.log2(valid_freqs))
+        
+        # Return positions above threshold
+        return np.where(entropies > threshold)[0]
+
 """
 # TODO:
-# - line up the MSM with the logos, and with the bar plot
-# - save directory parameter
-# - make sure all imports and __init__.py are correctly set up for pip package
-# - identifier.py next --> needs correlation matrix and option for binary or continuous
+1. Bias removal from meta_explainer_orig.py --> call this "background separation" in the current code
+    - see 'if bias_removal is True:' in meta_explainer_orig.py
+    - Add documentation about background separation
+    - Fix AttributeError in generate_logos for self.background
+    - Add background computation and storage in MetaExplainer.__init__
 
+2. Save directories for saving outputs to appropriate directories
 
-1. Implement logo generation and plotting functionality (lines 755-823 from meta_explainer_orig.py)
-   - Handle bias removal
-   - Save to appropriate directories
-
-2. Implement variability logo rendering (lines 833-854 from meta_explainer_orig.py)
-   - Use PIL for image processing
-   - Implement darken_blend function
-   - Process all PNGs in directory
-   - Save combined variability logo
-
-3. Add file/directory management (lines 414-420 from meta_explainer_orig.py)
-   - Save cluster consensus info
-   - Handle bias removal directories
-   - Save average matrices
-
-4. Add profile plotting functionality (lines 741-753 from meta_explainer_orig.py)
+3. Check profile plotting functionality (lines 741-753 from meta_explainer_orig.py)
    - Plot individual profiles for each cluster
    - Handle alpha blending for overlays
-   - Save to profiles directory
 
-5. Add configuration parameters from meta_explainer_orig.py:
-   - embedding options (lines 157-176)
-   - logo generation flags (lines 179-189)
-   - sequence handling (lines 194-202)
+4. Handle attribution map delimiting (i.e., meta_explainer_orig.py: seq_start and seq_stop logic)
 
-6. Background removal module needs to be implemented:
-   - Add background computation and storage in MetaExplainer.__init__
-   - Rename all "bias" references to "background"
-   - Add documentation about background separation
-   - Fix AttributeError in generate_logos for self.background
+5. Package Structure Updates:
+   - Ensure all package imports work both in development and after pip install
 
-7. Class Storage Standardization:
-   - All key outputs should be both returned and stored as instance variables
-   - Examples to update:
-     - compiler.py: store mave internally
-     - clusterer.py: store clustering results
-     - meta_explainer.py: store msm results
-   - Follow pattern established by attributer.attributions
-
-8. Package Structure Updates:
-   - Update all relative imports in logomaker_batch:
-     - batch_logo.py needs relative imports
-     - gpu_utils.py needs relative imports
-     - colors.py needs relative imports
-     - Any matplotlib utilities need relative imports
-   - Ensure all imports use the pattern: from logomaker_batch.xxx import XXX
-   - Test package imports work both in development and after pip install
+6. Plotting functionality
+    - Line up the MSM with the logos, and with the bar plot
 
 NOTE: Several components from meta_explainer_orig.py have already been modernized:
 
@@ -807,4 +871,6 @@ NOTE: Several components from meta_explainer_orig.py have already been modernize
    - Originally used to trade off logo quality for speed
    - No longer needed due to BatchLogo's optimized rendering
    - All logos now render at highest quality with minimal performance impact
+
+4. bias removal has been renamed to background separation
 """

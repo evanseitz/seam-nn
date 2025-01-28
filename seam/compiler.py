@@ -166,3 +166,5 @@ class Compiler:
 # - Move hamming distance calculation to SEAM utils?
 # - save output to self.mave
 # - docstring check (readthedocs compatibility)
+# - discover alphabet from mave.csv and save to self.alphabet
+#   - e.g., alphabet = sorted(list(set(mave['Sequence'][0:100].apply(list).sum())))
