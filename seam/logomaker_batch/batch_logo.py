@@ -398,6 +398,73 @@ class BatchLogo:
         # For each position, subtract the mean of that position
         return values - values.mean(axis=-1, keepdims=True)
 
+    def draw_variability_logo(self, figsize=(20, 2.5)):
+        """Draw a variability logo showing all glyphs from all clusters overlaid at each position."""
+        fig, ax = plt.subplots(figsize=figsize)
+        
+        # For each position and character, plot ALL heights from ALL clusters
+        logo_data = {'glyphs': []}
+        
+        # Pre-compute paths and their extents if not already cached
+        if not self._path_cache:
+            font_prop = fm.FontProperties(family=self.font_name)
+            m_path = TextPath((0, 0), 'M', size=1, prop=font_prop)
+            m_extents = m_path.get_extents()
+            self._m_path_cache = {
+                'path': m_path,
+                'extents': m_extents,
+                'width': m_extents.width,
+            }
+            
+            for char in self.alphabet:
+                base_path = TextPath((0, 0), char, size=1, prop=font_prop)
+                flipped_path = Affine2D().scale(sx=1, sy=-1).transform_path(base_path)
+                self._path_cache[char] = {
+                    'normal': {'path': base_path, 'extents': base_path.get_extents()},
+                    'flipped': {'path': flipped_path, 'extents': flipped_path.get_extents()}
+                }
+        
+        # For each position
+        for pos in range(self.L):
+            # For each cluster
+            for cluster_idx in range(self.values.shape[0]):
+                values = self.values[cluster_idx, pos]
+                # For each character in this position
+                for char_idx, value in enumerate(values):
+                    if value != 0:  # Only plot if height is non-zero
+                        char = self.alphabet[char_idx]
+                        
+                        # Handle positive and negative values
+                        if value > 0:
+                            path_data = self._path_cache[char]['normal']
+                            floor = 0
+                            ceiling = value
+                        else:
+                            path_data = self._path_cache[char]['flipped' if self.kwargs['flip_below'] else 'normal']
+                            floor = value
+                            ceiling = 0
+                        
+                        transformed_path = self._get_transformed_path(
+                            path_data, pos, floor, ceiling,
+                            self._m_path_cache['extents'].width
+                        )
+                        
+                        # Add with low alpha since we're overlaying many glyphs
+                        logo_data['glyphs'].append({
+                            'path': transformed_path,
+                            'color': self.rgb_dict[char],
+                            'edgecolor': 'none',
+                            'edgewidth': 0,
+                            'alpha': 1,
+                            'floor': floor,
+                            'ceiling': ceiling
+                        })
+        
+        # Use existing drawing method
+        self._draw_single_logo(ax, logo_data)
+        
+        return fig, ax
+
 """
 ARCHITECTURAL DIFFERENCES BETWEEN BATCH_LOGO AND GLYPH_ORIG IMPLEMENTATIONS
 

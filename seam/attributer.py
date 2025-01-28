@@ -176,7 +176,7 @@ class Attributer:
             scores.append(tf.reduce_mean(grad, axis=0))
         return np.stack(scores, axis=0)
 
-    @tf.function(experimental_compile=True)
+    @tf.function(jit_compile=True)
     def _smoothgrad_gpu(self, X, num_samples=50, mean=0.0, stddev=0.1):
         """GPU-optimized implementation with parallel noise generation."""
         X = tf.cast(X, dtype=tf.float32)
@@ -217,7 +217,7 @@ class Attributer:
             return avg_grads * (x - baseline)
         return avg_grads
     
-    @tf.function(experimental_compile=True)
+    @tf.function(jit_compile=True)
     def _intgrad_gpu(self, X, baseline_type='zeros', num_steps=25, multiply_by_inputs=False):
         """GPU-optimized implementation using vectorized computation."""
         # Ensure input is float32
@@ -304,7 +304,7 @@ class Attributer:
             scores.append(score_matrix)
         return np.stack(scores, axis=0)
 
-    @tf.function(experimental_compile=True)
+    @tf.function(jit_compile=True)
     def _ism_gpu(self, X, log2fc=False):
         """GPU-optimized implementation of ISM using vectorized operations."""
         X = tf.cast(X, tf.float32)

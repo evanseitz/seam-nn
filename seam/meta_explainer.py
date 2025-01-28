@@ -13,16 +13,10 @@ from logomaker_batch.batch_logo import BatchLogo
 from matplotlib.colors import TwoSlopeNorm
 
 # Local imports
-# Try relative import first (for pip package)
-#try:
-import utils
-# Fall back to direct import (for Colab/direct usage)
-#except ImportError:
-    # Add the directory containing utils.py to the Python path
-#    module_dir = os.path.dirname(os.path.abspath(__file__))
-#    if module_dir not in sys.path:
-#        sys.path.append(module_dir)
-#   import utils
+try:  # Try relative import first (for pip package)
+    from . import utils
+except ImportError:  # Fall back to direct import (for Colab/direct usage)
+    import utils # ensure utils is imported first in Colab before this step
 
 class MetaExplainer:
     """A class for analyzing and visualizing attribution map clusters.
@@ -673,6 +667,7 @@ class MetaExplainer:
         )
         batch_logos.process_all()
         
+        # Store batch_logos for later use
         self.batch_logos = batch_logos
         return batch_logos
 
@@ -702,26 +697,8 @@ class MetaExplainer:
         
         return cluster_seqs[['Sequence', 'DNN']]
 
-    def generate_variability_logo(self, logo_type='attribution', **logo_kwargs):
-        """Generate a variability logo by overlaying all cluster logos.
-        
-        Parameters
-        ----------
-        logo_type : {'attribution', 'pwm', 'enrichment'}, default='attribution'
-            Type of logo to generate.
-        **logo_kwargs
-            Additional arguments passed to generate_logos().
-        
-        Returns
-        -------
-        matplotlib.figure.Figure
-            The combined variability logo figure.
-        
-        Raises
-        ------
-        ValueError
-            If logos haven't been generated yet. Call generate_logos() first.
-        """
+    def generate_variability_logo(self, **logo_kwargs):
+        """Generate a variability logo by overlaying all cluster logos."""
         if not hasattr(self, 'batch_logos'):
             raise ValueError("Logos not generated yet. Call generate_logos() first.")
         
@@ -731,24 +708,63 @@ class MetaExplainer:
         # Create a new figure for the variability logo
         fig, ax = plt.subplots(figsize=logo_kwargs.get('figsize', (20, 2.5)))
         
+        # Get sequence length from the stored logo array
+        seq_length = batch_logos.values.shape[1]  # (n_clusters, seq_length, n_chars)
+        
         # For each position and character, combine heights across all clusters
-        for pos in range(batch_logos.seq_length):
+        for pos in range(seq_length):
             for char_idx, char in enumerate(self.alphabet):
                 # Get all heights for this character at this position across clusters
-                heights = batch_logos.get_heights(pos, char_idx)
+                heights = batch_logos.values[:, pos, char_idx]
                 
                 # Draw character with alpha proportional to frequency of appearance
                 if any(heights):  # Only draw if character appears in any cluster
                     alpha = len([h for h in heights if h != 0]) / len(heights)
-                    batch_logos.draw_character(ax, char, pos, heights.mean(), alpha=alpha)
+                    batch_logos.draw_glyph(ax, char, pos, heights.mean(), alpha=alpha)
         
         return fig
+
+    def plot_cluster_profiles(self, profiles, save_dir=None, dpi=200):
+        """Plot overlay of profiles associated with each cluster.
+        
+        Parameters
+        ----------
+        profiles : np.ndarray
+            Array of profile data corresponding to sequences in mave_df
+        save_dir : str, optional
+            Directory to save profile plots. If None, displays instead.
+        dpi : int
+            DPI for saved figures
+        """
+        if not os.path.exists(save_dir): # TODO: is this right?
+            os.makedirs(save_dir)
+        
+        for k in self.cluster_indices:
+            k_idxs = self.mave.loc[self.mave['Cluster'] == k].index
+            cluster_profiles = profiles[k_idxs]
+            
+            plt.figure(figsize=(10, 5))
+            for profile in cluster_profiles:
+                plt.plot(profile, alpha=0.1, color='gray')
+            plt.plot(cluster_profiles.mean(axis=0), color='red', linewidth=2)
+            
+            plt.title(f'Cluster {k} Profiles')
+            plt.xlabel('Position')
+            plt.ylabel('Value')
+            
+            if save_dir:
+                plt.savefig(os.path.join(save_dir, f'cluster_{k}_profiles.png'), 
+                           dpi=dpi, bbox_inches='tight')
+                plt.close()
+            else:
+                plt.show()
 
 """
 # TODO:
 # - line up the MSM with the logos, and with the bar plot
 # - save directory parameter
 # - make sure all imports and __init__.py are correctly set up for pip package
+# - identifier.py next --> needs correlation matrix and option for binary or continuous
 
 
 1. Implement logo generation and plotting functionality (lines 755-823 from meta_explainer_orig.py)
