@@ -8,7 +8,7 @@ class LogomakerError(Exception):
     Class used by Logomaker to handle errors.
 
     parameters
-    ----------
+    ----------Yes,
 
     message: (str)
         The message passed to check(). This only gets passed to the

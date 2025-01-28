@@ -8,36 +8,45 @@ from tqdm import tqdm
 
 # Bioinformatics libraries
 from Bio import motifs  # pip install biopython
-import logomaker  # pip install logomaker
-import squid.utils as squid_utils  # pip install squid-nn
-import seaborn as sns  # pip install seaborn
 from scipy.stats import entropy
 from logomaker_batch.batch_logo import BatchLogo
 from matplotlib.colors import TwoSlopeNorm
-from PIL import Image
 
+# Local imports
+# Try relative import first (for pip package)
+#try:
+import utils
+# Fall back to direct import (for Colab/direct usage)
+#except ImportError:
+    # Add the directory containing utils.py to the Python path
+#    module_dir = os.path.dirname(os.path.abspath(__file__))
+#    if module_dir not in sys.path:
+#        sys.path.append(module_dir)
+#   import utils
 
 class MetaExplainer:
-    """
-    MetaExplainer: A class for analyzing and visualizing attribution map clusters
-    
+    """A class for analyzing and visualizing attribution map clusters.
+
     This class builds on the Clusterer class to provide detailed analysis and 
-    visualization of attribution map clusters, including:
-    
-    Analysis Features:
-    - Mechanism Summary Matrix (MSM) generation
-    - Sequence logos and attribution logos
-    - Cluster membership tracking
-    - Bias removal and normalization
-    
-    Visualization Features:
-    - DNN score distributions per cluster
-    - Sequence logos (PWM and enrichment)
-    - Attribution logos (fixed and adaptive scaling)
-    - Mechanism Summary Matrices
-    - Cluster profile plots
-    
-    Requirements:
+    visualization of attribution map clusters.
+
+    Features
+    --------
+    Analysis
+        - Mechanism Summary Matrix (MSM) generation
+        - Sequence logos and attribution logos
+        - Cluster membership tracking
+        - Bias removal and normalization
+
+    Visualization
+        - DNN score distributions per cluster
+        - Sequence logos (PWM and enrichment)
+        - Attribution logos (fixed and adaptive scaling)
+        - Mechanism Summary Matrices
+        - Cluster profile plots
+
+    Requirements
+    -----------
     - All requirements from Clusterer class
     - Biopython
     - Logomaker
@@ -46,8 +55,37 @@ class MetaExplainer:
     """
     
     def __init__(self, clusterer, mave_df, attributions, ref_idx=0,
-                bias_removal=False, mut_rate=0.10, aesthetic_lvl=1):
-        """Initialize MetaExplainer with a Clusterer instance and data."""
+                bias_removal=False, mut_rate=0.10, sort_method='median',
+                alphabet=None):
+        """Initialize MetaExplainer with clusterer and data.
+
+        Parameters
+        ----------
+        clusterer : Clusterer
+            Initialized Clusterer object with clustering results.
+        mave_df : pandas.DataFrame
+            DataFrame containing sequences and their scores. Must have columns:
+            - 'Sequence': DNA/RNA sequences
+            - 'Score' or 'DNN': Model predictions
+            - 'Cluster': Cluster assignments
+        attributions : numpy.ndarray
+            Attribution maps for sequences. Shape should be 
+            (n_sequences, seq_length, n_characters).
+        ref_idx : int, default=0
+            Index of reference sequence in mave_df.
+        bias_removal : bool, default=False
+            Whether to remove background signal from logos.
+        mut_rate : float, default=0.10
+            Mutation rate used for background sequence generation.
+        sort_method : {'median', 'visual', None}, default='median'
+            How to sort clusters in all visualizations and analyses.
+            - 'median': Sort by median DNN score
+            - 'visual': Sort based on hierarchical clustering of the MSM pattern
+            - None: Use original cluster indices
+        alphabet : list of str, optional
+            List of characters to use in sequence logos.
+            Default is ['A', 'C', 'G', 'T'].
+        """
         # Store inputs
         self.clusterer = clusterer  # clusterer.cluster_labels should contain labels_n
         self.mave = mave_df
@@ -55,10 +93,10 @@ class MetaExplainer:
         self.ref_idx = ref_idx
         self.bias_removal = bias_removal
         self.mut_rate = mut_rate
-        self.aesthetic_lvl = aesthetic_lvl
+        self.sort_method = sort_method
+        self.alphabet = alphabet or ['A', 'C', 'G', 'T']
         
         # Initialize other attributes
-        self.alphabet = None
         self.msm = None
         self.cluster_bias = None
         self.consensus_df = None
@@ -67,6 +105,12 @@ class MetaExplainer:
         # Validate and process inputs
         self._validate_inputs()
         self._process_inputs()
+        
+        # Get the cluster ordering once at initialization
+        if self.sort_method:
+            self.cluster_order = self.get_cluster_order(sort_method=self.sort_method)
+        else:
+            self.cluster_order = None
 
     def _validate_inputs(self):
         """Validate input data and parameters."""
@@ -132,7 +176,7 @@ class MetaExplainer:
         raise ValueError(f"Unknown sort_method: {sort_method}")
     
     def plot_cluster_stats(self, plot_type='box', metric='prediction', save_path=None, 
-                        sort_by_median=True, show_ref=True, show_fliers=False, fontsize=8, dpi=200):
+                           show_ref=True, show_fliers=False, fontsize=8, dpi=200):
         """Plot cluster statistics with various visualization options.
         
         Parameters
@@ -147,8 +191,6 @@ class MetaExplainer:
             - 'counts': cluster occupancy/size
         save_path : str, optional
             Path to save figure. If None, display instead
-        sort_by_median : bool
-            If True, sort clusters by median prediction values
         show_ref : bool
             If True and reference sequence exists, highlight its cluster
         show_fliers : bool
@@ -173,19 +215,17 @@ class MetaExplainer:
             else:  # counts for bar plot
                 boxplot_data.append([len(k_idxs)])
                 
-        # Sort if requested
-        sorted_indices = None
-        if sort_by_median:
-            sorted_indices = self.get_cluster_order(sort_method='median')
+        # Sort using class-level ordering if it exists
+        if self.cluster_order is not None:
             sorted_data = []
-            for k in sorted_indices:
+            for k in self.cluster_order:
                 idx = cluster_to_idx[k]
                 sorted_data.append(boxplot_data[idx])
             boxplot_data = sorted_data
             
             # Update membership tracking
             mapping_dict = {old_k: new_k for new_k, old_k in 
-                        enumerate(sorted_indices)}
+                        enumerate(self.cluster_order)}
             self.membership_df['Cluster_Sorted'] = self.membership_df['Cluster'].map(mapping_dict)
 
         if plot_type == 'box':
@@ -206,9 +246,10 @@ class MetaExplainer:
             plt.gca().xaxis.set_major_locator(plt.MaxNLocator(integer=True))
             plt.title(f'Average IQR: {average_iqr:.2f}')
             
+            # Update reference cluster index if sorting is enabled
             if show_ref and self.ref_seq is not None:
                 ref_cluster = self.membership_df.loc[self.ref_idx, 'Cluster']
-                if sort_by_median:
+                if self.cluster_order is not None:
                     ref_cluster = mapping_dict[ref_cluster]
                 ref_data = boxplot_data[ref_cluster]
                 if len(ref_data) > 0:
@@ -227,8 +268,8 @@ class MetaExplainer:
             
             if show_ref and self.ref_seq is not None:
                 ref_cluster = self.membership_df.loc[self.ref_idx, 'Cluster']
-                if sort_by_median and sorted_indices is not None:
-                    ref_cluster = np.where(sorted_indices == ref_cluster)[0][0]
+                if self.cluster_order is not None:
+                    ref_cluster = mapping_dict[ref_cluster]
                 colors = ['red' if i == ref_cluster else 'C0' 
                         for i in range(len(values))]
                 plt.barh(y_positions, values, height=height, color=colors)
@@ -249,13 +290,24 @@ class MetaExplainer:
         else:
             plt.show()
 
-    def generate_msm(self, gpu=False):
-        """Generate Mechanism Summary Matrix (MSM) for all clusters.
+    def generate_msm(self, n_seqs=1000, batch_size=50, gpu=False):
+        """Generate a Mechanism Summary Matrix (MSM) from cluster attribution maps.
         
         Parameters
         ----------
-        gpu : bool
-            If True, use GPU acceleration for computations (requires tensorflow)
+        n_seqs : int, default=1000
+            Number of sequences to generate per cluster.
+        batch_size : int, default=50
+            Number of sequences to process in each batch.
+        gpu : bool, default=False
+            Whether to use GPU acceleration if available.
+        
+        Returns
+        -------
+        numpy.ndarray
+            The Mechanism Summary Matrix with shape (n_clusters, n_clusters).
+            Each entry [i,j] represents the average DNN score when applying
+            cluster i's mechanism to sequences from cluster j.
         """
         # Get sequence length from first sequence
         seq_length = len(self.mave['Sequence'].iloc[0])
@@ -280,7 +332,7 @@ class MetaExplainer:
         })
         
         # Precompute one-hot encoding of reference sequence
-        ref_oh = squid_utils.seq2oh(self.ref_seq, self.alphabet)
+        ref_oh = utils.seq2oh(self.ref_seq, self.alphabet)
         
         # Process each cluster in parallel
         from concurrent.futures import ThreadPoolExecutor
@@ -310,7 +362,7 @@ class MetaExplainer:
             consensus_seq = np.array(self.alphabet)[consensus_indices]
             
             # Calculate matches
-            consensus_oh = squid_utils.seq2oh(consensus_seq, self.alphabet)
+            consensus_oh = utils.seq2oh(consensus_seq, self.alphabet)
             consensus_matches = np.diagonal(consensus_oh.dot(counts)) / n_seqs * 100
             
             if self.ref_seq is not None:
@@ -340,7 +392,7 @@ class MetaExplainer:
         
         return self.msm
     
-    def plot_msm(self, column='Entropy', sort_method=None, delta_entropy=False, sort_indices=None, 
+    def plot_msm(self, column='Entropy', delta_entropy=False, 
                 square_cells=False, view_window=None, gui=False):
         """Visualize the Mechanism Summary Matrix (MSM) as a heatmap.
         
@@ -351,17 +403,9 @@ class MetaExplainer:
             - 'Entropy': Shannon entropy of characters at each position per cluster
             - 'Reference': Percentage of mismatches to reference sequence
             - 'Consensus': Percentage of matches to cluster consensus sequence
-        sort_method : {None, 'hierarchical', 'median', 'predefined'}
-            How to order the clusters:
-            - None: Use original cluster ordering
-            - 'hierarchical': Sort clusters by pattern similarity
-            - 'median': Sort clusters by median DNN score
-            - 'predefined': Use provided sort_indices
         delta_entropy : bool
             If True and column='Entropy', show change in entropy from background
             expectation (based on mutation rate)
-        sort_indices : array-like, optional
-            Custom cluster ordering to use when sort_method='predefined'
         square_cells : bool
             If True, set cells in MSM to be perfectly square
         view_window : list of [start, end], optional
@@ -376,10 +420,6 @@ class MetaExplainer:
         valid_columns = {'Entropy', 'Reference', 'Consensus'}
         if column not in valid_columns:
             raise ValueError(f"column must be one of: {valid_columns}")
-            
-        valid_sort_methods = {None, 'hierarchical', 'median', 'predefined'}
-        if sort_method not in valid_sort_methods:
-            raise ValueError(f"sort_method must be one of: {valid_sort_methods}")
             
         if view_window is not None:
             if not isinstance(view_window, (list, tuple)) or len(view_window) != 2:
@@ -401,9 +441,7 @@ class MetaExplainer:
             matrix_data = matrix_data.iloc[:, start:end]
             n_positions = end - start
         
-        # Sort clusters if requested
-        cluster_order = self.get_cluster_order(sort_method=sort_method, 
-                                            sort_indices=sort_indices)
+        cluster_order = self.cluster_order if self.cluster_order is not None else np.sort(self.mave['Cluster'].unique())
         matrix_data = matrix_data.reindex(cluster_order)
         
         if gui:
@@ -458,19 +496,21 @@ class MetaExplainer:
         plt.tight_layout()
 
     def _configure_matrix_ticks(self, ax, n_positions, n_clusters, cluster_order):
-        """Configure tick marks and labels for the MSM visualization.
+        """Configure tick marks and labels for MSM visualization.
         
         Parameters
         ----------
         ax : matplotlib.axes.Axes
-            Axes object to configure
+            The axes to configure.
         n_positions : int
-            Number of sequence positions
+            Number of sequence positions.
         n_clusters : int
-            Number of clusters
+            Number of clusters.
         cluster_order : array-like
-            Order of cluster indices
+            Order of clusters for y-axis labels.
         """
+        cluster_order = self.cluster_order if self.cluster_order is not None else np.sort(self.mave['Cluster'].unique())
+        
         # Set position (x-axis) ticks
         x_skip = 10 if n_positions > 100 else 20 if n_positions > 1000 else 1
         x_ticks = np.arange(0.5, n_positions, x_skip)
@@ -525,63 +565,46 @@ class MetaExplainer:
     def generate_logos(self, logo_type='attribution', background_removal=False, 
                       figsize=(20, 2.5), batch_size=50, font_name='sans',
                       stack_order='big_on_top', center_values=True, 
-                      y_min_max=None, color_scheme='classic',
-                      sort_method='median'):
-        """Generate sequence or attribution logos for all clusters.
-        
+                      fixed_ylim=False, color_scheme='classic'):
+        """Generate sequence or attribution logos for each cluster.
+
         Parameters
         ----------
-        logo_type : str
-            Type of logo to generate. One of:
-            - 'attribution': Meta-attribution maps showing averaged attribution patterns
-              that defined each cluster
-            - 'pwm': Position Weight Matrix logos showing sequence content frequency
-              within each cluster, scaled by information content
-            - 'enrichment': Log2 enrichment of sequence patterns in each cluster
-              relative to background frequencies
-        background_removal : bool
-            If True, subtract background signal from attribution maps before averaging
-        figsize : tuple
-            Figure size for logos (width, height)
-        batch_size : int
-            Number of logos to process in each batch
+        logo_type : {'attribution', 'pwm', 'enrichment'}, default='attribution'
+            Type of logo to generate.
+        background_removal : bool, default=False
+            Whether to remove background signal from logos.
+        figsize : tuple of float, default=(20, 2.5)
+            Figure size (width, height) in inches.
+        batch_size : int, default=50
+            Number of logos to process in each batch.
         font_name : str, default='sans'
-            Font to use for characters in logos. Use list_font_names() to see available fonts.
-        stack_order : str
-            How to stack characters. One of:
-            - 'big_on_top': Larger values on top (default)
-            - 'small_on_top': Smaller values on top
-            - 'fixed': Fixed order
-        center_values : bool
-            If True, center values around zero
-        y_min_max : tuple or None
-            Fixed (ymin, ymax) range for all logos. If None, each logo uses its own range
-        color_scheme : str
-            Color scheme for characters
-        sort_method : str, default='median'
-            Method to sort clusters. One of:
-            - 'median': Sort by median score
-            - 'hierarchical': Keep hierarchical clustering order
-            - None: Use original order
-        
+            Font family to use for logo characters.
+        stack_order : {'big_on_top', 'small_on_top', 'fixed'}, default='big_on_top'
+            How to stack characters in logos.
+        center_values : bool, default=True
+            Whether to center values around zero for each position.
+        fixed_ylim : bool, default=False
+            Whether to use same y-axis limits across all logos.
+        color_scheme : str, default='classic'
+            Color scheme for sequence logos.
+
         Returns
         -------
         BatchLogo
-            Configured BatchLogo instance ready for drawing individual logos.
-            Use .draw_single(cluster_idx) to visualize individual cluster logos.
+            Object containing the generated logos.
         """
-        # Get sorted cluster order
-        cluster_order = self.get_cluster_order(sort_method=sort_method)
+        # Get sorted cluster order using class attribute
+        cluster_order = self.get_cluster_order(sort_method=self.sort_method)
         
-        # Get cluster indices and prepare matrices
+        # Get cluster matrices
         cluster_matrices = []
-        
-        for k in tqdm(cluster_order, desc='Processing logos'):
-            k_idxs = self.clusterer.labels_ == k
+        for k in tqdm(cluster_order, desc='Generating matrices'):
+            k_idxs = self.mave['Cluster'] == k
             seqs_k = self.mave.loc[k_idxs, 'Sequence']
             
             if logo_type == 'attribution':
-                # Average attribution maps for this cluster
+                # Average attribution maps for this cluster to create noise-reduced meta-attribution map
                 maps_avg = np.mean(self.attributions[k_idxs], axis=0)
                 if background_removal:
                     maps_avg -= self.background
@@ -607,10 +630,36 @@ class MetaExplainer:
                                (pd.DataFrame(self.background_pfm) + pseudocounts)
                     cluster_matrices.append(np.log2(enrichment))
         
-        # Stack matrices into 3D array for BatchLogo
+        # Stack matrices into 3D array
         logo_array = np.stack(cluster_matrices)
         
-        # Create and process BatchLogo instance
+        # Only compute global y-limits if fixed_ylim is True
+        y_min_max = None
+        if fixed_ylim and logo_type == 'attribution':
+            y_mins = []
+            y_maxs = []
+            # Make a copy of logo_array to avoid modifying the original when centering
+            matrices = logo_array.copy()
+            if center_values:
+                # Center all matrices if center_values is True
+                for i, matrix in enumerate(matrices):
+                    matrices[i] = matrix - np.expand_dims(np.mean(matrix, axis=1), axis=1)
+            
+            # Calculate y-limits from either centered or uncentered matrices
+            for matrix in matrices:
+                positive_mask = matrix > 0
+                positive_matrix = matrix * positive_mask
+                positive_sums = positive_matrix.sum(axis=1)
+                
+                negative_mask = matrix < 0
+                negative_matrix = matrix * negative_mask
+                negative_sums = negative_matrix.sum(axis=1)
+                
+                y_mins.append(negative_sums.min())
+                y_maxs.append(positive_sums.max())
+            
+            y_min_max = [min(y_mins), max(y_maxs)]
+        
         batch_logos = BatchLogo(
             logo_array,
             alphabet=self.alphabet,
@@ -624,22 +673,85 @@ class MetaExplainer:
         )
         batch_logos.process_all()
         
+        self.batch_logos = batch_logos
         return batch_logos
 
+    def show_sequences(self, cluster_idx):
+        """Show sequences belonging to a specific cluster.
+        
+        Parameters
+        ----------
+        cluster_idx : int
+            Index of cluster to show sequences for. If sorting was specified
+            during initialization, this index refers to the sorted order
+            (e.g., 0 is the first cluster after sorting).
+        
+        Returns
+        -------
+        pandas.DataFrame
+            DataFrame containing sequences and scores for the specified cluster.
+        """
+        # Get original cluster index using class-level sorting if available
+        if self.cluster_order is not None:
+            original_idx = self.cluster_order[cluster_idx]
+        else:
+            original_idx = cluster_idx
+        
+        # Get sequences from the specified cluster
+        cluster_seqs = self.mave[self.mave['Cluster'] == original_idx]
+        
+        return cluster_seqs[['Sequence', 'DNN']]
 
+    def generate_variability_logo(self, logo_type='attribution', **logo_kwargs):
+        """Generate a variability logo by overlaying all cluster logos.
+        
+        Parameters
+        ----------
+        logo_type : {'attribution', 'pwm', 'enrichment'}, default='attribution'
+            Type of logo to generate.
+        **logo_kwargs
+            Additional arguments passed to generate_logos().
+        
+        Returns
+        -------
+        matplotlib.figure.Figure
+            The combined variability logo figure.
+        
+        Raises
+        ------
+        ValueError
+            If logos haven't been generated yet. Call generate_logos() first.
+        """
+        if not hasattr(self, 'batch_logos'):
+            raise ValueError("Logos not generated yet. Call generate_logos() first.")
+        
+        # Use existing BatchLogo object
+        batch_logos = self.batch_logos
+        
+        # Create a new figure for the variability logo
+        fig, ax = plt.subplots(figsize=logo_kwargs.get('figsize', (20, 2.5)))
+        
+        # For each position and character, combine heights across all clusters
+        for pos in range(batch_logos.seq_length):
+            for char_idx, char in enumerate(self.alphabet):
+                # Get all heights for this character at this position across clusters
+                heights = batch_logos.get_heights(pos, char_idx)
+                
+                # Draw character with alpha proportional to frequency of appearance
+                if any(heights):  # Only draw if character appears in any cluster
+                    alpha = len([h for h in heights if h != 0]) / len(heights)
+                    batch_logos.draw_character(ax, char, pos, heights.mean(), alpha=alpha)
+        
+        return fig
 
-# TODO:
-# - remove squid dependency (replace with seam-nn once ready)
-# - return indices of attribution maps in each cluster somewhere (callable?)
-# - sort_method should not have an option called "hierarichal", it should be "visual", like in the original code
-# - line up the MSM with the logos, and with the bar plot
 """
-TODO:
+# TODO:
+# - line up the MSM with the logos, and with the bar plot
+# - save directory parameter
+# - make sure all imports and __init__.py are correctly set up for pip package
+
 
 1. Implement logo generation and plotting functionality (lines 755-823 from meta_explainer_orig.py)
-   - PWM logos
-   - Enrichment logos
-   - Attribution logos (fixed and adaptive)
    - Handle bias removal
    - Save to appropriate directories
 
@@ -670,12 +782,7 @@ TODO:
    - Add documentation about background separation
    - Fix AttributeError in generate_logos for self.background
 
-7. Fix y-limits in generate_logos:
-   - Remove y_min_max parameter
-   - Implement automatic y-limit computation like meta_explainer_orig.py
-   - Use positive/negative summations approach from original code
-
-8. Class Storage Standardization:
+7. Class Storage Standardization:
    - All key outputs should be both returned and stored as instance variables
    - Examples to update:
      - compiler.py: store mave internally
@@ -683,7 +790,7 @@ TODO:
      - meta_explainer.py: store msm results
    - Follow pattern established by attributer.attributions
 
-9. Package Structure Updates:
+8. Package Structure Updates:
    - Update all relative imports in logomaker_batch:
      - batch_logo.py needs relative imports
      - gpu_utils.py needs relative imports

@@ -35,7 +35,7 @@ class BatchLogo:
     _m_path_cache = {}
     _transform_cache = {}
     
-    def __init__(self, values, alphabet=None, fig_size=[10,2.5], batch_size=50, gpu=False, font_name='sans', **kwargs):
+    def __init__(self, values, alphabet=None, fig_size=[10,2.5], batch_size=50, gpu=False, font_name='sans', y_min_max=None, **kwargs):
         """Initialize BatchLogo processor"""
         if gpu:
             print("Warning: GPU acceleration not yet implemented, falling back to CPU")
@@ -93,6 +93,8 @@ class BatchLogo:
                     self.rgb_dict[char] = get_rgb(colors['TU'])
                 else:
                     self.rgb_dict[char] = get_rgb('gray')
+
+        self.y_min_max = y_min_max
 
     def _get_font_props(self):
         """Get cached font properties"""
@@ -295,16 +297,18 @@ class BatchLogo:
         with TimingContext('axis_setup', timing):
             # Set proper axis limits
             ax.set_xlim(-0.5, self.L - 0.5)
-            
-            # Calculate ylims from glyphs
-            floors = [g['floor'] for g in logo_data['glyphs']]
-            ceilings = [g['ceiling'] for g in logo_data['glyphs']]
-            ymin = min(floors) if floors else 0
-            ymax = max(ceilings) if ceilings else 1
-            
-            # Ensure baseline is visible
-            ymin = min(ymin, 0)
-            ax.set_ylim(ymin, ymax)
+            if self.y_min_max is not None:
+                ax.set_ylim(self.y_min_max[0], self.y_min_max[1])
+            else:
+                # Calculate ylims from glyphs only if y_min_max not set
+                floors = [g['floor'] for g in logo_data['glyphs']]
+                ceilings = [g['ceiling'] for g in logo_data['glyphs']]
+                ymin = min(floors) if floors else 0
+                ymax = max(ceilings) if ceilings else 1
+                
+                # Ensure baseline is visible
+                ymin = min(ymin, 0)
+                ax.set_ylim(ymin, ymax)
             
             # Draw baseline
             if self.kwargs['baseline_width'] > 0:

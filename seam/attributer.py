@@ -642,3 +642,5 @@ def compute_attributions(model, x, x_ref=None, method='saliency', func=tf.math.r
 # - add memory mode for ISM (numpy memmap)
 # - test save window
 # - deepshap code in TF2: dinuc_shuffle, etc.
+# - save output to self
+# - docstring check (readthedocs compatibility)

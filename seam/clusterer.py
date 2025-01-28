@@ -195,7 +195,6 @@ class Clusterer:
         Returns:
             numpy.ndarray: Distance matrix (flattened if return_flat=True)
         """
-        print('Computing distances...')
         t1 = time.time()
         
         if self.gpu:
@@ -611,3 +610,5 @@ class Clusterer:
 # - implement other methods from cuml.manifold?
 # - add diffusion maps code
 # - control figure size in plot_embedding, plot_histogram, plot_dendrogram
+# - save output to self
+# - docstring check (readthedocs compatibility)

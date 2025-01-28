@@ -164,3 +164,5 @@ class Compiler:
 # - SEAM utils calls
 # - Task-specific predictions in each column
 # - Move hamming distance calculation to SEAM utils?
+# - save output to self.mave
+# - docstring check (readthedocs compatibility)
