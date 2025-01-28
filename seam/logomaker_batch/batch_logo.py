@@ -259,18 +259,45 @@ class BatchLogo:
         plt.tight_layout()
         return fig, axes
     
-    def draw_single(self, idx):
-        """Draw a single logo"""
+    def draw_single(self, idx, fixed_ylim=True, view_window=None, fig_size=None):
+        """Draw a single logo
+        
+        Parameters
+        ----------
+        idx : int
+            Index of logo to draw
+        fixed_ylim : bool, default=True
+            Whether to use same y-axis limits across all logos
+        view_window : list or tuple, optional
+            [start, end] positions to view. If None, show entire logo
+        fig_size : tuple, optional
+            Figure size in inches. If None, use size from initialization
+        """
         if idx not in self.processed_logos:
             raise ValueError(f"Logo {idx} has not been processed yet. Run process_all() first.")
-                
-        fig, ax = plt.subplots(figsize=self.figsize)
-        self._draw_single_logo(ax, self.processed_logos[idx])
+        
+        fig, ax = plt.subplots(figsize=fig_size if fig_size is not None else self.figsize)
+        self._draw_single_logo(ax, self.processed_logos[idx], fixed_ylim=fixed_ylim)
+        
+        if view_window is not None:
+            start, end = view_window
+            ax.set_xlim(start-0.5, end-0.5)
+        
         plt.tight_layout()
         return fig, ax
     
-    def _draw_single_logo(self, ax, logo_data):
-        """Draw a single logo on the given axes"""
+    def _draw_single_logo(self, ax, logo_data, fixed_ylim=True):
+        """Draw a single logo on the given axes.
+        
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes
+            Axes to draw on
+        logo_data : dict
+            Logo data containing glyphs
+        fixed_ylim : bool, default=True
+            Whether to use same y-axis limits across all logos
+        """
         timing = {}
         
         with TimingContext('patch_creation', timing):
@@ -289,10 +316,11 @@ class BatchLogo:
         with TimingContext('axis_setup', timing):
             # Set proper axis limits
             ax.set_xlim(-0.5, self.L - 0.5)
-            if self.y_min_max is not None:
+            
+            if fixed_ylim and self.y_min_max is not None:
                 ax.set_ylim(self.y_min_max[0], self.y_min_max[1])
             else:
-                # Calculate ylims from glyphs only if y_min_max not set
+                # Calculate ylims from glyphs only
                 floors = [g['floor'] for g in logo_data['glyphs']]
                 ceilings = [g['ceiling'] for g in logo_data['glyphs']]
                 ymin = min(floors) if floors else 0
@@ -390,8 +418,16 @@ class BatchLogo:
         # For each position, subtract the mean of that position
         return values - values.mean(axis=-1, keepdims=True)
 
-    def draw_variability_logo(self):
-        """Draw a variability logo showing all glyphs from all clusters overlaid at each position."""
+    def draw_variability_logo(self, view_window=None, fig_size=None):
+        """Draw a variability logo showing all glyphs from all clusters overlaid at each position.
+        
+        Parameters
+        ----------
+        view_window : list or tuple, optional
+            [start, end] positions to view. If None, show entire logo
+        fig_size : tuple, optional
+            Figure size in inches. If None, use size from initialization
+        """
         # Process all glyphs into logo_data
         logo_data = {'glyphs': []}
         
@@ -455,9 +491,13 @@ class BatchLogo:
                             })
                             floor = ceiling + self.kwargs['vsep']
         
-        # Use the same drawing pattern as draw_single
-        fig, ax = plt.subplots(figsize=self.figsize)
-        self._draw_single_logo(ax, logo_data)
+        fig, ax = plt.subplots(figsize=fig_size if fig_size is not None else self.figsize)
+        self._draw_single_logo(ax, logo_data, fixed_ylim=True)
+        
+        if view_window is not None:
+            start, end = view_window
+            ax.set_xlim(start-0.5, end-0.5)
+        
         plt.tight_layout()
         return fig, ax
 

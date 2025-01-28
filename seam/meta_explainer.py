@@ -84,11 +84,11 @@ class MetaExplainer:
         self.clusterer = clusterer  # clusterer.cluster_labels should contain labels_n
         self.mave = mave_df
         self.attributions = attributions
-        self.ref_idx = ref_idx
-        self.background_separation = background_separation
-        self.mut_rate = mut_rate
         self.sort_method = sort_method
-        self.alphabet = alphabet or ['A', 'C', 'G', 'T']
+        self.ref_idx = ref_idx
+        self.mut_rate = mut_rate
+        self.alphabet = ['A', 'C', 'G', 'T']  # Default DNA alphabet
+        self.background_logos = None
         
         # Initialize other attributes
         self.msm = None
@@ -560,7 +560,7 @@ class MetaExplainer:
                       mut_rate=0.01, entropy_threshold_factor=0.5,
                       figsize=(20, 2.5), batch_size=50, font_name='sans',
                       stack_order='big_on_top', center_values=True, 
-                      fixed_ylim=False, color_scheme='classic'):
+                      color_scheme='classic'):
         """Generate sequence or attribution logos for each cluster.
         
         Parameters
@@ -574,25 +574,18 @@ class MetaExplainer:
             Mutation rate for background entropy calculation when background_separation=True.
         entropy_threshold_factor : float, default=0.5
             Factor to multiply background entropy by for threshold when background_separation=True.
-        figsize : tuple of float, default=(20, 2.5)
-            Figure size (width, height) in inches.
+        figsize : tuple, default=(20, 2.5)
+            Figure size in inches.
         batch_size : int, default=50
             Number of logos to process in each batch.
         font_name : str, default='sans'
-            Font family to use for logo characters.
+            Font name for logo text.
         stack_order : {'big_on_top', 'small_on_top', 'fixed'}, default='big_on_top'
-            How to stack characters in logos.
+            Order to stack characters in each position.
         center_values : bool, default=True
-            Whether to center values around zero for each position.
-        fixed_ylim : bool, default=False
-            Whether to use same y-axis limits across all logos.
-        color_scheme : str, default='classic'
-            Color scheme for sequence logos.
-
-        Returns
-        -------
-        BatchLogo
-            Object containing the generated logos.
+            Whether to center values in each position.
+        color_scheme : str or dict, default='classic'
+            Color scheme for logo characters.
         """
         # Get sorted cluster order using class attribute
         cluster_order = self.get_cluster_order(sort_method=self.sort_method)
@@ -609,7 +602,6 @@ class MetaExplainer:
             seqs_k = self.mave.loc[k_idxs, 'Sequence']
             
             if logo_type == 'attribution':
-                # Average attribution maps for this cluster
                 maps_avg = np.mean(self.attributions[k_idxs], axis=0)
                 if background_separation:
                     maps_avg -= self.background
@@ -638,9 +630,9 @@ class MetaExplainer:
         # Stack matrices into 3D array
         logo_array = np.stack(cluster_matrices)
         
-        # Only compute global y-limits if fixed_ylim is True
+        # Always compute global y-limits for attribution logos
         y_min_max = None
-        if fixed_ylim and logo_type == 'attribution':
+        if logo_type == 'attribution':
             y_mins = []
             y_maxs = []
             # Make a copy of logo_array to avoid modifying the original when centering
@@ -772,7 +764,6 @@ class MetaExplainer:
             child_maps = self.attributions[k_idxs]
             
             # Get entropic positions for this cluster
-            # Note: Need regulatory_df equivalent or compute entropy here
             entropic_positions = self._get_entropic_positions(k, entropy_threshold)
             
             if len(entropic_positions) == 0:
@@ -784,9 +775,21 @@ class MetaExplainer:
                     cluster_background[idx, ep, :] += child[ep, :]
             cluster_background[idx] /= len(child_maps)
         
-        # Store average background across clusters
+        # Store both cluster backgrounds and their average
+        self.cluster_backgrounds = cluster_background
         self.background = np.mean(cluster_background, axis=0)
-        return self.background
+        
+        # Create BatchLogo instance for backgrounds
+        self.background_logos = BatchLogo(
+            cluster_background,  # Pass the cluster_background directly
+            alphabet=self.alphabet,
+            fig_size=[20, 2.5],
+            batch_size=50,
+            font_name='sans'
+        )
+        self.background_logos.process_all()
+        
+        return self.background_logos
 
     def _get_entropic_positions(self, cluster, threshold):
         """Get positions with entropy above threshold for given cluster.
@@ -832,25 +835,18 @@ class MetaExplainer:
 
 """
 # TODO:
-1. Bias removal from meta_explainer_orig.py --> call this "background separation" in the current code
-    - see 'if bias_removal is True:' in meta_explainer_orig.py
-    - Add documentation about background separation
-    - Fix AttributeError in generate_logos for self.background
-    - Add background computation and storage in MetaExplainer.__init__
+1. Save directories for saving outputs to appropriate directories
 
-2. Save directories for saving outputs to appropriate directories
-
-3. Check profile plotting functionality (lines 741-753 from meta_explainer_orig.py)
+2. Check profile plotting functionality (lines 741-753 from meta_explainer_orig.py)
    - Plot individual profiles for each cluster
    - Handle alpha blending for overlays
 
-4. Handle attribution map delimiting (i.e., meta_explainer_orig.py: seq_start and seq_stop logic)
-
-5. Package Structure Updates:
+3. Package Structure Updates:
    - Ensure all package imports work both in development and after pip install
 
-6. Plotting functionality
-    - Line up the MSM with the logos, and with the bar plot
+4. Plotting functionality
+    - Line up the MSM with the logos below them, and with the bar plot to their right (see below)
+    - Use marginal bar plots on the right side of the MSM figure
 
 NOTE: Several components from meta_explainer_orig.py have already been modernized:
 
