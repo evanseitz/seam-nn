@@ -61,7 +61,7 @@ SEAM provides a simple interface that takes as input a sequence-based deep-learn
 
 - [Figure 2. Local library with hierarchical clustering | DeepSTARR](https://colab.research.google.com/drive/1HlkEdCpnlMFF_Ab7y7HDDVFS6sIv8c9f?usp=sharing)
 
-Expected run time for the "Figure 2. Local library with hierarchical clustering | DeepSTARR" demo (above) is *~3.6 minutes* using Google Colab T4 GPU.
+Expected run time for the "Figure 2. Local library with hierarchical clustering | DeepSTARR" demo (above) is **~3.6 minutes** using Google Colab T4 GPU.
 
 **Python script examples** are provided in the `examples/` folder for locally running SEAM and exporting outputs to file. Additional dependencies for these examples may be required and outlined at the top of each script. Examples include:
 
