@@ -38,6 +38,7 @@ For embedding methods:
 * openTSNE (for t-SNE)
 * scikit-learn (for PCA, K-means, DBSCAN)
 
+For attribution methods:
 * shap (for DeepSHAP)
 
 Development
