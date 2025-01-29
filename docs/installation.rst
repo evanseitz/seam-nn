@@ -33,13 +33,10 @@ Optional Dependencies:
 ~~~~~~~~~~~~~~~~~~~~
 
 For embedding methods:
-
 * umap-learn (for UMAP)
 * phate (for PHATE)
 * openTSNE (for t-SNE)
 * scikit-learn (for PCA, K-means, DBSCAN)
-
-For attribution methods:
 
 * shap (for DeepSHAP)
 
