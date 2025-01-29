@@ -1,0 +1,14 @@
+sphinx>=4.0.0
+sphinx-rtd-theme
+sphinx-autodoc-typehints
+myst-parser
+numpy
+matplotlib>=3.2.0
+pandas
+tqdm
+psutil
+biopython
+tensorflow>=2.0.0
+scipy>=1.7.0
+squid-nn
+seaborn
