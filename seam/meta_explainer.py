@@ -1,22 +1,28 @@
+from __future__ import division  # Should be first import
+
 # Standard libraries
 import os
 import sys
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from tqdm import tqdm
-
-# Bioinformatics libraries
-from Bio import motifs  # pip install biopython
 from scipy.stats import entropy
-from logomaker_batch.batch_logo import BatchLogo
+
+# Visualization libraries
+import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm
 
-# Local imports
+# Bioinformatics libraries
+from Bio import motifs  # For PWM/enrichment logos
+
+# BatchLogo package imports
+from logomaker_batch.batch_logo import BatchLogo
+
+# Local utilities
 try:  # Try relative import first (for pip package)
     from . import utils
-except ImportError:  # Fall back to direct import (for Colab/direct usage)
-    import utils # ensure utils is imported first in Colab before this step
+except ImportError:  # Fall back to direct import (for development/Colab)
+    import utils
 
 class MetaExplainer:
     """A class for analyzing and visualizing attribution map clusters.
@@ -847,26 +853,4 @@ class MetaExplainer:
 4. Plotting functionality
     - Line up the MSM with the logos below them, and with the bar plot to their right (see below)
     - Use marginal bar plots on the right side of the MSM figure
-
-NOTE: Several components from meta_explainer_orig.py have already been modernized:
-
-1. generate_regulatory_df has been upgraded to generate_msm() with:
-   - Parallel processing
-   - Vectorized operations
-   - Better memory management
-   - GPU support option
-   - Progress tracking
-   Reference: meta_explainer.py lines 248-318
-
-2. Boxplot functionality and median sorting are now handled by:
-   - plot_cluster_stats() for visualization (lines 130-213)
-   - get_cluster_order() for cluster sorting
-   Both include improved error handling and more configuration options
-
-3. aesthetic_lvl parameter has been deprecated:
-   - Originally used to trade off logo quality for speed
-   - No longer needed due to BatchLogo's optimized rendering
-   - All logos now render at highest quality with minimal performance impact
-
-4. bias removal has been renamed to background separation
 """
