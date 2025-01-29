@@ -14,7 +14,7 @@ from .clusterer import Clusterer
 from .utils import suppress_warnings, get_device
 
 # Version info
-__version__ = "0.1.5"
+__version__ = "0.1.6"
 
 # Expose key classes
 __all__ = [
