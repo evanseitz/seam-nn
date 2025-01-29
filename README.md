@@ -55,6 +55,8 @@ SEAM provides a simple interface that takes as input a sequence-based deep-learn
 
 <!-- <img src="./docs/_static/framework.png" alt="fig" width="1000"/> -->
 
+API figure: To be done.
+
 ### Examples
 
 **Google Colab examples** for applying SEAM on previously-published deep learning models are available at the following links:
