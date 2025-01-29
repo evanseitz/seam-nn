@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="seam-nn",
-    version="0.1.2",
+    version="0.1.3",
     author="Evan Seitz",
     author_email="evan.e.seitz@gmail.com",
     description="SEAM: Meta-explanations for interpreting sequence-based deep learning models",
@@ -27,7 +27,8 @@ setup(
         'psutil',
         'biopython',
         'tensorflow>=2.0.0',
-        'scipy',
+        'scipy>=1.7.0',
+        'squid-nn'
     ],
     extras_require={
         'docs': [

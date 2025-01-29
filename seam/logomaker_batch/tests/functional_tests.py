@@ -1,4 +1,3 @@
-
 import os, sys, time
 import numpy as np
 from matplotlib import pyplot as plt
@@ -41,14 +40,17 @@ if 0: # CPU only version (new) --> DON'T USE THIS OVER THE ABOVE VERSION
     print('Logo time:', t2)
     plt.show()
 
-if 1: # original logomaker version
-    import logomaker
-    t1 = time.time()
-    logo = logomaker.Logo(squid.utils.arr2pd(attributions[0]),
-                          )
-    t2 = time.time() - t1
-    print('Logo time:', t2)
-    plt.show()
+if 0: # original logomaker version (for benchmarking)
+    try:
+        import logomaker
+        t1 = time.time()
+        logo = logomaker.Logo(squid.utils.arr2pd(attributions[0]))
+        t2 = time.time() - t1
+        print('Logo time:', t2)
+        plt.show()
+    except ImportError:
+        print("Original logomaker not installed. To benchmark against it:")
+        print("pip install logomaker")
 
 
 

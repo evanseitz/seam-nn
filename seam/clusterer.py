@@ -4,9 +4,49 @@ import time
 import numpy as np
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from sklearn.cluster import KMeans, DBSCAN
 from scipy.spatial.distance import squareform
 from scipy.cluster import hierarchy
+
+def _check_umap_available():
+    try:
+        import umap
+    except ImportError:
+        raise ImportError(
+            "UMAP is required for this functionality. "
+            "Install it with: pip install umap-learn"
+        )
+    return umap
+
+def _check_phate_available():
+    try:
+        import phate
+    except ImportError:
+        raise ImportError(
+            "PHATE is required for this functionality. "
+            "Install it with: pip install phate"
+        )
+    return phate
+
+def _check_tsne_available():
+    try:
+        from openTSNE import TSNE
+    except ImportError:
+        raise ImportError(
+            "t-SNE requires the 'openTSNE' package. "
+            "Install it with: pip install openTSNE"
+        )
+    return TSNE
+
+def _check_sklearn_available():
+    try:
+        from sklearn.cluster import KMeans, DBSCAN
+        from sklearn.decomposition import PCA
+    except ImportError:
+        raise ImportError(
+            "scikit-learn is required for this functionality. "
+            "Install it with: pip install scikit-learn"
+        )
+    return KMeans, DBSCAN, PCA
 
 class Clusterer:
     """
@@ -20,12 +60,12 @@ class Clusterer:
     - PHATE (requires phate)
     - t-SNE (requires openTSNE)
     - PCA (requires scikit-learn)
-    - Diffusion Maps
+    - Diffusion Maps (not yet implemented)
 
     Clustering Methods:
     - Hierarchical (GPU-optimized available)
-    - K-means
-    - DBSCAN
+    - K-means (requires scikit-learn)
+    - DBSCAN (requires scikit-learn)
     
     Requirements:
     - numpy
@@ -110,14 +150,14 @@ class Clusterer:
             embedding = self._embed_tsne(**kwargs)
         elif self.method == 'pca':
             embedding = self._embed_pca(**kwargs)
-        elif self.method == 'diffmap':
-            embedding = self._embed_diffusion_maps(**kwargs)
             
         print(f'Embedding time: {time.time() - t0:.2f}s')
         return embedding
     
     def _embed_umap(self, **kwargs):
         """Compute UMAP embedding with optional GPU acceleration."""
+        umap = _check_umap_available()
+        
         if self.gpu:
             try:
                 from cuml.manifold import UMAP
@@ -126,39 +166,23 @@ class Clusterer:
                 print("cuml not available. Falling back to CPU implementation.")
                 print("For GPU acceleration, install cuml via conda:")
                 print("conda install -c rapidsai -c conda-forge -c nvidia cuml cuda-version=11.8")
-                try:
-                    import umap
-                    UMAP = umap.UMAP
-                except ImportError:
-                    raise ImportError("UMAP requires the 'umap-learn' package. Install with: pip install umap-learn")
-        else:
-            try:
-                import umap
                 UMAP = umap.UMAP
-                print("Using CPU UMAP")
-            except ImportError:
-                raise ImportError("UMAP requires the 'umap-learn' package. Install with: pip install umap-learn")
+        else:
+            UMAP = umap.UMAP
+            print("Using CPU UMAP")
         
         fit = UMAP(n_components=self.n_components, **kwargs)
         return fit.fit_transform(self.maps)
     
     def _embed_phate(self, **kwargs):
         """Compute PHATE embedding."""
-        try:
-            import phate
-        except ImportError:
-            raise ImportError("PHATE requires the 'phate' package. Install with: pip install --user phate")
-            
+        phate = _check_phate_available()
         phate_op = phate.PHATE(n_components=self.n_components, **kwargs)
         return phate_op.fit_transform(self.maps)
     
     def _embed_tsne(self, perplexity=30, n_jobs=8, random_state=42, **kwargs):
         """Compute t-SNE embedding."""
-        try:
-            from openTSNE import TSNE
-        except ImportError:
-            raise ImportError("t-SNE requires the 'openTSNE' package. Install with: pip install openTSNE")
-            
+        TSNE = _check_tsne_available()
         tsne = TSNE(
             perplexity=perplexity,
             metric="euclidean",
@@ -170,19 +194,20 @@ class Clusterer:
     
     def _embed_pca(self, **kwargs):
         """Compute PCA embedding."""
-        try:
-            from sklearn.decomposition import PCA
-        except ImportError:
-            raise ImportError("PCA requires the 'scikit-learn' package. Install with: pip install scikit-learn")
-            
+        _, _, PCA = _check_sklearn_available()
         return PCA(n_components=self.n_components, **kwargs).fit_transform(self.maps)
     
     def _embed_diffusion_maps(self, epsilon=None, batch_size=10000, dist_fname='distances.dat', **kwargs):
         """Compute Diffusion Maps embedding."""
-        D = self._compute_distance_matrix(batch_size, dist_fname)
+        '''D = self._compute_distance_matrix(batch_size, dist_fname)
         import diffusion_maps
         vals, embedding = diffusion_maps.op(D, epsilon, **kwargs)
-        return embedding[:, :self.n_components]
+        return embedding[:, :self.n_components]'''
+        raise NotImplementedError(
+        "Diffusion Maps embedding is not yet implemented. "
+        "This feature will be available in a future release."
+    )
+    
     
     def _compute_distance_matrix(self, batch_size=10000, dist_fname='distances.dat', return_flat=False):
         """Compute pairwise distance matrix with GPU acceleration if available.
@@ -260,18 +285,21 @@ class Clusterer:
                 raise ValueError("No embedding provided or computed. Run embed() first.")
             embedding = self.embedding
 
-        if method == 'kmeans':
-            clusterer = KMeans(
-                n_clusters=n_clusters,
-                init='k-means++',
-                random_state=kwargs.get('random_state', 0),
-                n_init=kwargs.get('n_init', 10)
-            )
-        elif method == 'dbscan':
-            clusterer = DBSCAN(
-                eps=kwargs.get('eps', 0.01),
-                min_samples=kwargs.get('min_samples', 10)
-            )
+        if method in ['kmeans', 'dbscan']:
+            KMeans, DBSCAN, _ = _check_sklearn_available()
+            
+            if method == 'kmeans':
+                clusterer = KMeans(
+                    n_clusters=n_clusters,
+                    init='k-means++',
+                    random_state=kwargs.get('random_state', 0),
+                    n_init=kwargs.get('n_init', 10)
+                )
+            else:  # dbscan
+                clusterer = DBSCAN(
+                    eps=kwargs.get('eps', 0.01),
+                    min_samples=kwargs.get('min_samples', 10)
+                )
             
         self.cluster_labels = clusterer.fit_predict(embedding)
         return self.cluster_labels
@@ -606,7 +634,6 @@ class Clusterer:
 
 
 # TODO:
-# - For _embed_tsne, the return statement is just tsne.fit(self.maps) - should this be tsne.fit_transform(self.maps)?
 # - implement other methods from cuml.manifold?
 # - add diffusion maps code
 # - control figure size in plot_embedding, plot_histogram, plot_dendrogram

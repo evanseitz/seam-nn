@@ -3,7 +3,22 @@ import sys
 from tqdm import tqdm
 import numpy as np
 import tensorflow as tf
-import shap
+
+try:
+    import shap
+    HAS_SHAP = True
+except ImportError:
+    HAS_SHAP = False
+
+def _check_shap_available():
+    try:
+        import shap
+    except ImportError:
+        raise ImportError(
+            "SHAP is required for this functionality. "
+            "Install it with: pip install shap"
+        )
+    return shap
 
 class Attributer:
     """
@@ -117,6 +132,9 @@ class Attributer:
         if self.batch_size > 1 and method == 'deepshap':  # removed ISM from this check
             print(f"Warning: {method} is not optimized for batch mode. Using batch_size=1")
             self.batch_size = 1
+
+        if method == 'shap':
+            self.shap = _check_shap_available()
 
     @tf.function
     def _saliency_map(self, X):

@@ -107,8 +107,5 @@ ENV/
 # mypy
 .mypy_cache/
 
-# examples
-examples/*
-
 
 
