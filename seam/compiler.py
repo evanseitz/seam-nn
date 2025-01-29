@@ -18,7 +18,6 @@ class Compiler:
     - numpy
     - pandas
     - scipy
-    - squid (for one-hot to sequence conversion)
     
     Example usage:
         # Initialize compiler
@@ -158,13 +157,3 @@ class Compiler:
         cols.append('Sequence')
         
         return df[cols]
-    
-
-# TODO:
-# - SEAM utils calls
-# - Task-specific predictions in each column
-# - Move hamming distance calculation to SEAM utils?
-# - save output to self.mave
-# - docstring check (readthedocs compatibility)
-# - discover alphabet from mave.csv and save to self.alphabet
-#   - e.g., alphabet = sorted(list(set(mave['Sequence'][0:100].apply(list).sum())))

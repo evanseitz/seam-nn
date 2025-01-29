@@ -1,0 +1,121 @@
+TODO:
+- save output to self
+- check PWMs and enrichment logos
+    - PWM bits should be max 2 (not 4)
+- docstring check (readthedocs compatibility)
+    - set up readthedocs
+- Colab examples:
+    - Fig.2 reproduced:
+        - Documentation at top of notebook about intent of demo and its figure in the paper 
+    - DeepSTARR mismatch figure reproduced
+        - color logos by reference sequence 
+    - DeepSTARR background separation figure reproduced
+    - DeepSTARR 3-way mutation figure reproduced --> test with crop mode
+    - PBM dataset example
+        - compare to Seed-and-Wobble?
+    - REVO? BEAM?
+    - ChromBPNet?
+    - PIK3R3?
+    - DeepSTARR global analysis with interactive plots --> send to Yagi
+        - GIA scores in Compiler
+- local examples in examples/ directory:
+    - repeat of Colab examples
+    - new examples
+    - example using TF1 --> TF2 workflow
+- option to use PyTorch instead of TensorFlow and Captum (ProCapNet example)
+- embed Hessian and attribution map?
+- save directory params
+    - options to save output in Colab
+    - folder name specification: e.g., "kmeans_k200" for 200 clusters
+
+Colab:
+    - rerun computation times with A100
+        - update header with GPU and time
+        - update SEAM README with GPU and time
+
+- Attributer:
+    - Refactor DeepSHAP code for newer TF versions
+    - ISM:
+        - ISM with sum or PCA option
+        - option for FastISM?
+        -add memory mode for ISM (numpy memmap)
+    - Empirical Mutagenesis Maps (for combinatorially-complete library)
+    - DeepSHAP for TF2: dinuc_shuffle, etc. in batch mode with GPUs
+
+- Ensembler Class for combining model folds?
+    -  update SQUID repository for replicates logic
+
+- Compiler:
+    - SEAM utils calls
+    - Task-specific predictions in each column
+    - Move hamming distance calculation to SEAM utils?
+    - save output to self.mave
+    - docstring check (readthedocs compatibility)
+    - discover alphabet from mave.csv and save to self.alphabet
+        - e.g., alphabet = sorted(list(set(mave['Sequence'][0:100].apply(list).sum())))
+
+- Clusterer:
+    - implement other methods from cuml.manifold?
+    - add diffusion maps code
+    - control figure size in plot_embedding, plot_histogram, plot_dendrogram
+    - save output to self
+
+- MetaExplainer:
+    - Check for instances of old bug where highest ‘fixed’ height logo gets chopped
+    - add mutual information plot to explainer?
+    - JK: plot KL divergence between cluster and BG (2nd distribution) for coloring MSM?
+    - Marginal delta_H to show regions of conservation
+    - test plot_cluster_profiles
+        - check profile plotting functionality (lines 741-753 from meta_explainer_orig.py)
+            - plot individual profiles for each cluster
+            - handle alpha blending for overlays
+    - line up the MSM with the logos below them, and with the bar plot to their right (see below)
+    - use marginal bar plots on the right side of the MSM figure
+
+- Identifier:
+    - Correlation matrix
+        - Use old code for generating pairwise matrix
+        - 
+    - Fisher, Binomial, etc. for SNPs database
+
+- GUI Class:
+    - update for latest repository
+    - if adaptive logos not pre-generated, automatically show fixed
+    - PWM bits are not correct (should be max 2, not 4)
+    - MSM window: boxplots of y values in margin or separate window
+    - P1: if no manifold, n/a plots on P2 and P3
+    - Save a page of individual logos to figure from a given cluster (popup window with start/stop option)
+    - if no points selected, clear and show warning box
+    - P2: “adaptive” and “fixed”
+    - P2/P3: statistics window needs correct toolbar readouts
+    - P1: “First row”, “consensus”, “custom”, “None”
+    - All axes: just show 0,25,50,75,100%
+    - Redoing cluster folder on P1 (while hist shown on P2) results in overlapping plots on P2
+    - Drop duplicates
+    - Put {attribution method} (e.g., DeepSHAP) in all /clusters filenames
+    - Box plots for y vs clusters in MSM margin or sub-window
+    - P3 logos still vertically squished
+    - Disable dark mode
+    - Re-assert “Drawing order” after changing “Color Map” on P2
+    - Toolbars: save with tight layout
+    - Go to WT cluster (i.e., first row of ‘all clusters.csv’)
+    - Check accuracy of delta H calculation (error?)
+    - Plot_clusters_matches_2d_gui:
+        - Impress: delta=True in GUI; alphabet; “r” (mutation rate)
+    - GUI marginal window needs “Entropy difference” option
+    - P2: button to save indices of encircled points (and print)
+    - P2: show occupancy of encircled region in toolbar
+    - GUI crash on P3 for UMAP and hierarchical logos
+    - Slightly larger black points on P3 of GUI
+    - MSM: option to map SEAM coordinates to new number (e.g., chr1:A-B)
+    - P3: resize logo as window is made larger
+    - Save mismatch table in Marginal Window of GUI; popup window showing location of saved file
+    - Option to rank MSM by median y value (if pre-sort is not selected)
+    - “Show boxplots” button
+    - P3: up and down toggle arrows for “choose cluster”
+    - P3: render and save logo on the fly (if missing)
+    - Ability to switch between hierarchical cut levels on the fly
+    - For public release, make sure all examples have all logos (fixed, etc.)
+    - Update P3 UMAP when Custom.plt_step is changed on P2 (needs to update Predef.cluster_colors)
+    - New tab to merge clusters and label them (e.g., AP-1, etc)
+        - Visualize state vs. TFBS presence graph

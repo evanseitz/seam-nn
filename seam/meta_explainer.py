@@ -705,7 +705,7 @@ class MetaExplainer:
         
         return cluster_seqs[['Sequence', 'DNN']]
 
-    def plot_cluster_profiles(self, profiles, save_dir=None, dpi=200): # TODO: check this
+    def plot_cluster_profiles(self, profiles, save_dir=None, dpi=200):
         """Plot overlay of profiles associated with each cluster.
         
         Parameters
@@ -717,7 +717,7 @@ class MetaExplainer:
         dpi : int
             DPI for saved figures
         """
-        if not os.path.exists(save_dir): # TODO: is this right?
+        if not os.path.exists(save_dir):
             os.makedirs(save_dir)
         
         for k in self.cluster_indices:
@@ -838,19 +838,3 @@ class MetaExplainer:
         
         # Return positions above threshold
         return np.where(entropies > threshold)[0]
-
-"""
-# TODO:
-1. Save directories for saving outputs to appropriate directories
-
-2. Check profile plotting functionality (lines 741-753 from meta_explainer_orig.py)
-   - Plot individual profiles for each cluster
-   - Handle alpha blending for overlays
-
-3. Package Structure Updates:
-   - Ensure all package imports work both in development and after pip install
-
-4. Plotting functionality
-    - Line up the MSM with the logos below them, and with the bar plot to their right (see below)
-    - Use marginal bar plots on the right side of the MSM figure
-"""

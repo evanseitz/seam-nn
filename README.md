@@ -1,7 +1,7 @@
 SEAM: systematic explanation of attribution-based mechanisms for regulatory genomics
 ========================================================================
 [![PyPI version](https://badge.fury.io/py/seam-nn.svg)](https://badge.fury.io/py/seam-nn)
-<!-- [![Downloads](https://static.pepy.tech/badge/seam-nn)](https://pepy.tech/project/seam-nn) -->
+[![Downloads](https://static.pepy.tech/badge/seam-nn)](https://pepy.tech/project/seam-nn) 
 <!-- [![Documentation Status](https://readthedocs.org/projects/squid-nn/badge/?version=latest)](https://squid-nn.readthedocs.io/en/latest/?badge=latest) -->
 <!-- [![DOI](https://zenodo.org/badge/711703377.svg)](https://zenodo.org/doi/10.5281/zenodo.11060671) -->
 
@@ -29,7 +29,6 @@ Next, activate this environment via `conda activate seam`, and install the follo
 
 ```bash
 pip install seam-nn
-pip install squid-nn
 ```
 
 Finally, when you are done using the environment, always exit via `conda deactivate`.
@@ -37,7 +36,7 @@ Finally, when you are done using the environment, always exit via `conda deactiv
 
 ### Notes
 
-SEAM has been tested on Mac and Linux operating systems. Typical installation time on a normal computer is less than 2 minutes.
+SEAM has been tested on Mac and Linux operating systems. Typical installation time on a normal computer is less than 1 minute.
 
 If you have any issues installing SEAM, please see:
 - https://seam-nn.readthedocs.io/en/latest/installation.html
@@ -60,15 +59,15 @@ SEAM provides a simple interface that takes as input a sequence-based deep-learn
 
 **Google Colab examples** for applying SEAM on previously-published deep learning models are available at the following links:
 
-- To be done.
+- [Figure 2. Local library with hierarchical clustering | DeepSTARR](https://colab.research.google.com/drive/1HlkEdCpnlMFF_Ab7y7HDDVFS6sIv8c9f?usp=sharing)
+
+Expected run time for the "Figure 2. Local library with hierarchical clustering | DeepSTARR" demo (above) is ~3.6 minutes using Google Colab T4 GPU.
 
 **Python script examples** are provided in the `examples/` folder for locally running SEAM and exporting outputs to file. Additional dependencies for these examples may be required and outlined at the top of each script. Examples include:
 
 - To be done.
 
 <!-- As well, the [seam-manuscript](https://github.com/evanseitz/seam-manuscript) repository contains examples to reproduce results in the manuscript, including the application of SQUID on other DNNs such as ChromBPNet and directly to experimental datasets -->
-
-<!-- Expected run time for the "Variant effect (local) prediction with DeepSTARR–Kipoi" demo (above) is 4 minutes using Google Colab V100 GPU. -->
 
 ## Citation:
 If this code is useful in your work, please cite our paper.

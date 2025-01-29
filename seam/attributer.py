@@ -654,11 +654,3 @@ def compute_attributions(model, x, x_ref=None, method='saliency', func=tf.math.r
     """
     attributer = Attributer(model, method=method, func=func)
     return attributer.compute(x, x_ref=x_ref, **kwargs)
-
-
-# TODO:
-# - add memory mode for ISM (numpy memmap)
-# - test save window
-# - deepshap code in TF2: dinuc_shuffle, etc.
-# - save output to self
-# - docstring check (readthedocs compatibility)

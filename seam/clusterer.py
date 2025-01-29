@@ -631,11 +631,3 @@ class Clusterer:
             
         else:
             raise ValueError("criterion must be either 'distance' or 'maxclust'")
-
-
-# TODO:
-# - implement other methods from cuml.manifold?
-# - add diffusion maps code
-# - control figure size in plot_embedding, plot_histogram, plot_dendrogram
-# - save output to self
-# - docstring check (readthedocs compatibility)
