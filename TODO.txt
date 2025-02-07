@@ -65,6 +65,7 @@ Colab:
     - add diffusion maps code
     - control figure size in plot_embedding, plot_histogram, plot_dendrogram
     - save output to self
+    - can the CPU hierarchical clustering be made faster?
 
 - MetaExplainer:
     - Check for instances of old bug where highest ‘fixed’ height logo gets chopped
@@ -77,16 +78,16 @@ Colab:
             - handle alpha blending for overlays
     - line up the MSM with the logos below them, and with the bar plot to their right (see below)
     - use marginal bar plots on the right side of the MSM figure
+    - background_entropy currently only defined for 4 nucleotides
 
 - Identifier:
-    - Correlation matrix
-        - Use old code for generating pairwise matrix
-        - show boxes on correlation matrix (see /downloads/seam_correlation/)
-        - show clustered correlation matrix
-        - try correlation over meta-attribution map positions?
     - Fisher, Binomial, etc. for SNPs database
     - update readthedocs for Identifier
     - Jack needs positions and cluster index for each motif
+    - add xtick_spacing to plot_covariance_square
+    - minimize redundancies between functions in identifier.py and clusterer.py (plots for dendrogram, msm, etc.)
+    - background_entropy currently only defined for 4 nucleotides
+
 
 - Impress:
     - move all plotting code to impress.py?
