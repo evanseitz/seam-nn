@@ -477,9 +477,8 @@ class MetaExplainer:
         
         # Add TFBS cluster rectangles if requested
         if show_tfbs_clusters and tfbs_clusters is not None:
-            # Define entropy threshold for active regions
-            mut_rate = 0.10  # Mutation rate used to generate sequence library
-            null_rate = 1 - mut_rate
+            # Define entropy threshold for active regions using instance mut_rate
+            null_rate = 1 - self.mut_rate
             background_entropy = entropy([null_rate, (1-null_rate)/3, (1-null_rate)/3, (1-null_rate)/3], base=2)
             entropy_threshold = background_entropy * entropy_multiplier
             
@@ -487,49 +486,48 @@ class MetaExplainer:
             active_clusters_by_tfbs = {}
             
             for cluster, positions in tfbs_clusters.items():
-                # Filter positions based on view window
-                if view_window:
-                    positions = [p for p in positions 
-                               if view_window[0] <= p <= view_window[1]]
-                    if not positions:
-                        continue
+                if positions:
+                    start = min(positions)
+                    end = max(positions)
                     
-                    # Adjust positions for view window
-                    plot_positions = [p - view_window[0] for p in positions]
-                else:
-                    plot_positions = positions
-                
-                # Find active clusters for this TFBS
-                active_clusters = []
-                for cluster_idx in range(matrix_data.shape[0]):
-                    cluster_entropy = matrix_data[cluster_idx, min(plot_positions):max(plot_positions)+1]
-                    if np.mean(cluster_entropy) < entropy_threshold:
-                        active_clusters.append(cluster_idx)
-                
-                # Store active clusters
-                active_clusters_by_tfbs[cluster] = active_clusters
-                
-                # Group consecutive clusters and draw rectangles
-                for k, g in itertools.groupby(enumerate(active_clusters), 
-                                            lambda x: x[0] - x[1]):
-                    group = list(map(lambda x: x[1], g))
-                    if group:
-                        rect_start = min(group)
-                        rect_height = len(group)
-                        
-                        rect = patches.Rectangle(
-                            (min(plot_positions), rect_start),
-                            max(plot_positions) - min(plot_positions) + 1,
-                            rect_height,
-                            linewidth=1,
-                            edgecolor='black',
-                            facecolor='none'
-                        )
-                        main_ax.add_patch(rect)
+                    # Find all clusters where this TFBS is active
+                    active_clusters = []
+                    for cluster_idx in range(len(matrix_data)):
+                        cluster_entropy = matrix_data.iloc[cluster_idx, start:end + 1]
+                        if cluster_entropy.mean() < entropy_threshold:
+                            active_clusters.append(cluster_idx)
+                    
+                    active_clusters_by_tfbs[cluster] = active_clusters
+                    
+                    # Group consecutive clusters
+                    for k, g in itertools.groupby(enumerate(active_clusters), 
+                                                lambda x: x[0] - x[1]):
+                        group = list(map(lambda x: x[1], g))
+                        if group:
+                            rect_start = min(group)
+                            rect_height = len(group)
+                            
+                            # If using view window, adjust start position
+                            plot_start = start
+                            plot_end = end
+                            if view_window:
+                                if end < view_window[0] or start > view_window[1]:
+                                    continue
+                                plot_start = max(start, view_window[0])
+                                plot_end = min(end, view_window[1])
+                                plot_start -= view_window[0]
+                                plot_end -= view_window[0]
+                            
+                            rect = patches.Rectangle(
+                                (plot_start, rect_start), 
+                                plot_end - plot_start + 1, rect_height,
+                                linewidth=1, edgecolor='black', 
+                                facecolor='none'
+                            )
+                            main_ax.add_patch(rect)
             
             # Store active clusters information
-            if hasattr(self, 'active_clusters_by_tfbs'):
-                self.active_clusters_by_tfbs = active_clusters_by_tfbs
+            self.active_clusters_by_tfbs = active_clusters_by_tfbs
         
         # Set square cells if requested
         if square_cells:
