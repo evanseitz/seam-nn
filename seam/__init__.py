@@ -15,7 +15,7 @@ from .identifier import Identifier
 from .utils import suppress_warnings, get_device
 
 # Version info
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 # Expose key classes
 __all__ = [

@@ -67,6 +67,8 @@ Colab:
     - control figure size in plot_embedding, plot_histogram, plot_dendrogram
     - save output to self
     - can the CPU hierarchical clustering be made faster?
+    - higher-dimensional PCA into k-means?
+    - reuse DM distance matrix for clustering?
 
 - MetaExplainer:
     - Check for instances of old bug where highest ‘fixed’ height logo gets chopped
@@ -82,6 +84,7 @@ Colab:
     - background_entropy currently only defined for 4 nucleotides
 
 - Identifier:
+    - code to combine TFBS states based on squares in covariance matrix
     - Fisher, Binomial, etc. for SNPs database
     - update readthedocs for Identifier
     - Jack needs positions and cluster index for each motif
@@ -89,9 +92,10 @@ Colab:
     - minimize redundancies between functions in identifier.py and clusterer.py (plots for dendrogram, msm, etc.)
     - background_entropy currently only defined for 4 nucleotides
 
-
 - Impress:
     - move all plotting code to impress.py?
+        - plot_dendrogram
+        - etc.
 
 - GUI Class:
     - update for latest repository
@@ -138,7 +142,6 @@ Colab:
 - Sharing:
     - update about Readthedocs
 
-
 - Other:
     - clean up SEAM prelim folders (DeepSTARR) and Google Drive (move all LIFT/Locks out of SEAM)
     - backup SEAM Colabs on github
@@ -146,3 +149,11 @@ Colab:
     - SQUID replicates update
     - Yagi's data workflow and GUI
     - SEAM remaining figures
+
+- Motif finding:
+    - best attribution method?
+    - best num_seqs, mut_rate?
+    - best cut_level?
+        - attribution clusters
+        - TFBS clusters
+    - poised?

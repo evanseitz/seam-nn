@@ -481,25 +481,45 @@ class MetaExplainer:
             null_rate = 1 - self.mut_rate
             background_entropy = entropy([null_rate, (1-null_rate)/3, (1-null_rate)/3, (1-null_rate)/3], base=2)
             entropy_threshold = background_entropy * entropy_multiplier
+            print(f"Entropy threshold: {entropy_threshold:.3f} (mut_rate={self.mut_rate}, multiplier={entropy_multiplier})")
             
             # Store active clusters by TFBS
             active_clusters_by_tfbs = {}
             
             for cluster, positions in tfbs_clusters.items():
-                if positions:
-                    start = min(positions)
-                    end = max(positions)
+                print(f"\nTFBS cluster {cluster}:")
+                print(f"Original positions: {positions}")
+                
+                # Get original positions
+                original_indices = self.msm.pivot(columns='Position', index='Cluster', values=column).columns.tolist()
+                if not hasattr(self, 'row_order'):
+                    print("Warning: row_order not found, using original positions")
+                    reordered_positions = positions
+                else:
+                    reordered_positions = [original_indices[self.row_order.index(pos)] 
+                                         for pos in positions]
+                    print(f"Reordered positions: {reordered_positions}")
+                
+                if reordered_positions:
+                    start = min(reordered_positions)
+                    end = max(reordered_positions)
+                    print(f"Position range: {start}-{end}")
                     
                     # Find all clusters where this TFBS is active
                     active_clusters = []
                     for cluster_idx in range(len(matrix_data)):
                         cluster_entropy = matrix_data.iloc[cluster_idx, start:end + 1]
-                        if cluster_entropy.mean() < entropy_threshold:
+                        mean_entropy = cluster_entropy.mean()
+                        if mean_entropy < entropy_threshold:
                             active_clusters.append(cluster_idx)
+                            print(f"Cluster {cluster_idx} active (mean entropy: {mean_entropy:.3f})")
                     
+                    # Store active clusters for this TFBS
                     active_clusters_by_tfbs[cluster] = active_clusters
+                    print(f"Total active clusters: {len(active_clusters)}")
                     
                     # Group consecutive clusters
+                    rect_count = 0
                     for k, g in itertools.groupby(enumerate(active_clusters), 
                                                 lambda x: x[0] - x[1]):
                         group = list(map(lambda x: x[1], g))
@@ -512,11 +532,13 @@ class MetaExplainer:
                             plot_end = end
                             if view_window:
                                 if end < view_window[0] or start > view_window[1]:
+                                    print("Rectangle outside view window, skipping")
                                     continue
                                 plot_start = max(start, view_window[0])
                                 plot_end = min(end, view_window[1])
                                 plot_start -= view_window[0]
                                 plot_end -= view_window[0]
+                                print(f"Adjusted position for view window: {plot_start}-{plot_end}")
                             
                             rect = patches.Rectangle(
                                 (plot_start, rect_start), 
@@ -525,9 +547,12 @@ class MetaExplainer:
                                 facecolor='none'
                             )
                             main_ax.add_patch(rect)
+                            rect_count += 1
+                    print(f"Added {rect_count} rectangles")
             
             # Store active clusters information
             self.active_clusters_by_tfbs = active_clusters_by_tfbs
+            print(f"\nTotal TFBS clusters processed: {len(tfbs_clusters)}")
         
         # Set square cells if requested
         if square_cells:
