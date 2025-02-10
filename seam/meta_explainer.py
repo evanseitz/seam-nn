@@ -477,6 +477,8 @@ class MetaExplainer:
         
         # Add TFBS cluster rectangles if requested
         if show_tfbs_clusters and tfbs_clusters is not None:
+            print("\nProcessing TFBS clusters...")
+            
             # Define entropy threshold for active regions using instance mut_rate
             null_rate = 1 - self.mut_rate
             background_entropy = entropy([null_rate, (1-null_rate)/3, (1-null_rate)/3, (1-null_rate)/3], base=2)
@@ -486,23 +488,21 @@ class MetaExplainer:
             # Store active clusters by TFBS
             active_clusters_by_tfbs = {}
             
-            for cluster, positions in tfbs_clusters.items():
+            # Get nucleotide positions from MSM
+            msm_positions = self.msm.pivot(columns='Position', index='Cluster', values=column).columns.tolist()
+            print(f"MSM positions range: {min(msm_positions)}-{max(msm_positions)}")
+            
+            for cluster, linkage_positions in tfbs_clusters.items():
                 print(f"\nTFBS cluster {cluster}:")
-                print(f"Original positions: {positions}")
+                print(f"Linkage positions: {linkage_positions}")
                 
-                # Get original positions
-                original_indices = self.msm.pivot(columns='Position', index='Cluster', values=column).columns.tolist()
-                if not hasattr(self, 'row_order'):
-                    print("Warning: row_order not found, using original positions")
-                    reordered_positions = positions
-                else:
-                    reordered_positions = [original_indices[self.row_order.index(pos)] 
-                                         for pos in positions]
-                    print(f"Reordered positions: {reordered_positions}")
+                # Convert linkage positions to nucleotide positions
+                positions = [msm_positions[pos] for pos in linkage_positions]
+                print(f"Nucleotide positions: {positions}")
                 
-                if reordered_positions:
-                    start = min(reordered_positions)
-                    end = max(reordered_positions)
+                if positions:
+                    start = min(positions)
+                    end = max(positions)
                     print(f"Position range: {start}-{end}")
                     
                     # Find all clusters where this TFBS is active
