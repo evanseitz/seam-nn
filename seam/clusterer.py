@@ -565,8 +565,8 @@ class Clusterer:
         
         plt.figure(figsize=figsize)
         plt.title('Hierarchical Clustering Dendrogram')
-        plt.xlabel('sample index')
-        plt.ylabel('distance')
+        plt.xlabel('Sample index')
+        plt.ylabel('Distance')
         
         with plt.rc_context({'lines.linewidth': 2}):
             hierarchy.dendrogram(
@@ -582,7 +582,6 @@ class Clusterer:
         plt.xticks([])
         plt.gca().spines['top'].set_visible(False)
         plt.gca().spines['right'].set_visible(False)
-        plt.xlabel('Clusters')
         
         if save_path:
             plt.savefig(save_path, facecolor='w', dpi=dpi, bbox_inches='tight')

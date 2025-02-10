@@ -11,6 +11,10 @@ from scipy.stats import entropy
 # Visualization libraries
 import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm
+import seaborn as sns
+import matplotlib as mpl
+import matplotlib.patches as patches
+import itertools
 
 # Bioinformatics libraries
 from Bio import motifs  # For PWM/enrichment logos
@@ -393,7 +397,9 @@ class MetaExplainer:
         return self.msm
     
     def plot_msm(self, column='Entropy', delta_entropy=False, 
-                square_cells=False, view_window=None, gui=False):
+                square_cells=False, view_window=None, gui=False,
+                show_tfbs_clusters=False, tfbs_clusters=None,
+                entropy_multiplier=0.5):
         """Visualize the Mechanism Summary Matrix (MSM) as a heatmap.
         
         Parameters
@@ -412,6 +418,14 @@ class MetaExplainer:
             If provided, crop the x-axis to this window of positions
         gui : bool
             If True, return data for GUI processing without plotting
+        show_tfbs_clusters : bool
+            Whether to show TFBS cluster rectangles (default: False)
+        tfbs_clusters : dict, optional
+            Dictionary mapping cluster IDs to lists of positions. Required if 
+            show_tfbs_clusters is True.
+        entropy_multiplier : float, optional
+            Multiplier for entropy threshold when identifying background, or alternatively, active TFBS regions (default: 0.5)
+            Only used when show_tfbs_clusters is True.
         """
         if not hasattr(self, 'msm') or self.msm is None:
             raise ValueError("MSM not generated. Call generate_msm() first.")
@@ -461,6 +475,62 @@ class MetaExplainer:
                                     cmap=cmap_settings['cmap'],
                                     norm=cmap_settings['norm'])
         
+        # Add TFBS cluster rectangles if requested
+        if show_tfbs_clusters and tfbs_clusters is not None:
+            # Define entropy threshold for active regions
+            mut_rate = 0.10  # Mutation rate used to generate sequence library
+            null_rate = 1 - mut_rate
+            background_entropy = entropy([null_rate, (1-null_rate)/3, (1-null_rate)/3, (1-null_rate)/3], base=2)
+            entropy_threshold = background_entropy * entropy_multiplier
+            
+            # Store active clusters by TFBS
+            active_clusters_by_tfbs = {}
+            
+            for cluster, positions in tfbs_clusters.items():
+                # Filter positions based on view window
+                if view_window:
+                    positions = [p for p in positions 
+                               if view_window[0] <= p <= view_window[1]]
+                    if not positions:
+                        continue
+                    
+                    # Adjust positions for view window
+                    plot_positions = [p - view_window[0] for p in positions]
+                else:
+                    plot_positions = positions
+                
+                # Find active clusters for this TFBS
+                active_clusters = []
+                for cluster_idx in range(matrix_data.shape[0]):
+                    cluster_entropy = matrix_data[cluster_idx, min(plot_positions):max(plot_positions)+1]
+                    if np.mean(cluster_entropy) < entropy_threshold:
+                        active_clusters.append(cluster_idx)
+                
+                # Store active clusters
+                active_clusters_by_tfbs[cluster] = active_clusters
+                
+                # Group consecutive clusters and draw rectangles
+                for k, g in itertools.groupby(enumerate(active_clusters), 
+                                            lambda x: x[0] - x[1]):
+                    group = list(map(lambda x: x[1], g))
+                    if group:
+                        rect_start = min(group)
+                        rect_height = len(group)
+                        
+                        rect = patches.Rectangle(
+                            (min(plot_positions), rect_start),
+                            max(plot_positions) - min(plot_positions) + 1,
+                            rect_height,
+                            linewidth=1,
+                            edgecolor='black',
+                            facecolor='none'
+                        )
+                        main_ax.add_patch(rect)
+            
+            # Store active clusters information
+            if hasattr(self, 'active_clusters_by_tfbs'):
+                self.active_clusters_by_tfbs = active_clusters_by_tfbs
+        
         # Set square cells if requested
         if square_cells:
             main_ax.set_aspect('equal')
@@ -494,6 +564,8 @@ class MetaExplainer:
         cbar.ax.set_ylabel(cmap_settings['label'], rotation=270, fontsize=8, labelpad=10)
         
         plt.tight_layout()
+        
+        return fig, main_ax
 
     def _configure_matrix_ticks(self, ax, n_positions, n_clusters, cluster_order):
         """Configure tick marks and labels for MSM visualization.
@@ -563,7 +635,7 @@ class MetaExplainer:
         }
 
     def generate_logos(self, logo_type='attribution', background_separation=False, 
-                      mut_rate=0.01, entropy_threshold_factor=0.5,
+                      mut_rate=0.01, entropy_multiplier=0.5,
                       figsize=(20, 2.5), batch_size=50, font_name='sans',
                       stack_order='big_on_top', center_values=True, 
                       color_scheme='classic'):
@@ -578,7 +650,7 @@ class MetaExplainer:
             Uses entropy-based background computation focused on highly variable positions.
         mut_rate : float, default=0.01
             Mutation rate for background entropy calculation when background_separation=True.
-        entropy_threshold_factor : float, default=0.5
+        entropy_multiplier : float, default=0.5
             Factor to multiply background entropy by for threshold when background_separation=True.
         figsize : tuple, default=(20, 2.5)
             Figure size in inches.
@@ -599,7 +671,7 @@ class MetaExplainer:
         # Compute background if needed
         if background_separation and logo_type == 'attribution':
             if not hasattr(self, 'background'):
-                self.compute_background(mut_rate, entropy_threshold_factor)
+                self.compute_background(mut_rate, entropy_multiplier)
         
         # Get cluster matrices
         cluster_matrices = []
@@ -740,23 +812,23 @@ class MetaExplainer:
             else:
                 plt.show()
 
-    def compute_background(self, mut_rate=0.01, entropy_threshold_factor=0.5):
+    def compute_background(self, mut_rate=0.01, entropy_multiplier=0.5):
         """Compute background signal based on entropic positions.
         
         Parameters
         ----------
         mut_rate : float, default=0.01
             Mutation rate used to calculate background entropy threshold
-        entropy_threshold_factor : float, default=0.5
+        entropy_multiplier : float, default=0.5
             Factor to multiply background entropy by for threshold
         """
         # Calculate background entropy threshold
         null_rate = 1 - mut_rate
         background_entropy = entropy(
-            np.array([null_rate, (1-null_rate)/3, (1-null_rate)/3, (1-null_rate)/3]), 
+            np.array([null_rate, (1-null_rate)/3, (1-null_rate)/3, (1-null_rate)/3]),
             base=2
         )
-        entropy_threshold = background_entropy * entropy_threshold_factor
+        entropy_threshold = background_entropy * entropy_multiplier
         
         # Initialize cluster background matrix
         n_clusters = len(self.mave['Cluster'].unique())

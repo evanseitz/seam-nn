@@ -20,6 +20,7 @@ TODO:
     - repeat of Colab examples
     - new examples
     - example using TF1 --> TF2 workflow
+    - save all outputs to folder
 - option to use PyTorch instead of TensorFlow and Captum (ProCapNet example)
 - embed Hessian and attribution map?
 - save directory params

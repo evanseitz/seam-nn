@@ -4,11 +4,6 @@ import matplotlib.pyplot as plt
 from scipy.spatial import distance
 from scipy.cluster import hierarchy
 import matplotlib.patches as patches
-#from .utils import plot_pairwise_matrix  # We'll move the plotting function here later
-
-
-
-
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.colors import TwoSlopeNorm, Normalize
 import matplotlib.patches as patches
@@ -18,211 +13,23 @@ import matplotlib.colors as mpl
 import itertools
 from scipy.stats import entropy
 
-def _get_45deg_mesh(mat):
-    """Create X and Y grids rotated -45 degrees."""
-    theta = -np.pi / 4
-    R = np.array([[np.cos(theta), -np.sin(theta)],
-                  [np.sin(theta), np.cos(theta)]])
-
-    K = len(mat) + 1
-    grid1d = np.arange(0, K) - .5
-    X = np.tile(np.reshape(grid1d, [K, 1]), [1, K])
-    Y = np.tile(np.reshape(grid1d, [1, K]), [K, 1])
-    xy = np.array([X.ravel(), Y.ravel()])
-
-    xy_rot = R @ xy
-    X_rot = xy_rot[0, :].reshape(K, K)
-    Y_rot = xy_rot[1, :].reshape(K, K).T
-
-    return X_rot, Y_rot
-
-def plot_pairwise_matrix(theta_lclc, view_window=None, 
-                        threshold=None, save_dir=None, cbar_title='Pairwise', 
-                        gridlines=True, xtick_spacing=1):
-    """Plot pairwise matrix visualization.
-    Adapted from https://github.com/jbkinney/mavenn/blob/master/mavenn/src/visualization.py
-    Original authors: Tareen, A. and Kinney, J.
-    
-    Parameters
-    ----------
-    theta_lclc : np.ndarray
-        Pairwise matrix parameters (shape: (L,C,L,C))
-    view_window : tuple, optional
-        (start, end) positions to view
-    xtick_spacing : int, optional
-        Show every nth x-tick label (default: 1)
-    """
-    if threshold is not None:
-        temp = theta_lclc.flatten()
-        temp[(temp >= -1.*threshold) & (temp <= threshold)] = 0
-        theta_lclc = temp.reshape(theta_lclc.shape)
-
-    # Set up gridlines
-    if gridlines:
-        show_seplines = True
-        sepline_kwargs = {'linestyle': '-',
-                        'linewidth': .3,
-                        'color':'lightgray'}
-    else:
-        show_seplines = False
-        sepline_kwargs = {'linestyle': '-',
-                        'linewidth': .5,
-                        'color':'gray'}
-
-    # Create figure
-    fig, ax = plt.subplots(figsize=[10,5])
-
-    # Get matrix dimensions
-    L = theta_lclc.shape[0]
-    C = theta_lclc.shape[1]
-    
-    # Create position grids
-    ls = np.arange(L)
-    cs = np.arange(C)
-    l1_grid = np.tile(np.reshape(ls, (L, 1, 1, 1)), (1, C, L, C))
-    c1_grid = np.tile(np.reshape(cs, (1, C, 1, 1)), (L, 1, L, C))
-    l2_grid = np.tile(np.reshape(ls, (1, 1, L, 1)), (L, C, 1, C))
-
-    # Set up pairwise matrix
-    nan_ix = ~(l2_grid - l1_grid >= 1)
-    values = theta_lclc.copy()
-    values[nan_ix] = np.nan
-
-    # Reshape into matrix
-    mat = values.reshape((L*C, L*C))
-    mat = mat[:-C, :]
-    mat = mat[:, C:]
-    K = (L - 1) * C
-
-    # Get finite elements
-    ix = np.isfinite(mat)
-    
-    # Set color limits
-    clim = [np.min(mat[ix]), np.max(mat[ix])]
-    ccenter = 0
-    
-    # Set up normalization
-    if ccenter is not None:
-        if (clim[0] > ccenter) or (clim[1] < ccenter):
-            ccenter = 0.5 * (clim[0] + clim[1])
-        norm = TwoSlopeNorm(vmin=clim[0], vcenter=ccenter, vmax=clim[1])
-    else:
-        norm = Normalize(vmin=clim[0], vmax=clim[1])
-
-    # Get rotated mesh
-    X_rot, Y_rot = _get_45deg_mesh(mat)
-    
-    # Normalize coordinates
-    half_pixel_diag = 1 / (2*C)
-    pixel_side = 1 / (C * np.sqrt(2))
-    X_rot = X_rot * pixel_side + half_pixel_diag
-    Y_rot = Y_rot * pixel_side
-    Y_rot = -Y_rot
-
-    # Set up plot limits
-    xlim_pad = 0.1
-    ylim_pad = 0.1
-    xlim = [-xlim_pad, L - 1 + xlim_pad]
-    ylim = [-0.5 - ylim_pad, (L - 1) / 2 + ylim_pad]
-
-    # Create heatmap
-    im = ax.pcolormesh(X_rot, Y_rot, mat, cmap='seismic', norm=norm)
-
-    # Remove spines
-    for spine in ax.spines.values():
-        spine.set_visible(False)
-
-    # Add gridlines if requested
-    if show_seplines:
-        ysep_min = -0.5 - .001 * half_pixel_diag
-        ysep_max = L / 2 + .001 * half_pixel_diag
-        
-        for n in range(0, K+1, C):
-            x = X_rot[n, :]
-            y = Y_rot[n, :]
-            ks = (y >= ysep_min) & (y <= ysep_max)
-            ax.plot(x[ks], y[ks], **sepline_kwargs)
-
-            x = X_rot[:, n]
-            y = Y_rot[:, n]
-            ks = (y >= ysep_min) & (y <= ysep_max)
-            ax.plot(x[ks], y[ks], **sepline_kwargs)
-
-    # Add triangle boundary
-    boundary_kwargs = {'linestyle': '-', 'linewidth': .7, 'color':'k'}
-    
-    # Top edge
-    top_x = X_rot[0, :]
-    top_y = Y_rot[0, :]
-    ax.plot(top_x, top_y, **boundary_kwargs)
-    
-    # Right edge
-    right_x = [X_rot[0, -1], X_rot[-1, -1]]
-    right_y = [Y_rot[0, -1], Y_rot[-1, -1]]
-    ax.plot(right_x, right_y, **boundary_kwargs)
-    
-    # Bottom edge
-    bottom_x = []
-    bottom_y = []
-    for i in range(len(X_rot) - 1):
-        bottom_x.extend([X_rot[i + 1, i], X_rot[i + 1, i + 1]])
-        bottom_y.extend([Y_rot[i + 1, i], Y_rot[i + 1, i + 1]])
-    ax.plot(bottom_x, bottom_y, **boundary_kwargs)
-    
-    # Left edge completion
-    last_x = [top_x[0], bottom_x[0]]
-    last_y = [top_y[0], bottom_y[0]]
-    ax.plot(last_x, last_y, **boundary_kwargs)
-
-    # Set plot properties
-    ax.set_xlim(xlim)
-    ax.set_ylim(ylim)
-    ax.set_aspect("equal")
-    ax.set_yticks([])
-    
-    # Handle x-tick spacing
-    all_ticks = np.arange(L).astype(int)
-    shown_ticks = all_ticks[::xtick_spacing]
-    ax.set_xticks(shown_ticks)
-    if view_window:
-        ax.set_xticklabels(np.arange(view_window[0], view_window[1])[::xtick_spacing])
-    else:
-        ax.set_xticklabels(shown_ticks)
-    
-    ax.set_xlabel('Nucleotide position')
-
-    # Add colorbar
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes('right', size='2%', pad=0.1)
-    cb = plt.colorbar(im, cax=cax)
-    cb.set_label(cbar_title, labelpad=8, rotation=-90)
-    cb.outline.set_visible(False)
-    cb.ax.tick_params(direction='in', size=20, color='white')
-
-    # Set symmetric colorbar limits
-    theta_max = max(abs(np.min(theta_lclc)), abs(np.max(theta_lclc)))
-    cb.mappable.set_clim(vmin=-theta_max, vmax=theta_max)
-
-    plt.tight_layout()
-    
-    if save_dir is not None:
-        plt.savefig(f"{save_dir}/{cbar_title.lower()}_matrix.pdf", 
-                facecolor='w', dpi=600)
-        plt.close()
-        
-    return fig, ax
-
-
-
-
-
-
 class Identifier:
     """Class for identifying and analyzing patterns in MSM data."""
     
-    def __init__(self, msm_df, column='Entropy'):
-        """Initialize Identifier with MSM data."""
+    def __init__(self, msm_df, meta_explainer, column='Entropy'):
+        """Initialize Identifier with MSM data and MetaExplainer instance.
+        
+        Parameters
+        ----------
+        msm_df : pandas.DataFrame
+            MSM data from MetaExplainer
+        meta_explainer : MetaExplainer
+            Instance of MetaExplainer class
+        column : str, optional
+            Column to use for analysis (default: 'Entropy')
+        """
         self.df = msm_df
+        self.meta_explainer = meta_explainer  # Store MetaExplainer instance
         self.column = column
         self.nC = self.df['Cluster'].max() + 1
         self.nP = self.df['Position'].max() + 1
@@ -323,7 +130,201 @@ class Identifier:
         self.cluster_labels = cluster_labels
         
         return self.tfbs_clusters
-    
+
+    def _get_45deg_mesh(self, mat):
+        """Create X and Y grids rotated -45 degrees."""
+        theta = -np.pi / 4
+        R = np.array([[np.cos(theta), -np.sin(theta)],
+                    [np.sin(theta), np.cos(theta)]])
+
+        K = len(mat) + 1
+        grid1d = np.arange(0, K) - .5
+        X = np.tile(np.reshape(grid1d, [K, 1]), [1, K])
+        Y = np.tile(np.reshape(grid1d, [1, K]), [K, 1])
+        xy = np.array([X.ravel(), Y.ravel()])
+
+        xy_rot = R @ xy
+        X_rot = xy_rot[0, :].reshape(K, K)
+        Y_rot = xy_rot[1, :].reshape(K, K).T
+
+        return X_rot, Y_rot
+
+    def plot_pairwise_matrix(self, theta_lclc, view_window=None, 
+                            threshold=None, save_dir=None, cbar_title='Pairwise', 
+                            gridlines=True, xtick_spacing=1):
+        """Plot pairwise matrix visualization.
+        Adapted from https://github.com/jbkinney/mavenn/blob/master/mavenn/src/visualization.py
+        Original authors: Tareen, A. and Kinney, J.
+        
+        Parameters
+        ----------
+        theta_lclc : np.ndarray
+            Pairwise matrix parameters (shape: (L,C,L,C))
+        view_window : tuple, optional
+            (start, end) positions to view
+        xtick_spacing : int, optional
+            Show every nth x-tick label (default: 1)
+        """
+        if threshold is not None:
+            temp = theta_lclc.flatten()
+            temp[(temp >= -1.*threshold) & (temp <= threshold)] = 0
+            theta_lclc = temp.reshape(theta_lclc.shape)
+
+        # Set up gridlines
+        if gridlines:
+            show_seplines = True
+            sepline_kwargs = {'linestyle': '-',
+                            'linewidth': .3,
+                            'color':'lightgray'}
+        else:
+            show_seplines = False
+            sepline_kwargs = {'linestyle': '-',
+                            'linewidth': .5,
+                            'color':'gray'}
+
+        # Create figure
+        fig, ax = plt.subplots(figsize=[10,5])
+
+        # Get matrix dimensions
+        L = theta_lclc.shape[0]
+        C = theta_lclc.shape[1]
+        
+        # Create position grids
+        ls = np.arange(L)
+        cs = np.arange(C)
+        l1_grid = np.tile(np.reshape(ls, (L, 1, 1, 1)), (1, C, L, C))
+        c1_grid = np.tile(np.reshape(cs, (1, C, 1, 1)), (L, 1, L, C))
+        l2_grid = np.tile(np.reshape(ls, (1, 1, L, 1)), (L, C, 1, C))
+
+        # Set up pairwise matrix
+        nan_ix = ~(l2_grid - l1_grid >= 1)
+        values = theta_lclc.copy()
+        values[nan_ix] = np.nan
+
+        # Reshape into matrix
+        mat = values.reshape((L*C, L*C))
+        mat = mat[:-C, :]
+        mat = mat[:, C:]
+        K = (L - 1) * C
+
+        # Get finite elements
+        ix = np.isfinite(mat)
+        
+        # Set color limits
+        clim = [np.min(mat[ix]), np.max(mat[ix])]
+        ccenter = 0
+        
+        # Set up normalization
+        if ccenter is not None:
+            if (clim[0] > ccenter) or (clim[1] < ccenter):
+                ccenter = 0.5 * (clim[0] + clim[1])
+            norm = TwoSlopeNorm(vmin=clim[0], vcenter=ccenter, vmax=clim[1])
+        else:
+            norm = Normalize(vmin=clim[0], vmax=clim[1])
+
+        # Get rotated mesh using instance method
+        X_rot, Y_rot = self._get_45deg_mesh(mat)
+        
+        # Normalize coordinates
+        half_pixel_diag = 1 / (2*C)
+        pixel_side = 1 / (C * np.sqrt(2))
+        X_rot = X_rot * pixel_side + half_pixel_diag
+        Y_rot = Y_rot * pixel_side
+        Y_rot = -Y_rot
+
+        # Set up plot limits
+        xlim_pad = 0.1
+        ylim_pad = 0.1
+        xlim = [-xlim_pad, L - 1 + xlim_pad]
+        ylim = [-0.5 - ylim_pad, (L - 1) / 2 + ylim_pad]
+
+        # Create heatmap
+        im = ax.pcolormesh(X_rot, Y_rot, mat, cmap='seismic', norm=norm)
+
+        # Remove spines
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+
+        # Add gridlines if requested
+        if show_seplines:
+            ysep_min = -0.5 - .001 * half_pixel_diag
+            ysep_max = L / 2 + .001 * half_pixel_diag
+            
+            for n in range(0, K+1, C):
+                x = X_rot[n, :]
+                y = Y_rot[n, :]
+                ks = (y >= ysep_min) & (y <= ysep_max)
+                ax.plot(x[ks], y[ks], **sepline_kwargs)
+
+                x = X_rot[:, n]
+                y = Y_rot[:, n]
+                ks = (y >= ysep_min) & (y <= ysep_max)
+                ax.plot(x[ks], y[ks], **sepline_kwargs)
+
+        # Add triangle boundary
+        boundary_kwargs = {'linestyle': '-', 'linewidth': .7, 'color':'k'}
+        
+        # Top edge
+        top_x = X_rot[0, :]
+        top_y = Y_rot[0, :]
+        ax.plot(top_x, top_y, **boundary_kwargs)
+        
+        # Right edge
+        right_x = [X_rot[0, -1], X_rot[-1, -1]]
+        right_y = [Y_rot[0, -1], Y_rot[-1, -1]]
+        ax.plot(right_x, right_y, **boundary_kwargs)
+        
+        # Bottom edge
+        bottom_x = []
+        bottom_y = []
+        for i in range(len(X_rot) - 1):
+            bottom_x.extend([X_rot[i + 1, i], X_rot[i + 1, i + 1]])
+            bottom_y.extend([Y_rot[i + 1, i], Y_rot[i + 1, i + 1]])
+        ax.plot(bottom_x, bottom_y, **boundary_kwargs)
+        
+        # Left edge completion
+        last_x = [top_x[0], bottom_x[0]]
+        last_y = [top_y[0], bottom_y[0]]
+        ax.plot(last_x, last_y, **boundary_kwargs)
+
+        # Set plot properties
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
+        ax.set_aspect("equal")
+        ax.set_yticks([])
+        
+        # Handle x-tick spacing
+        all_ticks = np.arange(L).astype(int)
+        shown_ticks = all_ticks[::xtick_spacing]
+        ax.set_xticks(shown_ticks)
+        if view_window:
+            ax.set_xticklabels(np.arange(view_window[0], view_window[1])[::xtick_spacing])
+        else:
+            ax.set_xticklabels(shown_ticks)
+        
+        ax.set_xlabel('Nucleotide position')
+
+        # Add colorbar
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes('right', size='2%', pad=0.1)
+        cb = plt.colorbar(im, cax=cax)
+        cb.set_label(cbar_title, labelpad=8, rotation=-90)
+        cb.outline.set_visible(False)
+        cb.ax.tick_params(direction='in', size=20, color='white')
+
+        # Set symmetric colorbar limits
+        theta_max = max(abs(np.min(theta_lclc)), abs(np.max(theta_lclc)))
+        cb.mappable.set_clim(vmin=-theta_max, vmax=theta_max)
+
+        plt.tight_layout()
+        
+        if save_dir is not None:
+            plt.savefig(f"{save_dir}/{cbar_title.lower()}_matrix.pdf", 
+                    facecolor='w', dpi=600)
+            plt.close()
+            
+        return fig, ax
+
     def plot_covariance_triangular(self, view_window=None, save_dir=None, xtick_spacing=5, 
                        show_clusters=False):
         """
@@ -348,7 +349,7 @@ class Identifier:
             
         matrix = matrix.reshape(matrix.shape[0], 1, matrix.shape[0], 1)
         
-        fig, ax = plot_pairwise_matrix(
+        fig, ax = self.plot_pairwise_matrix(
             matrix, 
             view_window=view_window, 
             cbar_title='Covariance',
@@ -537,113 +538,23 @@ class Identifier:
         
         return fig, ax
     
-    def plot_entropy_msm(self, view_window=None, show_clusters=True, threshold_multiplier=0.5):
-        """
-        Plot entropy MSM (Mechanism Summary Matrix) with TFBS cluster rectangles.
+    def set_entropy_multiplier(self, entropy_multiplier):
+        """Set the entropy multiplier for TFBS activity detection.
+        
+        This value is used to determine which clusters are considered active
+        for each TFBS region based on their entropy values.
         
         Parameters
         ----------
-        view_window : tuple, optional
-            (start, end) positions to view
-        show_clusters : bool, optional
-            Whether to show TFBS cluster rectangles
-        threshold_multiplier : float, optional
-            Multiplier for entropy threshold (default: 0.5)
+        entropy_multiplier : float
+            Multiplier for background entropy threshold. Lower values result
+            in more clusters being considered active.
         """
-        if not hasattr(self, 'revels'):
-            raise ValueError("Entropy MSM (revels) not found")
+        self.entropy_multiplier = entropy_multiplier
         
-        # Define near-zero entropy threshold
-        mut_rate = 0.10  # Mutation rate used to generate sequence library
-        null_rate = 1 - mut_rate
-        background_entropy = entropy([null_rate, (1-null_rate)/3, (1-null_rate)/3, (1-null_rate)/3], base=2)
-        entropy_threshold = background_entropy * threshold_multiplier
-        
-        # Get matrix to plot
-        matrix = self.revels.copy()  # Make a copy to avoid modifying original
-        
-        # Apply view window if specified
-        if view_window:
-            matrix = matrix.iloc[:, view_window[0]:view_window[1]]
-        
-        # Create plot
-        fig, ax = plt.subplots(figsize=(20, 5))
-        
-        # Plot entropy matrix first
-        palette = sns.color_palette('rocket', n_colors=100)
-        palette.reverse()
-        heatmap = ax.pcolormesh(matrix, cmap=mpl.ListedColormap(palette), 
-                               vmin=0, vmax=2)
-        
-        # Store active clusters by TFBS
-        active_clusters_by_tfbs = {}
-        
-        # Add rectangles for clusters
-        if show_clusters and hasattr(self, 'tfbs_clusters'):
-            for cluster, positions in self.tfbs_clusters.items():
-                # Get original positions
-                original_indices = self.cov_matrix.index.tolist()
-                reordered_positions = [original_indices[self.row_order.index(pos)] 
-                                     for pos in positions]
-                
-                if reordered_positions:
-                    start = min(reordered_positions)
-                    end = max(reordered_positions)
-                    
-                    # Find all clusters where this TFBS is active
-                    active_clusters = []
-                    for cluster_idx in range(self.nC):
-                        cluster_entropy = self.revels.iloc[cluster_idx, start:end + 1]
-                        if cluster_entropy.mean() < entropy_threshold:
-                            active_clusters.append(cluster_idx)
-                    
-                    # Store active clusters for this TFBS
-                    active_clusters_by_tfbs[cluster] = active_clusters
-                    
-                    # Group consecutive clusters
-                    for k, g in itertools.groupby(enumerate(active_clusters), 
-                                                lambda x: x[0] - x[1]):
-                        group = list(map(lambda x: x[1], g))
-                        if group:
-                            rect_start = min(group)
-                            rect_height = len(group)
-                            
-                            # If using view window, adjust start position
-                            plot_start = start
-                            plot_end = end
-                            if view_window:
-                                if end < view_window[0] or start > view_window[1]:
-                                    continue
-                                plot_start = max(start, view_window[0])
-                                plot_end = min(end, view_window[1])
-                                plot_start -= view_window[0]
-                                plot_end -= view_window[0]
-                            
-                            rect = patches.Rectangle(
-                                (plot_start, rect_start), 
-                                plot_end - plot_start + 1, rect_height,
-                                linewidth=1, edgecolor='black', 
-                                facecolor='none'
-                            )
-                            ax.add_patch(rect)
-        
-        # Store active clusters information
-        self.active_clusters_by_tfbs = active_clusters_by_tfbs
-        
-        # Add colorbar
-        divider = make_axes_locatable(ax)
-        cax = divider.append_axes('right', size='5%', pad=0.05)
-        cbar = fig.colorbar(heatmap, cax=cax, orientation='vertical')
-        heatmap.set_clim(0, 2)
-        
-        # Set labels
-        cbar.ax.set_ylabel("Shannon entropy (bits)", rotation=270, fontsize=6, labelpad=9)
-        cbar.ax.tick_params(labelsize=6)
-        ax.set_xlabel('Position', fontsize=6)
-        ax.set_ylabel('Cluster', fontsize=6)
-        ax.invert_yaxis()
-        
-        return fig, ax
+        # Update active clusters if we have access to MetaExplainer's results
+        if hasattr(self.meta_explainer, 'active_clusters_by_tfbs'):
+            self.active_clusters_by_tfbs = self.meta_explainer.active_clusters_by_tfbs
 
     def get_tfbs_positions(self):
         """
@@ -706,95 +617,166 @@ class Identifier:
         
         return tfbs_df
     
-    def get_state_matrix(self):
-        """
-        Create a binary state matrix showing which TFBSs are active in each cluster.
-        Each row represents a cluster (state), each column represents a TFBS.
-        1 indicates TFBS is active in that state, 0 indicates it is not.
+    def get_state_matrix(self, mode='binary'):
+        """Create a state matrix showing TFBS activity in each cluster.
+        
+        Parameters
+        ----------
+        mode : str
+            'binary': 0/1 for inactive/active
+            'continuous': raw entropy values normalized to [0,1]
         
         Returns
         -------
         pd.DataFrame
-            Binary state matrix with clusters as rows and TFBSs as columns
-        tuple
-            (state_matrix, tfbs_positions_df) where tfbs_positions_df includes
-            the actual positions that were active in each TFBS
+            State matrix with clusters as rows and TFBSs as columns
         """
         if not hasattr(self, 'tfbs_clusters'):
             raise ValueError("Must run cluster_covariance() before getting state matrix")
         
-        # Get TFBS positions with alphabetical labels
-        tfbs_df = self.get_tfbs_positions()
-        tfbs_labels = tfbs_df['TFBS'].tolist()
+        if not hasattr(self, 'entropy_multiplier'):
+            raise ValueError("Must set entropy multiplier using set_entropy_multiplier() first")
         
-        # Define a near-zero entropy threshold
-        entropy_threshold = 0.1  # Adjust as needed
+        # Use MetaExplainer's mut_rate and cluster order
+        mut_rate = self.meta_explainer.mut_rate
+        null_rate = 1 - mut_rate
+        background_entropy = entropy([null_rate, (1-null_rate)/3, (1-null_rate)/3, (1-null_rate)/3], base=2)
+        entropy_threshold = background_entropy * self.entropy_multiplier
         
-        # Initialize state matrix
+        # Get cluster order from MetaExplainer
+        cluster_order = self.meta_explainer.cluster_order if self.meta_explainer.cluster_order is not None else range(self.nC)
+        
+        # Initialize state matrix with ordered clusters
         state_matrix = pd.DataFrame(0, 
-                                  index=range(self.nC),
-                                  columns=tfbs_labels)
+                                  index=cluster_order,
+                                  columns=sorted(self.tfbs_clusters.keys()))
         
-        # Keep track of active positions for each TFBS
-        active_positions = {label: set() for label in tfbs_labels}
-        
-        # For each cluster and TFBS, determine if TFBS is active
-        for cluster in range(self.nC):
-            cluster_entropy = self.revels.iloc[cluster]
-            
-            for idx, tfbs_row in tfbs_df.iterrows():
-                pos_range = range(tfbs_row['Start'], tfbs_row['Stop'] + 1)
-                tfbs_entropy = cluster_entropy[pos_range]
+        if mode == 'binary':
+            # Binary mode (0/1)
+            for cluster in cluster_order:
+                cluster_entropy = self.revels.iloc[cluster]
                 
-                # TFBS is considered active if average entropy is above threshold
-                if tfbs_entropy.mean() > entropy_threshold:
-                    state_matrix.loc[cluster, tfbs_row['TFBS']] = 1
-                    # Add positions where entropy is above threshold
-                    active_pos = [pos for pos, ent in zip(pos_range, tfbs_entropy) 
-                                if ent > entropy_threshold]
-                    active_positions[tfbs_row['TFBS']].update(active_pos)
+                for tfbs, positions in self.tfbs_clusters.items():
+                    tfbs_entropy = cluster_entropy[positions].mean()
+                    if tfbs_entropy < entropy_threshold:
+                        state_matrix.loc[cluster, tfbs] = 1
         
-        # Update tfbs_df with actual positions
-        tfbs_df['Positions'] = [sorted(list(active_positions[label])) 
-                               for label in tfbs_df['TFBS']]
-        tfbs_df['Length'] = [len(pos) for pos in tfbs_df['Positions']]
+        elif mode == 'continuous':
+            # Continuous mode (normalized entropy values)
+            for cluster in cluster_order:
+                cluster_entropy = self.revels.iloc[cluster]
+                
+                for tfbs, positions in self.tfbs_clusters.items():
+                    tfbs_entropy = cluster_entropy[positions].mean()
+                    # Convert entropy to activity (1 - normalized entropy)
+                    normalized_activity = 1 - (tfbs_entropy / background_entropy)
+                    normalized_activity = max(0, min(1, normalized_activity))  # Clip to [0,1]
+                    state_matrix.loc[cluster, tfbs] = normalized_activity
         
-        return state_matrix, tfbs_df
+        else:
+            raise ValueError("mode must be 'binary' or 'continuous'")
+        
+        return state_matrix
     
-    def plot_state_matrix(self, save_path=None):
+    def plot_state_matrix(self, mode='binary', orientation='vertical', save_path=None):
         """
-        Plot binary state matrix showing TFBS activity in each cluster.
+        Plot state matrix showing TFBS activity in each cluster.
         
         Parameters
         ----------
+        mode : str
+            'binary': black/white for active/inactive
+            'continuous': grayscale for activity level
+        orientation : str
+            'vertical': Clusters on y-axis, TFBS on x-axis (default)
+            'horizontal': TFBS on y-axis, Clusters on x-axis
         save_path : str, optional
             Path to save the figure. If None, displays plot.
         """
-        # Get state matrix
-        state_matrix, _ = self.get_state_matrix()
+        def _add_colorbar_border(cbar_ax):
+            """Add black border to all sides of colorbar."""
+            for spine in cbar_ax.spines.values():
+                spine.set_visible(True)
+                spine.set_color('black')
+        
+        def _get_colorbar_params(orientation):
+            """Get colorbar parameters based on orientation."""
+            is_vertical = orientation == 'vertical'
+            return {
+                'orientation': 'vertical' if is_vertical else 'horizontal',
+                'location': 'right' if is_vertical else 'bottom',
+                'label': 'TFBS State Activity',
+                'fraction': 0.046,
+                'aspect': 40,
+                'pad': 0.04 if is_vertical else 0.08,
+            }
+        
+        def _get_axis_labels(orientation):
+            """Get axis labels based on orientation."""
+            return ('TFBS', 'Cluster') if orientation == 'vertical' else ('Cluster', 'TFBS')
+        
+        # Get and prepare state matrix
+        state_matrix = self.get_state_matrix(mode=mode)
+        if orientation == 'horizontal':
+            state_matrix = state_matrix.T
         
         # Create plot
-        fig, ax = plt.subplots(figsize=(10, 5))
-        sns.heatmap(state_matrix, cmap='binary', cbar=False, 
-                    xticklabels=True, yticklabels=True)
+        fig, ax = plt.subplots(figsize=(10, 10))
         
-        # Add a black border around the matrix
-        rect = patches.Rectangle((0, 0), state_matrix.shape[1], state_matrix.shape[0], 
-                               linewidth=2, edgecolor='black', facecolor='none')
-        ax.add_patch(rect)
+        # Plot heatmap
+        if mode == 'continuous':
+            cbar_ax = sns.heatmap(
+                state_matrix,
+                cmap='Greys',
+                cbar=True,
+                cbar_kws=_get_colorbar_params(orientation),
+                xticklabels=True,
+                yticklabels=True,
+                square=True,
+                linewidths=1,
+                linecolor='black'
+            ).collections[0].colorbar.ax
+            _add_colorbar_border(cbar_ax)
+        else:  # binary mode
+            sns.heatmap(
+                state_matrix,
+                cmap='binary',
+                cbar=False,
+                xticklabels=True,
+                yticklabels=True,
+                square=True,
+                linewidths=1,
+                linecolor='black'
+            )
+            # Add legend with orientation-dependent position
+            legend_elements = [
+                patches.Patch(color='black', label='Active'),
+                patches.Patch(facecolor='white', edgecolor='black', label='Inactive')
+            ]
+            legend_params = {
+                'handles': legend_elements,
+                'title': "TFBS State Activity",
+                'bbox_to_anchor': (1.05, 1) if orientation == 'vertical' else (1.0, -0.8),
+                'loc': 'upper left' if orientation == 'vertical' else 'lower right',
+                'ncol': 1 if orientation == 'vertical' else 2
+            }
+            plt.legend(**legend_params)
         
-        # Add custom legend
-        present_patch = patches.Patch(color='black', label='Active')
-        absent_patch = patches.Patch(facecolor='white', edgecolor='black', label='Inactive')
-        plt.legend(handles=[present_patch, absent_patch], 
-                  bbox_to_anchor=(1.05, 1), loc='upper left', 
-                  title="TFBS State")
+        # Add border to matrix
+        ax.add_patch(patches.Rectangle(
+            (0, 0),
+            state_matrix.shape[1],
+            state_matrix.shape[0],
+            linewidth=2,
+            edgecolor='black',
+            facecolor='none'
+        ))
         
         # Set labels
-        plt.xlabel('TFBS')
-        plt.ylabel('Cluster')
+        xlabel, ylabel = _get_axis_labels(orientation)
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
         plt.title('TFBS Activity Matrix')
-        
         plt.tight_layout()
         
         if save_path:
@@ -803,4 +785,3 @@ class Identifier:
             return None
         
         return fig, ax
- 
