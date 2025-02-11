@@ -488,21 +488,19 @@ class MetaExplainer:
             # Store active clusters by TFBS
             active_clusters_by_tfbs = {}
             
-            # Get nucleotide positions from MSM
-            msm_positions = self.msm.pivot(columns='Position', index='Cluster', values=column).columns.tolist()
-            print(f"MSM positions range: {min(msm_positions)}-{max(msm_positions)}")
-            
-            for cluster, linkage_positions in tfbs_clusters.items():
+            for cluster, positions in tfbs_clusters.items():
                 print(f"\nTFBS cluster {cluster}:")
-                print(f"Linkage positions: {linkage_positions}")
+                print(f"Linkage positions: {positions}")
                 
-                # Convert linkage positions to nucleotide positions
-                positions = [msm_positions[pos] for pos in linkage_positions]
-                print(f"Nucleotide positions: {positions}")
+                # Get original positions using same conversion as identifier.py
+                original_indices = self.msm.pivot(columns='Position', index='Cluster', values=column).columns.tolist()
+                reordered_positions = [original_indices[self.row_order.index(pos)] 
+                                     for pos in positions]
+                print(f"Nucleotide positions: {reordered_positions}")
                 
-                if positions:
-                    start = min(positions)
-                    end = max(positions)
+                if reordered_positions:
+                    start = min(reordered_positions)
+                    end = max(reordered_positions)
                     print(f"Position range: {start}-{end}")
                     
                     # Find all clusters where this TFBS is active
