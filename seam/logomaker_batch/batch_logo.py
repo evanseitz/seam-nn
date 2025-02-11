@@ -260,7 +260,7 @@ class BatchLogo:
         return fig, axes
     
     def draw_single(self, idx, fixed_ylim=True, view_window=None, fig_size=None, 
-                    highlight_ranges=None, highlight_colors=None, highlight_alpha=0.4):
+                    highlight_ranges=None, highlight_colors=None, highlight_alpha=0.5):
         """Draw a single logo
         
         Parameters
@@ -273,8 +273,10 @@ class BatchLogo:
             [start, end] positions to view. If None, show entire logo
         fig_size : tuple, optional
             Figure size in inches. If None, use size from initialization
-        highlight_ranges : list of tuple or tuple, optional
-            Position ranges to highlight, e.g. [(10,20), (30,40)] or (10,20)
+        highlight_ranges : list of tuple/list, optional
+            Either [(start,stop), ...] for continuous ranges
+            or [[pos1, pos2, pos3, ...], ...] for specific positions.
+            For position lists, contiguous integers are treated as ranges.
         highlight_colors : list of str or str, optional
             Colors for highlighting, e.g. ['lightcyan', 'honeydew'] or 'lightcyan'
             If None, defaults to plt.cm.Pastel1 (9 colors)
@@ -289,19 +291,39 @@ class BatchLogo:
         
         # Add highlighting if specified
         if highlight_ranges is not None:
-            # Convert single tuple to list
-            if isinstance(highlight_ranges, tuple):
+            # Convert single tuple/list to list of ranges
+            if isinstance(highlight_ranges[0], (int, float)):
                 highlight_ranges = [highlight_ranges]
-                highlight_colors = [highlight_colors] if isinstance(highlight_colors, str) else highlight_colors
             
             # Set default colors if None
             if highlight_colors is None:
                 n_ranges = len(highlight_ranges)
                 highlight_colors = [plt.cm.Pastel1(i % 9) for i in range(n_ranges)]
+            elif isinstance(highlight_colors, str):
+                highlight_colors = [highlight_colors]
             
             # Add highlighting rectangles (using full sequence coordinates)
-            for (start, end), color in zip(highlight_ranges, highlight_colors):
-                ax.axvspan(start-0.5, end-0.5, color=color, alpha=highlight_alpha, zorder=-1)
+            for positions, color in zip(highlight_ranges, highlight_colors):
+                # Handle both (start,stop) tuples and [pos1, pos2, ...] lists
+                if len(positions) == 2 and isinstance(positions, tuple):
+                    # For tuples, highlight the continuous range
+                    start, end = positions
+                    ax.axvspan(start-0.5, end-0.5, color=color, alpha=highlight_alpha, zorder=-1)
+                else:
+                    # For position lists, find contiguous runs
+                    positions = sorted(positions)
+                    start = positions[0]
+                    prev = start
+                    for curr in positions[1:] + [None]:
+                        if curr != prev + 1:
+                            # End of a run
+                            end = prev
+                            if start == end:
+                                ax.axvspan(start-0.5, start+0.5, color=color, alpha=highlight_alpha, zorder=-1)
+                            else:
+                                ax.axvspan(start-0.5, end+0.5, color=color, alpha=highlight_alpha, zorder=-1)
+                            start = curr
+                        prev = curr
         
         # Apply view window last
         if view_window is not None:

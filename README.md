@@ -61,7 +61,7 @@ API figure: To be done.
 
 **Google Colab examples** for applying SEAM on previously-published deep learning models are available at the following links:
 
-- [Figure 2. Local library with hierarchical clustering | DeepSTARR](https://colab.research.google.com/drive/1HlkEdCpnlMFF_Ab7y7HDDVFS6sIv8c9f?usp=sharing)
+- [Figure 2. Local library with hierarchical clustering | DeepSTARR](https://colab.research.google.com/drive/1HOM_ysa4HIh_ZoYzLwa4jZu4evyRntF7?usp=sharing)
 
 Expected run time for the "Figure 2. Local library with hierarchical clustering | DeepSTARR" demo (above) is **~3.6 minutes** using Google Colab T4 GPU.
 

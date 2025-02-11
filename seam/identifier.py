@@ -556,21 +556,23 @@ class Identifier:
         if hasattr(self.meta_explainer, 'active_clusters_by_tfbs'):
             self.active_clusters_by_tfbs = self.meta_explainer.active_clusters_by_tfbs
 
-    def get_tfbs_positions(self):
+    def get_tfbs_positions(self, active_clusters):
         """
         Get the start and stop positions for each TFBS cluster.
+        
+        Parameters
+        ----------
+        active_clusters : dict
+            Dictionary mapping TFBS labels to active clusters
         
         Returns
         -------
         pd.DataFrame
-            DataFrame containing start, stop, length, positions, and active clusters for each TFBS,
-            sorted by start position and labeled alphabetically (A, B, C, etc.)
+            DataFrame containing start, stop, length, positions, and active clusters 
+            for each TFBS, sorted by start position and labeled alphabetically (A, B, C, etc.)
         """
         if not hasattr(self, 'tfbs_clusters'):
             raise ValueError("Must run cluster_covariance() before getting TFBS positions")
-        
-        if not hasattr(self, 'active_clusters_by_tfbs'):
-            raise ValueError("Must run plot_entropy_msm() before getting TFBS positions")
         
         # Initialize lists to store data
         clusters = []
@@ -578,7 +580,7 @@ class Identifier:
         stops = []
         lengths = []
         positions_list = []
-        active_clusters = []
+        active_clusters_list = []
         
         # Get original indices for mapping
         original_indices = self.cov_matrix.index.tolist()
@@ -598,9 +600,9 @@ class Identifier:
             stops.append(stop)
             lengths.append(length)
             positions_list.append(sorted(original_positions))  # Store actual positions
-            active_clusters.append(sorted(self.active_clusters_by_tfbs[cluster]))
+            active_clusters_list.append(sorted(active_clusters[cluster]))
         
-        # Create DataFrame and sort by start position
+        # Create DataFrame with basic info
         tfbs_df = pd.DataFrame({
             'TFBS': clusters,
             'Start': starts,
@@ -608,11 +610,11 @@ class Identifier:
             'Length': lengths,
             'Positions': positions_list,
             'N_Positions': [len(pos) for pos in positions_list],
-            'Active_Clusters': active_clusters
+            'Active_Clusters': active_clusters_list
         })
-        tfbs_df = tfbs_df.sort_values('Start').reset_index(drop=True)
         
-        # Rename TFBS with letters (A, B, C, etc.)
+        # Sort and rename
+        tfbs_df = tfbs_df.sort_values('Start').reset_index(drop=True)
         tfbs_df['TFBS'] = [chr(65 + i) for i in range(len(tfbs_df))]
         
         return tfbs_df

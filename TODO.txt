@@ -44,7 +44,7 @@ Colab:
     - ISM:
         - ISM with sum or PCA option
         - option for FastISM?
-        -add memory mode for ISM (numpy memmap)
+        - add memory mode for ISM (numpy memmap)
     - Empirical Mutagenesis Maps (for combinatorially-complete library)
     - DeepSHAP for TF2: dinuc_shuffle, etc. in batch mode with GPUs
         - pytorch version?
@@ -112,9 +112,8 @@ Colab:
     - code to combine TFBS states based on squares in covariance matrix
     - Fisher, Binomial, etc. for SNPs database
     - update readthedocs for Identifier
-    - Jack needs positions and cluster index for each motif
     - add xtick_spacing to plot_covariance_square
-    - minimize redundancies between functions in identifier.py and clusterer.py (plots for dendrogram, msm, etc.)
+    - minimize redundancies between functions in identifier.py and clusterer.py (plots for dendrogram, etc.)
     - background_entropy currently only defined for 4 nucleotides
 
 - Impress:
@@ -163,9 +162,6 @@ Colab:
     - Update P3 UMAP when Custom.plt_step is changed on P2 (needs to update Predef.cluster_colors)
     - New tab to merge clusters and label them (e.g., AP-1, etc)
         - Visualize state vs. TFBS presence graph
-
-- Sharing:
-    - update about Readthedocs
 
 - Other:
     - clean up SEAM prelim folders (DeepSTARR) and Google Drive (move all LIFT/Locks out of SEAM)

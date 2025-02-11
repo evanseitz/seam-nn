@@ -30,9 +30,8 @@ if 1: # batch version (new)
 
     fig, ax = batch_logos.draw_single(
         1,  # Draw just logo 1
-        #view_window=[45,105],
-        highlight_ranges=[(50,60),(70,80),(90,100)],
-        #highlight_colors=['lightcyan']
+        #highlight_ranges=[(50,60),(70,80),(90,100)],
+        highlight_ranges=[[50,51,52,54,56],[60,61,62,65]]
     )  
     plt.show()
 
