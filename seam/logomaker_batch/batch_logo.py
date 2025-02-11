@@ -259,7 +259,8 @@ class BatchLogo:
         plt.tight_layout()
         return fig, axes
     
-    def draw_single(self, idx, fixed_ylim=True, view_window=None, fig_size=None):
+    def draw_single(self, idx, fixed_ylim=True, view_window=None, fig_size=None, 
+                    highlight_ranges=None, highlight_colors=None, highlight_alpha=0.4):
         """Draw a single logo
         
         Parameters
@@ -272,6 +273,13 @@ class BatchLogo:
             [start, end] positions to view. If None, show entire logo
         fig_size : tuple, optional
             Figure size in inches. If None, use size from initialization
+        highlight_ranges : list of tuple or tuple, optional
+            Position ranges to highlight, e.g. [(10,20), (30,40)] or (10,20)
+        highlight_colors : list of str or str, optional
+            Colors for highlighting, e.g. ['lightcyan', 'honeydew'] or 'lightcyan'
+            If None, defaults to plt.cm.Pastel1 (9 colors)
+        highlight_alpha : float, default=0.5
+            Alpha transparency for highlights
         """
         if idx not in self.processed_logos:
             raise ValueError(f"Logo {idx} has not been processed yet. Run process_all() first.")
@@ -279,6 +287,23 @@ class BatchLogo:
         fig, ax = plt.subplots(figsize=fig_size if fig_size is not None else self.figsize)
         self._draw_single_logo(ax, self.processed_logos[idx], fixed_ylim=fixed_ylim)
         
+        # Add highlighting if specified
+        if highlight_ranges is not None:
+            # Convert single tuple to list
+            if isinstance(highlight_ranges, tuple):
+                highlight_ranges = [highlight_ranges]
+                highlight_colors = [highlight_colors] if isinstance(highlight_colors, str) else highlight_colors
+            
+            # Set default colors if None
+            if highlight_colors is None:
+                n_ranges = len(highlight_ranges)
+                highlight_colors = [plt.cm.Pastel1(i % 9) for i in range(n_ranges)]
+            
+            # Add highlighting rectangles (using full sequence coordinates)
+            for (start, end), color in zip(highlight_ranges, highlight_colors):
+                ax.axvspan(start-0.5, end-0.5, color=color, alpha=highlight_alpha, zorder=-1)
+        
+        # Apply view window last
         if view_window is not None:
             start, end = view_window
             ax.set_xlim(start-0.5, end-0.5)

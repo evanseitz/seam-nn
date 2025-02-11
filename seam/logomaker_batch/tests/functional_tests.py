@@ -14,7 +14,7 @@ alphabet = ['A', 'C', 'G', 'T']
 if 1: # batch version (new)
     # Create and process all logos
     t1 = time.time()
-    batch_logos = BatchLogo(attributions[0:1000,:],
+    batch_logos = BatchLogo(attributions[0:100,:],
                             #attributions[0:1,80:100,:],
                             alphabet=alphabet,
                             fig_size=[20,2.5],
@@ -22,12 +22,20 @@ if 1: # batch version (new)
                             )
 
     batch_logos.process_all()
+
     fig, ax = batch_logos.draw_single(0)  # Draw just logo 0
     t2 = time.time() - t1
     print('Logo time:', t2)
     plt.show()
-    fig, ax = batch_logos.draw_single(1)  # Draw just logo 1
+
+    fig, ax = batch_logos.draw_single(
+        1,  # Draw just logo 1
+        #view_window=[45,105],
+        highlight_ranges=[(50,60),(70,80),(90,100)],
+        #highlight_colors=['lightcyan']
+    )  
     plt.show()
+
     fig, ax = batch_logos.draw_single(2)  # Draw just logo 2
     plt.show()
 

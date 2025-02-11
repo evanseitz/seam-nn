@@ -315,6 +315,7 @@ class MetaExplainer:
         """
         # Get sequence length from first sequence
         seq_length = len(self.mave['Sequence'].iloc[0])
+        print(f"Generating MSM for {len(self.cluster_indices)} clusters, {seq_length} positions...")
         
         if gpu:
             import tensorflow as tf
@@ -398,8 +399,7 @@ class MetaExplainer:
     def plot_msm(self, column='Entropy', delta_entropy=False, 
                 square_cells=False, view_window=None, gui=False,
                 show_tfbs_clusters=False, tfbs_clusters=None,
-                entropy_multiplier=0.5, cov_matrix=None, row_order=None,
-                revels=None):
+                entropy_multiplier=0.5, cov_matrix=None, row_order=None):
         """Visualize the Mechanism Summary Matrix (MSM) as a heatmap.
         
         Parameters
@@ -429,17 +429,14 @@ class MetaExplainer:
             Covariance matrix for TFBS cluster plotting. Required if show_tfbs_clusters is True.
         row_order : list of int, optional
             Order of rows in cov_matrix. Required if show_tfbs_clusters is True.
-        revels : pandas.DataFrame, optional
-            Revels matrix for entropy calculations. Required if show_tfbs_clusters is True.
         """
-        if show_tfbs_clusters:
-            if not hasattr(self, 'msm') or self.msm is None:
-                raise ValueError("MSM not generated. Call generate_msm() first.")
-            if any(x is None for x in [cov_matrix, row_order, revels]):
-                raise ValueError("cov_matrix, row_order, and revels required for TFBS cluster plotting")
+        if not hasattr(self, 'msm') or self.msm is None:
+            raise ValueError("MSM not generated. Call generate_msm() first.")
+
+        if show_tfbs_clusters and (cov_matrix is None or row_order is None):
+            raise ValueError("cov_matrix and row_order required for TFBS cluster plotting")
         self.cov_matrix = cov_matrix
         self.row_order = row_order
-        self.revels = revels
         
         # Prepare data matrix
         n_clusters = self.msm['Cluster'].max() + 1
@@ -475,44 +472,52 @@ class MetaExplainer:
                                     norm=cmap_settings['norm'])
         
         # Add TFBS cluster rectangles if requested
-        if show_tfbs_clusters and tfbs_clusters is not None:            
+        if show_tfbs_clusters and tfbs_clusters is not None:
+            print("\nProcessing TFBS clusters...")
+            
             # Define entropy threshold for active regions using instance mut_rate
             null_rate = 1 - self.mut_rate
             background_entropy = entropy([null_rate, (1-null_rate)/3, (1-null_rate)/3, (1-null_rate)/3], base=2)
             entropy_threshold = background_entropy * entropy_multiplier
-
+            print(f"Entropy threshold: {entropy_threshold:.3f} (mut_rate={self.mut_rate}, multiplier={entropy_multiplier})")
+            
             # Store active clusters by TFBS
             active_clusters_by_tfbs = {}
             
             for cluster, positions in tfbs_clusters.items():
+                print(f"\nTFBS cluster {cluster}:")
+                print(f"Linkage positions: {positions}")
+                
+                # Get original positions using same conversion as identifier.py
                 original_indices = self.cov_matrix.index.tolist()
                 reordered_positions = [original_indices[self.row_order.index(pos)] 
                                      for pos in positions]
+                print(f"Nucleotide positions: {reordered_positions}")
                 
                 if reordered_positions:
                     start = min(reordered_positions)
                     end = max(reordered_positions)
+                    print(f"Position range: {start}-{end}")
                     
                     # Find all clusters where this TFBS is active
                     active_clusters = []
+                    print("\nChecking clusters for activity:")
                     for cluster_idx in range(len(matrix_data)):
-                        # Get the original cluster index if sorting is used
-                        if self.sort_method and self.cluster_order is not None:
-                            original_cluster_idx = self.cluster_order[cluster_idx]
-                        else:
-                            original_cluster_idx = cluster_idx
-                        
-                        # Use revels for entropy calculation with original index
-                        cluster_entropy = self.revels.iloc[original_cluster_idx, start:end + 1]
+                        # Always use full matrix for entropy calculation
+                        full_matrix = self.msm.pivot(columns='Position', index='Cluster', values=column)
+                        cluster_entropy = full_matrix.iloc[cluster_idx, start:end + 1]
                         mean_entropy = cluster_entropy.mean()
+                        print(f"Cluster {cluster_idx}: mean entropy = {mean_entropy:.3f}")
                         if mean_entropy < entropy_threshold:
-                            # Store the sorted index position for rectangle drawing
                             active_clusters.append(cluster_idx)
-
+                            print(f"  -> Active (below threshold {entropy_threshold:.3f})")
+                    
                     # Store active clusters for this TFBS
                     active_clusters_by_tfbs[cluster] = active_clusters
+                    print(f"Total active clusters: {len(active_clusters)}")
                     
                     # Group consecutive clusters
+                    rect_count = 0
                     for k, g in itertools.groupby(enumerate(active_clusters), 
                                                 lambda x: x[0] - x[1]):
                         group = list(map(lambda x: x[1], g))
@@ -524,12 +529,14 @@ class MetaExplainer:
                             plot_start = start
                             plot_end = end
                             if view_window:
-                                if end < view_window[0] or start > view_window[1]: # rectangle outside view window
+                                if end < view_window[0] or start > view_window[1]:
+                                    print("Rectangle outside view window, skipping")
                                     continue
                                 plot_start = max(start, view_window[0])
                                 plot_end = min(end, view_window[1])
                                 plot_start -= view_window[0]
                                 plot_end -= view_window[0]
+                                print(f"Adjusted position for view window: {plot_start}-{plot_end}")
                             
                             rect = patches.Rectangle(
                                 (plot_start, rect_start), 
@@ -538,9 +545,12 @@ class MetaExplainer:
                                 facecolor='none'
                             )
                             main_ax.add_patch(rect)
+                            rect_count += 1
+                    print(f"Added {rect_count} rectangles")
             
             # Store active clusters information
             self.active_clusters_by_tfbs = active_clusters_by_tfbs
+            print(f"\nTotal TFBS clusters processed: {len(tfbs_clusters)}")
         
         # Set square cells if requested
         if square_cells:

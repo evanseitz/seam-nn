@@ -50,7 +50,10 @@ Colab:
         - pytorch version?
 
 - Ensembler Class for combining model folds?
-    -  update SQUID repository for replicates logic
+
+- SQUID:
+    - update SQUID repository for replicates logic
+    - option for including a default library for each order of mutations (all SNVs=1; 2; 3, etc.)
 
 - Compiler:
     - SEAM utils calls
@@ -83,6 +86,27 @@ Colab:
     - line up the MSM with the logos below them, and with the bar plot to their right (see below)
     - use marginal bar plots on the right side of the MSM figure
     - background_entropy currently only defined for 4 nucleotides
+    - error if sort_method=None when running ref_cluster = meta.membership_df.loc[ref_index, 'Cluster_Sorted']:
+                KeyError                                  Traceback (most recent call last)
+                /usr/local/lib/python3.11/dist-packages/pandas/core/indexes/base.py in get_loc(self, key)
+                3804         try:
+                -> 3805             return self._engine.get_loc(casted_key)
+                3806         except KeyError as err:
+                index.pyx in pandas._libs.index.IndexEngine.get_loc()
+                index.pyx in pandas._libs.index.IndexEngine.get_loc()
+                pandas/_libs/hashtable_class_helper.pxi in pandas._libs.hashtable.PyObjectHashTable.get_item()
+                pandas/_libs/hashtable_class_helper.pxi in pandas._libs.hashtable.PyObjectHashTable.get_item()
+                KeyError: 'Cluster_Sorted'
+                The above exception was the direct cause of the following exception:
+                KeyError                                  Traceback (most recent call last)
+                4 frames
+                /usr/local/lib/python3.11/dist-packages/pandas/core/indexes/base.py in get_loc(self, key)
+                3810             ):
+                3811                 raise InvalidIndexError(key)
+                -> 3812             raise KeyError(key) from err
+                3813         except TypeError:
+                3814             # If we have a listlike key, _check_indexing_error will raise
+                KeyError: 'Cluster_Sorted'
 
 - Identifier:
     - code to combine TFBS states based on squares in covariance matrix
