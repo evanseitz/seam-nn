@@ -29,7 +29,7 @@ class Identifier:
             Column to use for analysis (default: 'Entropy')
         """
         self.df = msm_df
-        self.meta_explainer = meta_explainer  # Store MetaExplainer instance
+        self.meta_explainer = meta_explainer
         self.column = column
         self.nC = self.df['Cluster'].max() + 1
         self.nP = self.df['Position'].max() + 1
@@ -619,14 +619,17 @@ class Identifier:
         
         return tfbs_df
     
-    def get_state_matrix(self, mode='binary'):
+    def get_state_matrix(self, active_clusters, mode='binary'):
         """Create a state matrix showing TFBS activity in each cluster.
         
         Parameters
         ----------
+        active_clusters : dict
+            Dictionary mapping TFBS labels to active clusters
         mode : str
             'binary': 0/1 for inactive/active
-            'continuous': raw entropy values normalized to [0,1]
+            'continuous': raw entropy values from MSM for active positions,
+                         0 for inactive positions
         
         Returns
         -------
@@ -636,56 +639,55 @@ class Identifier:
         if not hasattr(self, 'tfbs_clusters'):
             raise ValueError("Must run cluster_covariance() before getting state matrix")
         
-        if not hasattr(self, 'entropy_multiplier'):
-            raise ValueError("Must set entropy multiplier using set_entropy_multiplier() first")
+        # Get cluster order from meta_explainer
+        cluster_order = range(self.nC)  # Default order
+        if hasattr(self.meta_explainer, 'cluster_order') and self.meta_explainer.cluster_order is not None:
+            cluster_order = np.arange(self.nC)  # Use positional indices
         
-        # Use MetaExplainer's mut_rate and cluster order
-        mut_rate = self.meta_explainer.mut_rate
-        null_rate = 1 - mut_rate
-        background_entropy = entropy([null_rate, (1-null_rate)/3, (1-null_rate)/3, (1-null_rate)/3], base=2)
-        entropy_threshold = background_entropy * self.entropy_multiplier
+        # Get TFBS order from active_clusters keys
+        tfbs_order = list(active_clusters.keys())
         
-        # Get cluster order from MetaExplainer
-        cluster_order = self.meta_explainer.cluster_order if self.meta_explainer.cluster_order is not None else range(self.nC)
-        
-        # Initialize state matrix with ordered clusters
+        # Initialize state matrix with ordered clusters and TFBSs
         state_matrix = pd.DataFrame(0, 
                                   index=cluster_order,
-                                  columns=sorted(self.tfbs_clusters.keys()))
+                                  columns=tfbs_order)
         
         if mode == 'binary':
             # Binary mode (0/1)
-            for cluster in cluster_order:
-                cluster_entropy = self.revels.iloc[cluster]
-                
-                for tfbs, positions in self.tfbs_clusters.items():
-                    tfbs_entropy = cluster_entropy[positions].mean()
-                    if tfbs_entropy < entropy_threshold:
-                        state_matrix.loc[cluster, tfbs] = 1
+            for tfbs, active_cluster_indices in active_clusters.items():
+                # active_cluster_indices are already in the sorted order from meta_explainer
+                state_matrix.iloc[active_cluster_indices, state_matrix.columns.get_loc(tfbs)] = 1
         
         elif mode == 'continuous':
-            # Continuous mode (normalized entropy values)
-            for cluster in cluster_order:
-                cluster_entropy = self.revels.iloc[cluster]
+            # Get MSM data
+            msm = self.meta_explainer.msm
+            
+            # For each TFBS
+            for tfbs, active_cluster_indices in active_clusters.items():
+                positions = self.tfbs_clusters[tfbs]
                 
-                for tfbs, positions in self.tfbs_clusters.items():
-                    tfbs_entropy = cluster_entropy[positions].mean()
-                    # Convert entropy to activity (1 - normalized entropy)
-                    normalized_activity = 1 - (tfbs_entropy / background_entropy)
-                    normalized_activity = max(0, min(1, normalized_activity))  # Clip to [0,1]
-                    state_matrix.loc[cluster, tfbs] = normalized_activity
+                # For each cluster
+                for cluster_idx in cluster_order:
+                    if cluster_idx in active_cluster_indices:
+                        # Get mean entropy for this TFBS in this cluster
+                        cluster_data = msm[(msm['Cluster'] == cluster_idx) & 
+                                        (msm['Position'].isin(positions))]
+                        mean_entropy = cluster_data['Entropy'].mean()
+                        state_matrix.iloc[cluster_idx, state_matrix.columns.get_loc(tfbs)] = mean_entropy
         
         else:
             raise ValueError("mode must be 'binary' or 'continuous'")
         
         return state_matrix
     
-    def plot_state_matrix(self, mode='binary', orientation='vertical', save_path=None):
+    def plot_state_matrix(self, active_clusters, mode='binary', orientation='vertical', save_path=None):
         """
         Plot state matrix showing TFBS activity in each cluster.
         
         Parameters
         ----------
+        active_clusters : dict
+            Dictionary mapping TFBS labels to active clusters
         mode : str
             'binary': black/white for active/inactive
             'continuous': grayscale for activity level
@@ -718,7 +720,7 @@ class Identifier:
             return ('TFBS', 'Cluster') if orientation == 'vertical' else ('Cluster', 'TFBS')
         
         # Get and prepare state matrix
-        state_matrix = self.get_state_matrix(mode=mode)
+        state_matrix = self.get_state_matrix(active_clusters=active_clusters, mode=mode)
         if orientation == 'horizontal':
             state_matrix = state_matrix.T
         

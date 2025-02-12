@@ -1,16 +1,21 @@
 TODO:
-- save output to self
-- check PWMs and enrichment logos
-    - PWM bits should be max 2 (not 4)
+
+- All Classes:
+    - save outputs to self
+
 - Colab examples:
     - Fig.2 reproduced:
         - Documentation at top of notebook about intent of demo and its figure in the paper 
-    - DeepSTARR mismatch figure reproduced
+    - DeepSTARR mismatch figure reproduced (index 22612; Dev)
         - color logos by reference sequence 
-    - DeepSTARR background separation figure reproduced
+    - DeepSTARR background separation figure reproduced (test set index 4071; Hk)
     - DeepSTARR 3-way mutation figure reproduced --> test with crop mode
+        - AP1-m0-seq13748
+        - play GIF showing a chain of k-means clusters
     - PBM dataset example
         - compare to Seed-and-Wobble?
+        - see Blavatnik folder in 6_CSHL Google Drive
+        - see TFBind presentation in 6_CSHL/SEAM
     - REVO? BEAM?
     - ChromBPNet?
     - PIK3R3?
@@ -83,42 +88,25 @@ Colab:
         - check profile plotting functionality (lines 741-753 from meta_explainer_orig.py)
             - plot individual profiles for each cluster
             - handle alpha blending for overlays
+    - check PWMs and enrichment logos
+        - PWM bits should be max 2 (not 4)
     - line up the MSM with the logos below them, and with the bar plot to their right (see below)
     - use marginal bar plots on the right side of the MSM figure
-    - background_entropy currently only defined for 4 nucleotides
-    - error if sort_method=None when running ref_cluster = meta.membership_df.loc[ref_index, 'Cluster_Sorted']:
-                KeyError                                  Traceback (most recent call last)
-                /usr/local/lib/python3.11/dist-packages/pandas/core/indexes/base.py in get_loc(self, key)
-                3804         try:
-                -> 3805             return self._engine.get_loc(casted_key)
-                3806         except KeyError as err:
-                index.pyx in pandas._libs.index.IndexEngine.get_loc()
-                index.pyx in pandas._libs.index.IndexEngine.get_loc()
-                pandas/_libs/hashtable_class_helper.pxi in pandas._libs.hashtable.PyObjectHashTable.get_item()
-                pandas/_libs/hashtable_class_helper.pxi in pandas._libs.hashtable.PyObjectHashTable.get_item()
-                KeyError: 'Cluster_Sorted'
-                The above exception was the direct cause of the following exception:
-                KeyError                                  Traceback (most recent call last)
-                4 frames
-                /usr/local/lib/python3.11/dist-packages/pandas/core/indexes/base.py in get_loc(self, key)
-                3810             ):
-                3811                 raise InvalidIndexError(key)
-                -> 3812             raise KeyError(key) from err
-                3813         except TypeError:
-                3814             # If we have a listlike key, _check_indexing_error will raise
-                KeyError: 'Cluster_Sorted'
+    - background_entropy currently only defined for 4 nucleotides; see latex equation
 
 - Identifier:
     - code to combine TFBS states based on squares in covariance matrix
+        - use more complicated locus: Ohler6-m0-seq171
     - Fisher, Binomial, etc. for SNPs database
     - update readthedocs for Identifier
     - add xtick_spacing to plot_covariance_square
-    - minimize redundancies between functions in identifier.py and clusterer.py (plots for dendrogram, etc.)
     - background_entropy currently only defined for 4 nucleotides
+    - calculate expected effect for each cluster? (change in y-value from WT cluster)
 
 - Impress:
     - move all plotting code to impress.py?
         - plot_dendrogram
+        - minimize other redundancies between functions in identifier.py and clusterer.py
         - etc.
 
 - GUI Class:
@@ -163,8 +151,10 @@ Colab:
     - New tab to merge clusters and label them (e.g., AP-1, etc)
         - Visualize state vs. TFBS presence graph
 
+- Biophysical modeling:
+    - DRE-m0-seq601
+
 - Other:
-    - clean up SEAM prelim folders (DeepSTARR) and Google Drive (move all LIFT/Locks out of SEAM)
     - backup SEAM Colabs on github
     - backup SQUID Colabs on github
     - SQUID replicates update
@@ -173,8 +163,13 @@ Colab:
 
 - Motif finding:
     - best attribution method?
-    - best num_seqs, mut_rate?
+    - best num_seqs, mut_rate? (1000 seems sufficient)
     - best cut_level?
         - attribution clusters
         - TFBS clusters
     - poised?
+
+- Sharing:
+    - Danko Lab
+    - Carlos (work on protein dataset)
+    - ...
