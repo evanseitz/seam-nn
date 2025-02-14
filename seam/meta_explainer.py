@@ -921,3 +921,29 @@ class MetaExplainer:
         
         # Return positions above threshold
         return np.where(entropies > threshold)[0]
+
+    def get_cluster_maps(self, cluster_idx):
+        """Get attribution maps belonging to a specific cluster.
+        
+        Parameters
+        ----------
+        cluster_idx : int
+            Index of cluster to get maps for. If sorting was specified
+            during initialization, this index refers to the sorted order
+            (e.g., 0 is the first cluster after sorting).
+        
+        Returns
+        -------
+        numpy.ndarray
+            Attribution maps for the specified cluster.
+        """
+        # Get original cluster index using class-level sorting if available
+        if self.cluster_order is not None:
+            original_idx = self.cluster_order[cluster_idx]
+        else:
+            original_idx = cluster_idx
+        
+        # Get maps from the specified cluster
+        cluster_maps = self.attributions[self.mave['Cluster'] == original_idx]
+        
+        return cluster_maps
