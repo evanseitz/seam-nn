@@ -107,5 +107,6 @@ ENV/
 # mypy
 .mypy_cache/
 
-
+# hide models used for testing
+seam/deepshap_batch/testing/deepstarr_model
 
