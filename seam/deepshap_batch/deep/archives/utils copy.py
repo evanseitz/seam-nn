@@ -11,13 +11,13 @@ except ImportError:
     pass
 
 def standard_combine_mult_and_diffref(mult, orig_inp, bg_data):
-    #print("HERE!")
+    print("HERE!")
     """Standard DeepLIFT combination function that works with PyTorch, TensorFlow, and NumPy."""
     
-    #print("\n=== Debug utils.py ===")
-    #print(f"mult[0] first few values: {mult[0].numpy().flatten()[:5]}")
-    #print(f"orig_inp[0] first few values: {orig_inp[0].numpy().flatten()[:5]}")
-    #print(f"bg_data[0] first few values: {bg_data[0].numpy().flatten()[:5]}")
+    print("\n=== Debug utils.py ===")
+    print(f"mult[0] first few values: {mult[0].numpy().flatten()[:5]}")
+    print(f"orig_inp[0] first few values: {orig_inp[0].numpy().flatten()[:5]}")
+    print(f"bg_data[0] first few values: {bg_data[0].numpy().flatten()[:5]}")
     
     import numpy as np
     
@@ -52,7 +52,7 @@ def standard_combine_mult_and_diffref(mult, orig_inp, bg_data):
     else:
         print('Using NumPy implementation')
 
-        if 1: # correct
+        if 0: # correct
             assert len(orig_inp) == 1, "Only single input supported for numpy implementation"
             projected_hypothetical_contribs = np.zeros_like(bg_data[0]).astype("float")
             assert len(orig_inp[0].shape) == 2, "Input must be 2D for numpy implementation"
