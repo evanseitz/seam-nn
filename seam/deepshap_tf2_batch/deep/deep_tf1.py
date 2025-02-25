@@ -4,7 +4,9 @@ from core.explainer import Explainer
 from .utils import standard_combine_mult_and_diffref
 from distutils.version import LooseVersion
 import sys
-from .deep_tf_utils import tensors_blocked_by_false, backward_walk_ops, forward_walk_ops, passthrough, break_dependence, op_handlers
+from .deep_tf1_utils import tensors_blocked_by_false, backward_walk_ops, forward_walk_ops, passthrough, break_dependence, op_handlers
+from tensorflow.python.framework import ops as tf_ops
+from tensorflow.python.ops import gradients_impl as tf_gradients_impl
 
 keras = None
 tf = None
@@ -141,8 +143,11 @@ class TFDeepExplainer(Explainer):
             for op in self.session.graph.get_operations():
                 if 'learning_phase' in op.name and op.type == "Const" and len(op.outputs[0].shape) == 0:
                     if op.outputs[0].dtype == tf.bool:
+                        print(f"Found learning phase op: {op.name}")
                         self.learning_phase_ops.append(op)
             self.learning_phase_flags = [op.outputs[0] for op in self.learning_phase_ops]
+            print("Learning phase flag values:", [self.session.run(flag) for flag in self.learning_phase_flags])
+
         else:
             self.learning_phase_ops = [t.op for t in learning_phase_flags]
 
@@ -158,26 +163,31 @@ class TFDeepExplainer(Explainer):
         # find all the operations in the graph between our inputs and outputs
         tensor_blacklist = tensors_blocked_by_false(self.learning_phase_ops) # don't follow learning phase branches
         dependence_breakers = [k for k in op_handlers if op_handlers[k] == break_dependence]
+        print("\nDependence breakers:", dependence_breakers)
+        print("\nTensor blacklist:", [t.name for t in tensor_blacklist])
+        
         back_ops = backward_walk_ops(
             [self.model_output.op], tensor_blacklist,
             dependence_breakers
         )
+        print("\nBackward ops:", [op.type for op in back_ops])
+        
         self.between_ops = forward_walk_ops(
             [op for input in self.model_inputs for op in input.consumers()],
             tensor_blacklist, dependence_breakers,
             within_ops=back_ops
         )
+        print("\nForward ops:", [op.type for op in self.between_ops])
+        
+        # Intersect the forward and backward reachable ops
+        print("\nBetween ops:", [op.type for op in self.between_ops])
 
-        # save what types are being used
+        # Initialize used_types dictionary
         self.used_types = {}
         for op in self.between_ops:
             self.used_types[op.type] = True
-            if (op.type not in op_handlers):
-                print("Warning: ",op.type,"used in model but handling of op"
-                      +" is not specified by shap; will use original "
-                      +" gradients")
 
-        # make a blank array that will get lazily filled in with the SHAP value computation
+        # Make a blank array that will get lazily filled in with the SHAP value computation
         # graphs for each output. Lazy is important since if there are 1000 outputs and we
         # only explain the top 5 it would be a waste to build graphs for the other 995
         if not self.multi_output:
@@ -188,28 +198,60 @@ class TFDeepExplainer(Explainer):
                 self.phi_symbolics = [None for i in range(noutputs)]
             else:
                 raise Exception("The model output tensor to be explained cannot have a static shape in dim 1 of None!")
+
+    def run(self, out, model_inputs, X):
+        """ Runs the model while also setting the learning phase flags to False.
+        """
+        feed_dict = dict(zip(model_inputs, X))
+        for t in self.learning_phase_flags:
+            feed_dict[t] = False
+        result = self.session.run(out, feed_dict)
+        print(f"6. gradient first 10: {[r.flatten()[:10] for r in result]}")
+        return result
+        
     def _variable_inputs(self, op):
         """ Return which inputs of this operation are variable (i.e. depend on the model inputs).
         """
+        print("\n=== _variable_inputs debug ===")
+        print(f"Op name: {op.name}")
+        print(f"Op inputs: {[t.name for t in op.inputs]}")
+        print(f"Model inputs: {[x.name for x in self.model_inputs]}")
+    
         if op.name not in self._vinputs:
             self._vinputs[op.name] = np.array([t.op in self.between_ops or t.name in [x.name for x in self.model_inputs] for t in op.inputs])
+        print(f"Variable mask: {self._vinputs[op.name]}")
+        print("=== _variable_inputs finished ===\n")
         return self._vinputs[op.name]
-
+    
     def phi_symbolic(self, i):
-        """ Get the SHAP value computation graph for a given model output.
-        """
+        """Get the SHAP value computation graph for a given model output."""
+        print(f"\n=== TF1 phi_symbolic for output {i} ===")
+        
         if self.phi_symbolics[i] is None:
-            print("\n=== phi_symbolic Debug (sess) ===")
-            print("Computing symbolic gradients for output", i)
+            print("Building new computation graph...")
+            
+            # Get the specific output we want to explain
+            print(f"model_output: {self.model_output}")
+            out = self.model_output[:,i] if self.multi_output else self.model_output
+            print(f"out: {out}")
+            print(f"Output shape: {out.shape}")
+            
+            print("\nRegistering custom gradients...")
+            # Create custom gradient registry
+            reg = {}
+            for n in op_handlers:
+                if n in self.used_types:
+                    if op_handlers[n] is not passthrough:
+                        #print(f"\nRegistered custom gradient for: {n}")
+                        reg[n] = self.custom_grad
 
             # replace the gradients for all the non-linear activations
-            # we do this by hacking our way into the registry (TODO: find a public API for this if it exists)
             reg = tf_ops._gradient_registry._registry
-            print("\nReplacing activation gradients:")
             for n in op_handlers:
                 if n in reg:
-                    print(f"- Replacing gradient for {n}")
                     self.orig_grads[n] = reg[n]["type"]
+                    #print(f"\nStored original gradient for {n}")
+                    #print(f"Type: {type(self.orig_grads[n])}")
                     if op_handlers[n] is not passthrough:
                         reg[n]["type"] = self.custom_grad
                 elif n in self.used_types:
@@ -219,22 +261,19 @@ class TFDeepExplainer(Explainer):
             if hasattr(tf_gradients_impl, "_IsBackpropagatable"):
                 orig_IsBackpropagatable = tf_gradients_impl._IsBackpropagatable
                 tf_gradients_impl._IsBackpropagatable = lambda tensor: True
-            
-            # define the computation graph for the attribution values using custom a gradient-like computation
+
             try:
-                print("\nDefining computation graph:")
-                print("- Model output shape:", self.model_output.shape)
                 out = self.model_output[:,i] if self.multi_output else self.model_output
-                print("- Selected output shape:", out.shape)
-                print("- Model inputs shape:", [x.shape for x in self.model_inputs])
+
+                print("\nDEBUG: Detailed gradient computation")
+                print(f"1. model_output shape: {self.model_output.shape}")
+                print(f"2. model_output[:,i] shape: {self.model_output[:,i].shape}")
+                print(f"3. out shape: {out.shape}")
+                print(f"4. model_inputs shapes: {[x.get_shape() for x in self.model_inputs]}")
                 self.phi_symbolics[i] = tf.gradients(out, self.model_inputs)
-                print("- Gradient shape:", [x.shape for x in self.phi_symbolics[i]])
-
-
+                print(f"5. gradient shapes: {[g.get_shape() if g is not None else None for g in self.phi_symbolics[i]]}")
             finally:
-
                 # reinstate the backpropagatable check
-                print("\nRestoring original gradients")
                 if hasattr(tf_gradients_impl, "_IsBackpropagatable"):
                     tf_gradients_impl._IsBackpropagatable = orig_IsBackpropagatable
 
@@ -242,11 +281,26 @@ class TFDeepExplainer(Explainer):
                 for n in op_handlers:
                     if n in reg:
                         reg[n]["type"] = self.orig_grads[n]
+
+        # Try to get actual shape from the data
+        try:
+            output_shape = (self.data[0].shape[0], self.data[0].shape[1], self.data[0].shape[2])
+        except:
+            output_shape = self.phi_symbolics[i][0].get_shape()
+        print(f"Output shape: {output_shape}")
         return self.phi_symbolics[i]
 
-    def shap_values(self, X, ranked_outputs=None, output_rank_order="max",
-                             progress_message=None):
-        # check if we have multiple inputs
+    def custom_grad(self, op, *grads):
+        """ Passes a gradient op creation request to the correct handler.
+        """
+        return op_handlers[op.type](self, op, *grads)
+    
+
+
+    def test_phi_symbolic(self, X):
+        """Test that TF1 implementation gives expected results."""
+        print("\nTesting phi_symbolic...")
+        # Check if we have multiple inputs
         if not self.multi_input:
             if type(X) == list and len(X) != 1:
                 assert False, "Expected a single tensor as model input!"
@@ -254,116 +308,57 @@ class TFDeepExplainer(Explainer):
                 X = [X]
         else:
             assert type(X) == list, "Expected a list of model inputs!"
-        assert len(self.model_inputs) == len(X), "Number of model inputs (%d) does not match the number given (%d)!" % (len(self.model_inputs), len(X))
 
-        # rank and determine the model outputs that we will explain
-        if ranked_outputs is not None and self.multi_output:
-            model_output_values = self.run(self.model_output, self.model_inputs, X)
-            if output_rank_order == "max":
-                model_output_ranks = np.argsort(-model_output_values)
-            elif output_rank_order == "min":
-                model_output_ranks = np.argsort(model_output_values)
-            elif output_rank_order == "max_abs":
-                model_output_ranks = np.argsort(np.abs(model_output_values))
-            else:
-                assert False, "output_rank_order must be max, min, or max_abs!"
-            model_output_ranks = model_output_ranks[:,:ranked_outputs]
-        else:
-            model_output_ranks = np.tile(np.arange(len(self.phi_symbolics)), (X[0].shape[0], 1))
-
-        # compute the attributions
-        output_phis = []
+        model_output_ranks = np.tile(np.arange(len(self.phi_symbolics))[None,:], (X[0].shape[0],1))
+        # Compute the attributions
+        print("\nComputing attributions...")
+        all_phis = []  # Store all results
         for i in range(model_output_ranks.shape[1]):
+            print(f"\n{'='*50}")
+            print(f"Output {i}:")
+            print(f"{'='*50}")
             phis = []
             for k in range(len(X)):
                 phis.append(np.zeros(X[k].shape))
+                print(f"Initialized phis[{k}] with shape: {phis[k].shape}")
+                sys.stdout.flush()
+                
             for j in range(X[0].shape[0]):
-                if (progress_message is not None):
-                    if ((j%progress_message)==0):
-                        print("Done",j,"examples of", X[0].shape[0])
-                        sys.stdout.flush()
-                if (hasattr(self.data, '__call__')):
+                print(f"\n{'-'*40}")
+                print(f"Sample {j}:")
+                print(f"{'-'*40}")
+                if hasattr(self.data, '__call__'):
                     bg_data = self.data([X[l][j] for l in range(len(X))])
                     if type(bg_data) != list:
                         bg_data = [bg_data]
                 else:
                     bg_data = self.data
-
                 # tile the inputs to line up with the reference data samples
-                tiled_X = [np.tile(X[l][j:j+1], (bg_data[l].shape[0],) + tuple([1 for k in range(len(X[l].shape)-1)])) for l in range(len(X))]
+                #print(f"Background data shapes: {[b.shape for b in bg_data]}")
+                #print(f"Background data first 10: {[b.flatten()[:10] for b in bg_data]}")
+                sys.stdout.flush()
+
+                tiled_X = [np.tile(X[l][j:j+1], (bg_data[l].shape[0],) + tuple([1 for k in range(len(X[l].shape)-1)])) for l in range(len(X))]                
+                #print(f"Tiled X shapes: {[t.shape for t in tiled_X]}")
+                #print(f"Tiled X first 10: {[t.flatten()[:10] for t in tiled_X]}")
+                sys.stdout.flush()
+                
                 joint_input = [np.concatenate([tiled_X[l], bg_data[l]], 0) for l in range(len(X))]
-
-                # Inside shap_values method
-                print("\n=== DeepSHAP Session Debug ===")
-                print("Input shapes:")
-                print("- Model input:", [x.shape for x in X])
-                print("- Background data:", [x.shape for x in self.data])
-
-                # Get model output using session
-                model_output = self.run(self.model_output, self.model_inputs, [X[0]])
-                print("\nModel outputs:")
-                print("- Shape:", model_output.shape)
-                print("- First few values:", model_output[:5])
+                #print(f"Joint input shapes: {[j.shape for j in joint_input]}")
+                #print(f"Joint input first 10: {[j.flatten()[:10] for j in joint_input]}")
+                sys.stdout.flush()
 
                 # run attribution computation graph
                 feature_ind = model_output_ranks[j,i]
+                #print(f"Feature index: {feature_ind}")
+                sys.stdout.flush()
+
                 sample_phis = self.run(self.phi_symbolic(feature_ind), self.model_inputs, joint_input)
+                print(f"Sample phis shapes: {[s.shape if s is not None else None for s in sample_phis]}")
+                print(f"Sample phis mean: {[np.mean(s) if s is not None else None for s in sample_phis]}")
+                print(f"Sample phis first 10: {[s.flatten()[:10] if s is not None else None for s in sample_phis]}")
+                sys.stdout.flush()
                 
-                # After gradient computation
-                print("\nGradient computation:")
-                print("- Shape:", [g.shape for g in sample_phis])
-                print("- First few values:", [g[:2, :5] for g in sample_phis])
-
-                # combine the multipliers with the difference from reference
-                print("\n=== Debug sess.py values ===")
-                print(f"mult first few values: {sample_phis[0][:-bg_data[0].shape[0]].flatten()[:5]}")
-                print(f"orig_inp first few values: {X[0][j].flatten()[:5]}")
-                print(f"bg_data first few values: {bg_data[0].flatten()[:5]}")
-                phis_j = self.combine_mult_and_diffref(
-                    mult=[sample_phis[l][:-bg_data[l].shape[0]]
-                          for l in range(len(X))],
-                    orig_inp=[X[l][j] for l in range(len(X))],
-                    bg_data=bg_data)
-
-                print("\nFinal attribution shape:", [p.shape for p in phis_j])
-                print("First few attribution values:", 
-                      [p[:5] if len(p.shape) == 1 else p[:5,0] for p in phis_j])
-                print("=== End of Session-based Debug ===")
-
-                # After gradient computation
-                print("\nGradient computation results:")
-                print("Gradient shapes:", [g.shape for g in sample_phis])
-                print("First few gradient values:", 
-                      [g[:2, :5] if isinstance(g, np.ndarray) else g[:2, :5].numpy() for g in sample_phis])
-
-                # After combine_mult_and_diffref
-                print("\n=== Final Attribution Values ===")
-                print("Attribution shapes:", [p.shape for p in phis_j])
-                print("First few attribution values:", 
-                      [p[:5] if len(p.shape) == 1 else p[:5,0] for p in phis_j])
-
-                # assign the attributions to the right part of the output arrays
-                for l in range(len(X)):
-                    phis[l][j] = phis_j[l]
-
-            output_phis.append(phis[0] if not self.multi_input else phis)
-
-        if not self.multi_output:
-            return output_phis[0]
-        elif ranked_outputs is not None:
-            return output_phis, model_output_ranks
-        else:
-            return output_phis
-
-    def run(self, out, model_inputs, X):
-        """ Runs the model while also setting the learning phase flags to False.
-        """
-        feed_dict = dict(zip(model_inputs, X))
-        for t in self.learning_phase_flags:
-            feed_dict[t] = False
-        return self.session.run(out, feed_dict)
-
-    def custom_grad(self, op, *grads):
-        """ Passes a gradient op creation request to the correct handler.
-        """
-        return op_handlers[op.type](self, op, *grads)
+                all_phis.append(sample_phis)  # Store results
+                
+        return all_phis  # Return all results for comparison

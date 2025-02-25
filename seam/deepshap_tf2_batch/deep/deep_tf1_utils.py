@@ -1,3 +1,4 @@
+import numpy as np
 import tensorflow as tf
 from typing import Union, List, Callable, Tuple, Optional
 
@@ -41,112 +42,71 @@ def tf_avgpool(inputs, layer, grads):
 # Operation handlers
 
 def softmax(explainer, op, *grads):
-    print("\nDEBUG NEW VERSION:")
-    print("Input op type:", type(op))
-    print("Input grads type:", type(grads[0]))
+    #print("\nDEBUG NEW VERSION:")
+    #print("Input op type:", type(op))
+    #print("Input grads type:", type(grads[0]))
     
     in0 = op.inputs[0]
-    print("in0 shape:", in0.shape)
+    #print("in0 shape:", in0.shape)
     
     in0_max = tf.reduce_max(in0, axis=-1, keepdims=True, name="in0_max")
     in0_centered = in0 - in0_max
-    print("in0_centered shape:", in0_centered.shape)
+    #print("in0_centered shape:", in0_centered.shape)
     
     evals = tf.exp(in0_centered, name="custom_exp")
     rsum = tf.reduce_sum(evals, axis=-1, keepdims=True)
     div = evals / rsum
-    print("div shape:", div.shape)
+    #print("div shape:", div.shape)
     
     # Track intermediate operations if we're in sess mode
     try:
-        print("Trying sess mode...")
+        #print("Trying sess mode...")
         explainer.between_ops.extend([evals.op, rsum.op, div.op, in0_centered.op])
         out = tf.gradients(div, in0_centered, grad_ys=grads[0])[0]
-        print("Sess gradient shape:", out.shape)
+        #print("Sess gradient shape:", out.shape)
         del explainer.between_ops[-4:]
     except AttributeError:
-        print("Using eager mode...")
+        #print("Using eager mode...")
         with tf.GradientTape() as tape:
             tape.watch(in0_centered)
             out = tape.gradient(div, in0_centered, output_gradients=grads[0])
-            print("Eager gradient shape:", out.shape if out is not None else None)
+            #print("Eager gradient shape:", out.shape if out is not None else None)
 
     # Rescale to account for our shift by in0_max
     xin0,rin0 = tf.split(in0, 2)
     xin0_centered,rin0_centered = tf.split(in0_centered, 2)
     delta_in0 = xin0 - rin0
     dup0 = [2] + [1 for i in delta_in0.shape[1:]]
-    print("delta_in0 shape:", delta_in0.shape)
-    print("dup0:", dup0)
+    #print("delta_in0 shape:", delta_in0.shape)
+    #print("dup0:", dup0)
     
     result = tf.where(
         tf.tile(tf.abs(delta_in0), dup0) < 1e-6,
         out,
         out * tf.tile((xin0_centered - rin0_centered) / delta_in0, dup0)
     )
-    print("Final result shape:", result.shape)
+    #print("Final result shape:", result.shape)
     return result
-
-
-
-# Original version for comparison
-'''def softmax(explainer, op, *grads):
-    print("\nDEBUG ORIGINAL VERSION:")
-    try:
-        print("Trying eager-style access...")
-        evals = op.evals.tensor if hasattr(op.evals, 'tensor') else op.evals
-        rsum = op.rsum.tensor if hasattr(op.rsum, 'tensor') else op.rsum
-        div = op.div.tensor if hasattr(op.div, 'tensor') else op.div
-        in0_centered = op.in0_centered.tensor if hasattr(op.in0_centered, 'tensor') else op.in0_centered
-        try:
-            print("Extending between_ops sess style...")
-            explainer.between_ops.extend([evals.op, rsum.op, div.op, in0_centered.op])
-        except AttributeError:
-            print("Extending between_ops eager style...")
-            explainer.between_ops.extend([evals, rsum, div, in0_centered])
-        result = grads[0] * div * (1 - div)
-        print("Result shape:", result.shape)
-        return result
-    except AttributeError:
-        print("Using original sess implementation...")
-        in0 = op.inputs[0]
-        print("in0 shape:", in0.shape)
-        in0_max = tf.reduce_max(in0, axis=-1, keepdims=True, name="in0_max")
-        in0_centered = in0 - in0_max
-        print("in0_centered shape:", in0_centered.shape)
-        evals = tf.exp(in0_centered, name="custom_exp")
-        rsum = tf.reduce_sum(evals, axis=-1, keepdims=True)
-        div = evals / rsum
-        print("div shape:", div.shape)
-        explainer.between_ops.extend([evals.op, rsum.op, div.op, in0_centered.op])
-        out = tf.gradients(div, in0_centered, grad_ys=grads[0])[0]
-        print("Gradient shape:", out.shape)
-        del explainer.between_ops[-4:]
-
-        xin0,rin0 = tf.split(in0, 2)
-        xin0_centered,rin0_centered = tf.split(in0_centered, 2)
-        delta_in0 = xin0 - rin0
-        dup0 = [2] + [1 for i in delta_in0.shape[1:]]
-        print("delta_in0 shape:", delta_in0.shape)
-        print("dup0:", dup0)
-        result = tf.where(
-            tf.tile(tf.abs(delta_in0), dup0) < 1e-6,
-            out,
-            out * tf.tile((xin0_centered - rin0_centered) / delta_in0, dup0)
-        )
-        print("Final result shape:", result.shape)
-        return result'''
-
-
-
-
 
 def maxpool(explainer, op, *grads):
     inputs = op.inputs[0]
     outputs = op.outputs[0]
-    
+
+    print('inputs', inputs.shape)
+    print('outputs', outputs.shape)
+    print('maxpool')
     xin0,rin0 = tf.split(inputs, 2)
+    print('inputs split')
+    print('xin0 static shape:', xin0.shape)
+    print('xin0 dynamic shape:', tf.shape(xin0))
+    print('rin0 static shape:', rin0.shape)
+    print('rin0 dynamic shape:', tf.shape(rin0))
     xout,rout = tf.split(outputs, 2)
+    print('outputs split')
+    print('xout static shape:', xout.shape)
+    print('xout dynamic shape:', tf.shape(xout))
+    print('rout static shape:', rout.shape)
+    print('rout dynamic shape:', tf.shape(rout))
     delta_in0 = xin0 - rin0
     dup0 = [2] + [1 for i in delta_in0.shape[1:]]
     cross_max = tf.maximum(xout, rout)
@@ -176,7 +136,6 @@ def tensors_blocked_by_false(ops):
                     recurse(c)
     for op in ops:
         recurse(op)
-
     return blocked
 
 def backward_walk_ops(start_ops, tensor_blacklist, op_type_blacklist):
@@ -202,6 +161,157 @@ def forward_walk_ops(start_ops, tensor_blacklist, op_type_blacklist, within_ops)
                 if out not in tensor_blacklist:
                     for c in out.consumers():
                         op_stack.append(c)
+    return found_ops
+
+'''def _get_concrete_ops(tensor_or_op):
+    """Helper function to get concrete ops from Keras tensors or TF ops."""
+    print(f"\nDebug _get_concrete_ops - Input type: {type(tensor_or_op)}")
+    
+    if isinstance(tensor_or_op, tf.keras.layers.Layer):
+        print("- Processing as Keras layer")
+        return tensor_or_op.output.op
+    elif hasattr(tensor_or_op, '_keras_history'):
+        print("- Processing as Keras tensor")
+        print(f"- Shape: {tensor_or_op.shape}")
+        print(f"- Keras history: {tensor_or_op._keras_history}")
+        
+        # For Keras tensors, create a concrete function that returns this tensor
+        dummy_input = tf.zeros([1] + list(tensor_or_op.shape[1:]))
+        print(f"- Created dummy input with shape: {dummy_input.shape}")
+        
+        @tf.function
+        @tf.autograph.experimental.do_not_convert
+        def get_tensor(x):
+            return x
+        
+        concrete_func = get_tensor.get_concrete_function(dummy_input)
+        print(f"- Concrete function output op: {concrete_func.outputs[0].op}")
+        return concrete_func.outputs[0].op
+    elif isinstance(tensor_or_op, tf.Tensor):
+        print("- Processing as TF tensor")
+        return tensor_or_op.op
+    elif isinstance(tensor_or_op, tf.Operation):
+        print("- Processing as TF operation")
+        return tensor_or_op
+    else:
+        raise TypeError(f"Unsupported type: {type(tensor_or_op)}")'''
+
+def get_model_graph(model):
+    """Get the full computation graph from a Keras model."""
+    # Create dummy input matching model's input shape
+    dummy_input = tf.zeros([1] + list(model.input_shape[1:]))
+    
+    # Get concrete function
+    @tf.function
+    @tf.autograph.experimental.do_not_convert
+    def get_graph(x):
+        return model(x)
+    
+    # Get the concrete function and graph
+    concrete_func = get_graph.get_concrete_function(dummy_input)
+    graph = concrete_func.graph
+    
+    # Get all operations from the graph
+    return list(graph.get_operations())
+
+def filter_computation_ops(ops):
+    """Filter out resource and constant ops to focus on computation."""
+    compute_ops = []
+    # Note: Switch/Merge operations are TF1-specific. In TF2, dropout is handled by 
+    # Identity ops during inference and the Keras layer during training
+    compute_types = {
+        'Conv2D', 'BiasAdd', 'MatMul', 'Relu', 'Sigmoid', 'Tanh',
+        'LeakyRelu', 'MaxPool', 'AvgPool', 'Add', 'AddV2', 'Mul', 'Sub', 'Div',
+        'ExpandDims', 'Squeeze', 'Reshape', 'Identity'
+    }
+    
+    for op in ops:
+        # Skip resource operations
+        if op.type.endswith('_resource'):
+            continue
+        # Skip constant operations
+        if op.type == 'Const':
+            continue
+        # Skip read variable operations
+        if op.type == 'ReadVariableOp':
+            continue
+        # Skip final Identity op
+        if op.type == 'Identity' and op.name == 'Identity':
+            continue
+        # Skip input placeholder
+        if op.type == 'Placeholder':
+            continue
+        # Keep computation ops
+        if op.type in compute_types:
+            compute_ops.append(op)
+            
+    return compute_ops
+
+def backward_walk_ops_tf2(start_ops, tensor_blacklist, all_ops, dependence_breakers=None):
+    """TF2 version of backward walk that finds all ops between the outputs and inputs.
+    
+    Args:
+        start_ops: List of starting operations to walk back from
+        tensor_blacklist: Set of tensors to block walking through
+        all_ops: Set of all operations to consider
+        dependence_breakers: List of operation types that should break dependencies
+    
+    Returns:
+        List of operations between start_ops and inputs, in forward propagation order
+    """
+    found_ops = []  # Changed from set to list
+    visited = set()  # Use a separate set for checking if we've seen an op
+    
+    def recurse(op):
+        if op not in visited and op in all_ops:
+            visited.add(op)
+            # Don't continue if this op breaks dependencies
+            if dependence_breakers and op.type in dependence_breakers:
+                return
+            # First recurse through inputs (deeper ops)
+            for inp in op.inputs:
+                if inp not in tensor_blacklist and hasattr(inp, 'op'):
+                    recurse(inp.op)
+            # Then add current op (maintains forward prop order)
+            found_ops.append(op)
+    
+    for op in start_ops:
+        recurse(op)
+    
+    # Reverse to get forward propagation order
+    found_ops.reverse()
+    return found_ops
+
+def forward_walk_ops_tf2(start_ops, tensor_blacklist, all_ops, dependence_breakers=None):
+    """TF2 version of forward walk that finds all ops between inputs and outputs.
+    
+    Args:
+        start_ops: List of starting operations to walk forward from
+        tensor_blacklist: Set of tensors to block walking through
+        all_ops: Set of all operations to consider
+        dependence_breakers: List of operation types that should break dependencies
+    
+    Returns:
+        List of operations between start_ops and outputs, in forward propagation order
+    """
+    found_ops = []  # Changed from set to list
+    visited = set()  # Use a separate set for checking if we've seen an op
+    
+    def recurse(op):
+        if op not in visited and op in all_ops:
+            visited.add(op)
+            found_ops.append(op)  # Add in forward order
+            # Don't continue if this op breaks dependencies
+            if dependence_breakers and op.type in dependence_breakers:
+                return
+            for out in op.outputs:
+                if out not in tensor_blacklist:
+                    for consumer in out.consumers():
+                        recurse(consumer)
+    
+    for op in start_ops:
+        recurse(op)
+    
     return found_ops
 
 def gather(explainer, op, *grads):
@@ -265,7 +375,7 @@ def nonlinearity_1d(input_ind):
         return nonlinearity_1d_handler(input_ind, explainer, op, *grads)
     return handler
 
-def nonlinearity_1d_handler(input_ind, explainer, op, *grads):
+'''def nonlinearity_1d_handler(input_ind, explainer, op, *grads):
     # make sure only the given input varies
     for i in range(len(op.inputs)):
         if i != input_ind:
@@ -282,7 +392,36 @@ def nonlinearity_1d_handler(input_ind, explainer, op, *grads):
         orig_grads[input_ind] if len(op.inputs) > 1 else orig_grads,
         grads[0] * tf.tile((xout - rout) / delta_in0, dup0)
     )
+    return out'''
+
+def nonlinearity_1d_handler(input_ind, explainer, op, *grads):
+    # make sure only the given input varies
+    for i in range(len(op.inputs)):
+        if i != input_ind:
+            assert not explainer._variable_inputs(op)[i], str(i) + "th input to " + op.name + " cannot vary!"
+    
+    #print("\nDEBUG nonlinearity_1d_handler:")
+    #print("Input op type:", op.type)
+    #print("Input grads shape:", grads[0].shape)
+    
+    xin0,rin0 = tf.split(op.inputs[input_ind], 2)
+    xout,rout = tf.split(op.outputs[0], 2)
+    delta_in0 = xin0 - rin0
+    dup0 = [2] + [1 for i in delta_in0.shape[1:]]
+    #print("dup0:", dup0)
+    
+    out = [None for _ in op.inputs]
+    orig_grads = explainer.orig_grads[op.type](op, grads[0])
+    
+    result = tf.where(
+        tf.tile(tf.abs(delta_in0), dup0) < 1e-6,
+        orig_grads[input_ind] if len(op.inputs) > 1 else orig_grads,
+        grads[0] * tf.tile((xout - rout) / delta_in0, dup0)
+    )
+    
+    out[input_ind] = result
     return out
+
 
 def nonlinearity_2d_handler(input_ind0, input_ind1, op_func, explainer, op, *grads):
     assert input_ind0 == 0 and input_ind1 == 1, "TODO: Can't yet handle double inputs that are not first!"
@@ -360,6 +499,7 @@ op_handlers["Pack"] = passthrough
 op_handlers["BiasAdd"] = passthrough
 op_handlers["Unpack"] = passthrough
 op_handlers["Add"] = passthrough
+op_handlers["AddV2"] = passthrough
 op_handlers["Sub"] = passthrough
 op_handlers["Merge"] = passthrough
 op_handlers["Sum"] = passthrough
@@ -380,41 +520,85 @@ op_handlers["RandomUniform"] = break_dependence
 op_handlers["ZerosLike"] = break_dependence
 #op_handlers["StopGradient"] = break_dependence # this allows us to stop attributions when we want to (like softmax re-centering)
 
-# ops that are linear and only allow a single input to vary
-op_handlers["Reshape"] = linearity_1d(0)
-op_handlers["Pad"] = linearity_1d(0)
-op_handlers["ReverseV2"] = linearity_1d(0)
-op_handlers["ConcatV2"] = linearity_with_excluded([-1])
-op_handlers["Conv2D"] = linearity_1d(0)
-op_handlers["Switch"] = linearity_1d(0)
-op_handlers["AvgPool"] = linearity_1d(0)
-op_handlers["FusedBatchNorm"] = linearity_1d(0)
+if 0:
+    # ops that are linear and only allow a single input to vary
+    op_handlers["Reshape"] = linearity_1d(0)
+    op_handlers["Pad"] = linearity_1d(0)
+    op_handlers["ReverseV2"] = linearity_1d(0)
+    op_handlers["ConcatV2"] = linearity_with_excluded([-1])
+    op_handlers["Conv2D"] = linearity_1d(0)
+    op_handlers["Switch"] = linearity_1d(0)
+    op_handlers["AvgPool"] = linearity_1d(0)
+    op_handlers["FusedBatchNorm"] = linearity_1d(0)
 
-# ops that are nonlinear and only allow a single input to vary
-op_handlers["Relu"] = nonlinearity_1d(0)
-op_handlers["Elu"] = nonlinearity_1d(0)
-op_handlers["Sigmoid"] = nonlinearity_1d(0)
-op_handlers["Tanh"] = nonlinearity_1d(0)
-op_handlers["Softplus"] = nonlinearity_1d(0)
-op_handlers["Exp"] = nonlinearity_1d(0)
-op_handlers["Log"] = nonlinearity_1d(0)
-op_handlers["ClipByValue"] = nonlinearity_1d(0)
-op_handlers["Rsqrt"] = nonlinearity_1d(0)
-op_handlers["Square"] = nonlinearity_1d(0)
-op_handlers["Max"] = nonlinearity_1d(0)
+    # ops that are nonlinear and only allow a single input to vary
+    op_handlers["Relu"] = nonlinearity_1d(0)
+    op_handlers["Elu"] = nonlinearity_1d(0)
+    op_handlers["Sigmoid"] = nonlinearity_1d(0)
+    op_handlers["Tanh"] = nonlinearity_1d(0)
+    op_handlers["Softplus"] = nonlinearity_1d(0)
+    op_handlers["Exp"] = nonlinearity_1d(0)
+    op_handlers["Log"] = nonlinearity_1d(0)
+    op_handlers["ClipByValue"] = nonlinearity_1d(0)
+    op_handlers["Rsqrt"] = nonlinearity_1d(0)
+    op_handlers["Square"] = nonlinearity_1d(0)
+    op_handlers["Max"] = nonlinearity_1d(0)
 
-# ops that are nonlinear and allow two inputs to vary
-op_handlers["SquaredDifference"] = nonlinearity_1d_nonlinearity_2d(0, 1, lambda x, y: (x - y) * (x - y))
-op_handlers["Minimum"] = nonlinearity_1d_nonlinearity_2d(0, 1, lambda x, y: tf.minimum(x, y))
-op_handlers["Maximum"] = nonlinearity_1d_nonlinearity_2d(0, 1, lambda x, y: tf.maximum(x, y))
+    # ops that are nonlinear and allow two inputs to vary
+    op_handlers["SquaredDifference"] = nonlinearity_1d_nonlinearity_2d(0, 1, lambda x, y: (x - y) * (x - y))
+    op_handlers["Minimum"] = nonlinearity_1d_nonlinearity_2d(0, 1, lambda x, y: tf.minimum(x, y))
+    op_handlers["Maximum"] = nonlinearity_1d_nonlinearity_2d(0, 1, lambda x, y: tf.maximum(x, y))
 
-# ops that allow up to two inputs to vary are are linear when only one input varies
-op_handlers["Mul"] = linearity_1d_nonlinearity_2d(0, 1, lambda x, y: x * y)
-op_handlers["RealDiv"] = linearity_1d_nonlinearity_2d(0, 1, lambda x, y: x / y)
-op_handlers["MatMul"] = linearity_1d_nonlinearity_2d(0, 1, lambda x, y: tf.matmul(x, y))
+    # ops that allow up to two inputs to vary are are linear when only one input varies
+    op_handlers["Mul"] = linearity_1d_nonlinearity_2d(0, 1, lambda x, y: x * y)
+    op_handlers["RealDiv"] = linearity_1d_nonlinearity_2d(0, 1, lambda x, y: x / y)
+    op_handlers["MatMul"] = linearity_1d_nonlinearity_2d(0, 1, lambda x, y: tf.matmul(x, y))
 
-# ops that need their own custom attribution functions
-op_handlers["GatherV2"] = gather
-op_handlers["ResourceGather"] = gather
-op_handlers["MaxPool"] = maxpool
-op_handlers["Softmax"] = softmax
+    # ops that need their own custom attribution functions
+    op_handlers["GatherV2"] = gather
+    op_handlers["ResourceGather"] = gather
+    op_handlers["MaxPool"] = maxpool
+    op_handlers["Softmax"] = softmax
+
+else: # debug mode only
+    op_handlers["Relu"] = nonlinearity_1d(0)
+
+    # ops that are linear and only allow a single input to vary
+    op_handlers["Reshape"] =  passthrough
+    op_handlers["Pad"] =  passthrough
+    op_handlers["ReverseV2"] =  passthrough
+    op_handlers["ConcatV2"] =  passthrough
+    op_handlers["Conv2D"] =  passthrough
+    op_handlers["Switch"] =  passthrough
+    op_handlers["AvgPool"] =  passthrough
+    op_handlers["FusedBatchNorm"] =  passthrough
+
+    # ops that are nonlinear and only allow a single input to vary
+    op_handlers["Relu"] =  passthrough
+    op_handlers["Elu"] =  passthrough
+    op_handlers["Sigmoid"] =  passthrough
+    op_handlers["Tanh"] =  passthrough
+    op_handlers["Softplus"] =  passthrough
+    op_handlers["Exp"] =  passthrough
+    op_handlers["Log"] =  passthrough
+    op_handlers["ClipByValue"] =  passthrough
+    op_handlers["Rsqrt"] =  passthrough
+    op_handlers["Square"] =  passthrough
+    op_handlers["Max"] =  passthrough
+
+    # ops that are nonlinear and allow two inputs to vary
+    op_handlers["SquaredDifference"] =  passthrough
+    op_handlers["Minimum"] =  passthrough
+    op_handlers["Maximum"] =  passthrough
+
+    # ops that allow up to two inputs to vary are are linear when only one input varies
+    op_handlers["Mul"] = passthrough
+    op_handlers["RealDiv"] = passthrough
+    op_handlers["MatMul"] = passthrough
+
+    # ops that need their own custom attribution functions
+    op_handlers["GatherV2"] = passthrough
+    op_handlers["ResourceGather"] = passthrough
+    op_handlers["MaxPool"] = passthrough
+    op_handlers["Softmax"] = passthrough
+

@@ -173,3 +173,11 @@ Colab:
     - Danko Lab
     - Carlos (work on protein dataset)
     - ...
+
+
+- nucleotide variation bar plots (chrombpnet/fold2/crop190_690)
+
+- optimized REVO
+
+- Future SEAM studies:
+	- protein compartments

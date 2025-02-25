@@ -14,7 +14,7 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.append(parent_dir)
 sys.path.append(os.path.join(current_dir, 'deepstarr_assets/'))
 
-from deep.deep_tf_batch import TF2DeepExplainer#, op_handlers, passthrough
+from deep.deep_tf2 import TF2DeepExplainer
 
 # tested environment (CPU):
     # conda create -n deepstarr2 python=3.11 tensorflow=2.12
@@ -95,11 +95,32 @@ background = tf.convert_to_tensor(background, dtype=tf.float32)
 from deep.utils import standard_combine_mult_and_diffref
 output_layer = model.outputs[class_idx]  # Select the appropriate output head
 model_output_idx = tf.keras.Model(inputs=model.input, outputs=output_layer)
-explainer = TF2DeepExplainer(model_output_idx, background, 
-                             combine_mult_and_diffref=standard_combine_mult_and_diffref)
 
-attribution = explainer.shap_values(x_ref)[0]
-if 1:   
+if 1:
+    print("\nTesting original model gradients...")
+    #test_input = background[0:1]  # Take first background sample
+    test_input = tf.convert_to_tensor(x_ref, dtype=tf.float32)
+    print(f"Input shape: {test_input.shape}")
+    print(f"Output layer shape: {output_layer.shape}")
+
+    with tf.GradientTape() as tape:
+        tape.watch(test_input)
+        out = model_output_idx(test_input, training=False)
+        original_grads = tape.gradient(out, test_input)
+    print(f"Original model gradients (first 10): {original_grads.numpy().flatten()[:10]}")
+    print(f"Gradient shape: {original_grads.shape}")
+
+
+explainer = TF2DeepExplainer(model=model_output_idx, 
+                             background=background, 
+                             combine_mult_and_diffref=standard_combine_mult_and_diffref,
+                             verbose=True
+                             )
+
+explainer.test_custom_grad(x_ref)
+
+#attribution = explainer.shap_values(x_ref)[0].numpy()
+if 0:   
     attribution_df = squid.utils.arr2pd(attribution)
     print(attribution_df.head())
     fig = squid.impress.plot_additive_logo(attribution_df, center=True, alphabet=alphabet, fig_size=[20,2.5])

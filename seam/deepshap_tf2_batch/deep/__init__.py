@@ -1,5 +1,5 @@
 from core.explainer import Explainer
-from deep.deep_tf_batch import TF2DeepExplainer
+from deep.deep_tf2 import TF2DeepExplainer
 from deep.deep_torch import PyTorchDeepExplainer
 from deep.utils import standard_combine_mult_and_diffref
 
