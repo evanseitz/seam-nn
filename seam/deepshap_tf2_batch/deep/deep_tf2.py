@@ -74,29 +74,16 @@ class CustomGradientLayer(tf.keras.layers.Layer):
                             layer_output = self.layer(inputs)
                         input_grads = tape.gradient(layer_output, inputs, output_gradients=upstream)
                     else:
-                        # Check if handler is a nonlinearity_1d handler
-                        handler_name = handler.__name__ if hasattr(handler, '__name__') else str(handler)
-                        if 'nonlinearity_1d' in handler_name:
+                        # Check if this is a nonlinearity_1d handler by looking at its name
+                        if handler.__name__ == 'handler' and handler.__qualname__.startswith('nonlinearity_1d.<locals>'):
                             if self.explainer.verbose:
                                 print(f"Handling nonlinearity_1d for: {op.type}")
                             
                             # Split input into x and reference
                             xin0, rin0 = tf.split(inputs, 2)
                             
-                            # Apply operation
-                            xout = getattr(tf.raw_ops, op.type)(features=xin0)
-                            rout = getattr(tf.raw_ops, op.type)(features=rin0)
-                            
-                            # Calculate delta and duplicates
-                            delta_in0 = xin0 - rin0
-                            dup0 = [2] + [1 for i in delta_in0.shape[1:]]
-                            
-                            # Compute custom gradient
-                            input_grads = tf.where(
-                                tf.tile(tf.abs(delta_in0), dup0) < 1e-6,
-                                upstream,  # Original gradient for small deltas
-                                upstream * tf.tile((xout - rout) / delta_in0, dup0)
-                            )
+                            # Call the actual handler from deep_tf2_utils
+                            input_grads = handler(self.explainer, op, upstream, xin0=xin0, rin0=rin0)[0]
                         else:
                             if self.explainer.verbose:
                                 print(f"Need to implement non-passthrough handler for: {op.type}")
@@ -308,14 +295,21 @@ class TF2DeepExplainer(Explainer):
         joint_input = [tf.concat([self.background, x], 0) for x in X]
         
         print("\nTesting custom gradients...")
+
+        X_tensor = tf.convert_to_tensor(X[0], dtype=tf.float32)
+
         
         # Compute gradients with custom model
         with tf.GradientTape() as tape:
-            tape.watch(joint_input)
-            predictions = self.model_custom(joint_input[0])
+            tape.watch(X_tensor)  # Watch the input tensor
+            # Create joint input inside the tape context
+            joint = tf.concat([self.background, X_tensor], 0)
+            predictions = self.model_custom(joint)
             target_output = predictions[:,self.output_idx] if self.multi_output else predictions
         
-        custom_grads = tape.gradient(target_output, joint_input)
+        #X = tf.convert_to_tensor(X[0], dtype=tf.float32)
+        #custom_grads = tape.gradient(target_output, joint_input)
+        custom_grads = tape.gradient(target_output, X_tensor)
         
         # Compare with original model
         '''with tf.GradientTape() as orig_tape:
@@ -352,16 +346,16 @@ to TensorFlow 2.x (eager execution). DeepSHAP computes SHAP values by comparing 
 custom gradient computations for non-linear operations. The key challenge is maintaining the same gradient behavior as the TF1
 implementation (deep_tf1.py and deep_tf1_utils.py) while working within a modern TF2 framework (deep_tf2.py and deep_tf2_utils.py).
 
-About DeepLIFT:
+About DeepLIFT
+---------------
+DeepLIFT's fundamental goal is not to modify gradients directly but to compute attributions based on reference activations rather
+than standard gradients. This means:
+- Forward pass remains unchanged: We evaluate activations as usual.
+- Attribution propagation replaces standard gradient flow: Instead of backpropagating standard gradients, DeepLIFT defines attribution scores by comparing activation changes relative to a reference input.
 
-DeepLIFT's fundamental goal is not to modify gradients directly but to compute attributions based on reference activations rather than standard gradients. This means:
-
-Forward pass remains unchanged: We evaluate activations as usual.
-Attribution propagation replaces standard gradient flow: Instead of backpropagating standard gradients, DeepLIFT defines attribution scores by comparing activation changes relative to a reference input.
 Key constraints:
-
-It needs access to both the forward activations and the reference activations at every layer.
-It does not rely on standard backpropagation but instead defines a custom propagation rule, where attributions are computed using quotient derivatives (change in activation over change in input).
-It must support non-linear activations correctly (e.g., for ReLU, handling the case when an activation is zero).
-If the goal is just tracking operations, TensorFlow's gradient tape or function tracing might be useful, but if we want to compute DeepLIFT-style attributions, we'd need to ensure that each layer retains both activations and reference activations, then applies custom backpropagation rules instead of standard gradients.
+- It needs access to both the forward activations and the reference activations at every layer.
+- It does not rely on standard backpropagation but instead defines a custom propagation rule, where attributions are computed using quotient derivatives (change in activation over change in input).
+- It must support non-linear activations correctly (e.g., for ReLU, handling the case when an activation is zero).
+- If the goal is just tracking operations, TensorFlow's gradient tape or function tracing might be useful, but if we want to compute DeepLIFT-style attributions, we'd need to ensure that each layer retains both activations and reference activations, then applies custom backpropagation rules instead of standard gradients.
 '''

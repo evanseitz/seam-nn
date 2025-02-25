@@ -139,15 +139,10 @@ if 1:
     # 3. Restore these weights in our session before computing gradients
     
     # First prediction to trigger weight transformation
-    #print("\nFirst prediction:")
     pred = float(model.predict(x_ref)[class_idx][0])
-    #print('Wild-type prediction:', pred)
     
     # Verify raw model output
-    #print("\nRaw model output:")
     raw_pred = model.predict(x_ref)
-    #print('Full output:', raw_pred)
-    #print('Selected class:', raw_pred[class_idx][0])
     
     # Capture the transformed weights
     weights = [layer.get_weights() for layer in model.layers if layer.get_weights()]
@@ -159,8 +154,6 @@ if 1:
     # Get output layers
     dev_output = model.layers[-2].output  # Dense_Dev
     hk_output = model.layers[-1].output   # Dense_Hk
-    #print(f"Dev output shape: {dev_output.shape}")
-    #print(f"Hk output shape: {hk_output.shape}")
     
     # Run the computation in a session
     with tf.compat.v1.Session() as sess:
@@ -201,7 +194,7 @@ print(x_ref.shape)
 print('Testing phi_symbolic (TF1)...')
 explainer.test_phi_symbolic(x_ref)
 
-if 1:
+if 0:
     attribution = explainer.shap_values(x_ref)[0][0]
     attribution_df = squid.utils.arr2pd(attribution)
     print(attribution_df.head())

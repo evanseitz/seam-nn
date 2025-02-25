@@ -184,57 +184,61 @@ def nonlinearity_1d(input_ind):
 
 def nonlinearity_1d_handler(input_ind, explainer, op, *grads, xin0=None, rin0=None):
     """Handle nonlinear operations with one variable input."""
-    print("\n=== nonlinearity_1d_handler called ===")
+    print("\n=== TF2 nonlinearity_1d_handler debug ===")
     print(f"Op type: {op.type}")
     print(f"Op name: {op.name}")
     print(f"Input index: {input_ind}")
-    print(f"Number of inputs: {len(op.inputs)}")
-    print(f"Input shapes: {[i.shape for i in op.inputs]}")
-    print(f"Output shape: {op.outputs[0].shape}")
-    print(f"Gradient shape: {grads[0].shape}")
-
-    # make sure only the given input varies
-    for i in range(len(op.inputs)):
-        if i != input_ind:
-            assert not explainer._variable_inputs(op)[i], str(i) + "th input to " + op.name + " cannot vary!"
-    
-    # Use pre-split tensors if provided, otherwise split them here
-    if xin0 is None or rin0 is None:
-        print("WARNING: Using fallback tensor splitting - this should not happen")
-        xin0, rin0 = tf.split(op.inputs[input_ind], 2)
+    print(f"Upstream gradient shape: {grads[0].shape}")
+    print(f"Upstream gradient first few values: {grads[0].numpy().flatten()[:5]}")
     
     # Get outputs by applying the operation directly
     xout = getattr(tf.raw_ops, op.type)(features=xin0)
     rout = getattr(tf.raw_ops, op.type)(features=rin0)
     
+    print("\nInput tensors:")
+    print(f"xin0 shape: {xin0.shape}")
+    print(f"xin0 first few values: {xin0.numpy().flatten()[:5]}")
+    print(f"rin0 shape: {rin0.shape}")
+    print(f"rin0 first few values: {rin0.numpy().flatten()[:5]}")
+    
+    print("\nOutput tensors:")
+    print(f"xout shape: {xout.shape}")
+    print(f"xout first few values: {xout.numpy().flatten()[:5]}")
+    print(f"rout shape: {rout.shape}")
+    print(f"rout first few values: {rout.numpy().flatten()[:5]}")
+    
+    # Calculate input differences
     delta_in0 = xin0 - rin0
     dup0 = [2] + [1 for i in delta_in0.shape[1:]]
-
-    print(f"Split shapes:")
-    print(f"  xin0: {xin0.shape}")
-    print(f"  rin0: {rin0.shape}")
-    print(f"  xout: {xout.shape}")
-    print(f"  rout: {rout.shape}")
-    print(f"  delta_in0: {delta_in0.shape}")
     
-    print("\nDebug original gradients:")
-    print(f"Available op handlers: {list(explainer.orig_grads.keys())}")
-    print(f"Looking for op type: {op.type}")
-    print(f"Found handler: {explainer.orig_grads.get(op.type)}")
+    print("\nDelta calculations:")
+    print(f"delta_in0 shape: {delta_in0.shape}")
+    print(f"delta_in0 first few values: {delta_in0.numpy().flatten()[:5]}")
+    print(f"dup0: {dup0}")
     
-    out = [None for _ in op.inputs]
-    orig_grads = explainer.orig_grads[op.type](grads[0])
-    print(f"Original gradient shape: {orig_grads[input_ind].shape if len(op.inputs) > 1 else orig_grads.shape}")
+    # Get original gradients for zero-delta case
+    with tf.GradientTape() as tape:
+        tape.watch(xin0)
+        y = getattr(tf.raw_ops, op.type)(features=xin0)
+    orig_grads = tape.gradient(y, xin0, output_gradients=grads[0])
     
+    print("\nOriginal gradients:")
+    print(f"orig_grads shape: {orig_grads.shape}")
+    print(f"orig_grads first few values: {orig_grads.numpy().flatten()[:5]}")
+    
+    # Compute DeepLIFT attribution
     result = tf.where(
         tf.tile(tf.abs(delta_in0), dup0) < 1e-6,
-        orig_grads[input_ind] if len(op.inputs) > 1 else orig_grads,
-        grads[0] * tf.tile((xout - rout) / delta_in0, dup0)
+        orig_grads,  # Use original gradients for tiny differences
+        grads[0] * tf.tile((xout - rout) / delta_in0, dup0)  # DeepLIFT gradient
     )
-
-    print(f"Final result shape: {result.shape}")
+    
+    print("\nFinal result:")
+    print(f"result shape: {result.shape}")
+    print(f"result first few values: {result.numpy().flatten()[:5]}")
     print("=== handler finished ===\n")
     
+    out = [None for _ in range(len(op.inputs))]
     out[input_ind] = result
     return out
 
@@ -520,7 +524,6 @@ if 0:
 
 else: # debug mode only
     op_handlers["Relu"] = nonlinearity_1d(0)
-
 
     # ops that are linear and only allow a single input to vary
     op_handlers["Reshape"] =  passthrough

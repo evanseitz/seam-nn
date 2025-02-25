@@ -206,7 +206,7 @@ class TFDeepExplainer(Explainer):
         for t in self.learning_phase_flags:
             feed_dict[t] = False
         result = self.session.run(out, feed_dict)
-        print(f"6. gradient first 10: {[r.flatten()[:10] for r in result]}")
+        #print(f"6. gradient first 10: {[r.flatten()[:10] for r in result]}")
         return result
         
     def _variable_inputs(self, op):
@@ -234,7 +234,7 @@ class TFDeepExplainer(Explainer):
             print(f"model_output: {self.model_output}")
             out = self.model_output[:,i] if self.multi_output else self.model_output
             print(f"out: {out}")
-            print(f"Output shape: {out.shape}")
+            #print(f"Output shape: {out.shape}")
             
             print("\nRegistering custom gradients...")
             # Create custom gradient registry
@@ -311,7 +311,6 @@ class TFDeepExplainer(Explainer):
 
         model_output_ranks = np.tile(np.arange(len(self.phi_symbolics))[None,:], (X[0].shape[0],1))
         # Compute the attributions
-        print("\nComputing attributions...")
         all_phis = []  # Store all results
         for i in range(model_output_ranks.shape[1]):
             print(f"\n{'='*50}")
@@ -353,9 +352,10 @@ class TFDeepExplainer(Explainer):
                 #print(f"Feature index: {feature_ind}")
                 sys.stdout.flush()
 
-                sample_phis = self.run(self.phi_symbolic(feature_ind), self.model_inputs, joint_input)
-                print(f"Sample phis shapes: {[s.shape if s is not None else None for s in sample_phis]}")
-                print(f"Sample phis mean: {[np.mean(s) if s is not None else None for s in sample_phis]}")
+                #sample_phis = self.run(self.phi_symbolic(feature_ind), self.model_inputs, joint_input)
+                sample_phis = self.run(self.phi_symbolic(feature_ind), self.model_inputs, X)
+                #print(f"Sample phis shapes: {[s.shape if s is not None else None for s in sample_phis]}")
+                #print(f"Sample phis mean: {[np.mean(s) if s is not None else None for s in sample_phis]}")
                 print(f"Sample phis first 10: {[s.flatten()[:10] if s is not None else None for s in sample_phis]}")
                 sys.stdout.flush()
                 

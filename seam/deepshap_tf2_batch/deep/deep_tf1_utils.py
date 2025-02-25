@@ -395,29 +395,58 @@ def nonlinearity_1d(input_ind):
     return out'''
 
 def nonlinearity_1d_handler(input_ind, explainer, op, *grads):
+    print("\n=== TF1 nonlinearity_1d_handler debug ===")
+    print(f"Op type: {op.type}")
+    print(f"Op name: {op.name}")
+    print(f"Input index: {input_ind}")
+    print(f"Upstream gradient shape: {grads[0].shape}")
+    print(f"Upstream gradient first few values: {grads[0]}")
+    
     # make sure only the given input varies
     for i in range(len(op.inputs)):
         if i != input_ind:
             assert not explainer._variable_inputs(op)[i], str(i) + "th input to " + op.name + " cannot vary!"
     
-    #print("\nDEBUG nonlinearity_1d_handler:")
-    #print("Input op type:", op.type)
-    #print("Input grads shape:", grads[0].shape)
-    
     xin0,rin0 = tf.split(op.inputs[input_ind], 2)
     xout,rout = tf.split(op.outputs[0], 2)
+    
+    print("\nInput tensors:")
+    print(f"xin0 shape: {xin0.shape}")
+    print(f"xin0 first few values: {xin0}")
+    print(f"rin0 shape: {rin0.shape}")
+    print(f"rin0 first few values: {rin0}")
+    
+    print("\nOutput tensors:")
+    print(f"xout shape: {xout.shape}")
+    print(f"xout first few values: {xout}")
+    print(f"rout shape: {rout.shape}")
+    print(f"rout first few values: {rout}")
+    
     delta_in0 = xin0 - rin0
     dup0 = [2] + [1 for i in delta_in0.shape[1:]]
-    #print("dup0:", dup0)
+    
+    print("\nDelta calculations:")
+    print(f"delta_in0 shape: {delta_in0.shape}")
+    print(f"delta_in0 first few values: {delta_in0}")
+    print(f"dup0: {dup0}")
     
     out = [None for _ in op.inputs]
     orig_grads = explainer.orig_grads[op.type](op, grads[0])
+    
+    print("\nOriginal gradients:")
+    print(f"orig_grads shape: {orig_grads.shape if isinstance(orig_grads, tf.Tensor) else [g.shape for g in orig_grads]}")
+    print(f"orig_grads first few values: {orig_grads}")
     
     result = tf.where(
         tf.tile(tf.abs(delta_in0), dup0) < 1e-6,
         orig_grads[input_ind] if len(op.inputs) > 1 else orig_grads,
         grads[0] * tf.tile((xout - rout) / delta_in0, dup0)
     )
+    
+    print("\nFinal result:")
+    print(f"result shape: {result.shape}")
+    print(f"result first few values: {result}")
+    print("=== handler finished ===\n")
     
     out[input_ind] = result
     return out
@@ -574,7 +603,6 @@ else: # debug mode only
     op_handlers["FusedBatchNorm"] =  passthrough
 
     # ops that are nonlinear and only allow a single input to vary
-    op_handlers["Relu"] =  passthrough
     op_handlers["Elu"] =  passthrough
     op_handlers["Sigmoid"] =  passthrough
     op_handlers["Tanh"] =  passthrough
