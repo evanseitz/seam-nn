@@ -190,10 +190,12 @@ class TFDeepExplainer(Explainer):
         # Make a blank array that will get lazily filled in with the SHAP value computation
         # graphs for each output. Lazy is important since if there are 1000 outputs and we
         # only explain the top 5 it would be a waste to build graphs for the other 995
+
         if not self.multi_output:
             self.phi_symbolics = [None]
         else:
             noutputs = self.model_output.shape.as_list()[1]
+            print("???", noutputs)
             if noutputs is not None:
                 self.phi_symbolics = [None for i in range(noutputs)]
             else:
@@ -267,10 +269,14 @@ class TFDeepExplainer(Explainer):
 
                 print("\nDEBUG: Detailed gradient computation")
                 print(f"1. model_output shape: {self.model_output.shape}")
+                print(tf.shape(self.model_output))
                 print(f"2. model_output[:,i] shape: {self.model_output[:,i].shape}")
+                print(tf.shape(self.model_output[:,i]))
                 print(f"3. out shape: {out.shape}")
+                print(tf.shape(out))
                 print(f"4. model_inputs shapes: {[x.get_shape() for x in self.model_inputs]}")
                 self.phi_symbolics[i] = tf.gradients(out, self.model_inputs)
+                print(tf.shape(self.phi_symbolics[i]))
                 print(f"5. gradient shapes: {[g.get_shape() if g is not None else None for g in self.phi_symbolics[i]]}")
             finally:
                 # reinstate the backpropagatable check
@@ -295,8 +301,6 @@ class TFDeepExplainer(Explainer):
         """
         return op_handlers[op.type](self, op, *grads)
     
-
-
     def test_phi_symbolic(self, X):
         """Test that TF1 implementation gives expected results."""
         print("\nTesting phi_symbolic...")
@@ -308,7 +312,6 @@ class TFDeepExplainer(Explainer):
                 X = [X]
         else:
             assert type(X) == list, "Expected a list of model inputs!"
-
         model_output_ranks = np.tile(np.arange(len(self.phi_symbolics))[None,:], (X[0].shape[0],1))
         # Compute the attributions
         all_phis = []  # Store all results
@@ -333,32 +336,117 @@ class TFDeepExplainer(Explainer):
                 else:
                     bg_data = self.data
                 # tile the inputs to line up with the reference data samples
-                #print(f"Background data shapes: {[b.shape for b in bg_data]}")
-                #print(f"Background data first 10: {[b.flatten()[:10] for b in bg_data]}")
-                sys.stdout.flush()
+                print("!!! bg_data shapes:", [b.shape for b in bg_data])
 
-                tiled_X = [np.tile(X[l][j:j+1], (bg_data[l].shape[0],) + tuple([1 for k in range(len(X[l].shape)-1)])) for l in range(len(X))]                
-                #print(f"Tiled X shapes: {[t.shape for t in tiled_X]}")
-                #print(f"Tiled X first 10: {[t.flatten()[:10] for t in tiled_X]}")
-                sys.stdout.flush()
-                
+                tiled_X = [np.tile(X[l][j:j+1], (bg_data[l].shape[0],) + tuple([1 for k in range(len(X[l].shape)-1)])) for l in range(len(X))]
+                print("!!! tiled_X shapes:", [t.shape for t in tiled_X])
+
                 joint_input = [np.concatenate([tiled_X[l], bg_data[l]], 0) for l in range(len(X))]
-                #print(f"Joint input shapes: {[j.shape for j in joint_input]}")
-                #print(f"Joint input first 10: {[j.flatten()[:10] for j in joint_input]}")
-                sys.stdout.flush()
+                print("!!! joint_input shapes:", [j.shape for j in joint_input])
 
                 # run attribution computation graph
                 feature_ind = model_output_ranks[j,i]
-                #print(f"Feature index: {feature_ind}")
+                print(f"Feature index: {feature_ind}")
                 sys.stdout.flush()
 
-                #sample_phis = self.run(self.phi_symbolic(feature_ind), self.model_inputs, joint_input)
-                sample_phis = self.run(self.phi_symbolic(feature_ind), self.model_inputs, X)
-                #print(f"Sample phis shapes: {[s.shape if s is not None else None for s in sample_phis]}")
-                #print(f"Sample phis mean: {[np.mean(s) if s is not None else None for s in sample_phis]}")
+                sample_phis = self.run(self.phi_symbolic(feature_ind), self.model_inputs, joint_input)
+
                 print(f"Sample phis first 10: {[s.flatten()[:10] if s is not None else None for s in sample_phis]}")
                 sys.stdout.flush()
                 
                 all_phis.append(sample_phis)  # Store results
                 
         return all_phis  # Return all results for comparison
+    
+
+    def shap_values(self, X, ranked_outputs=None, output_rank_order="max"):
+        """Estimate the SHAP values for a batch of samples."""
+        #print("\n=== Computing SHAP values (TF1) ===")
+        
+        # Check if we have multiple inputs
+        if not self.multi_input:
+            if type(X) == list and len(X) != 1:
+                assert False, "Expected a single tensor as model input!"
+            elif type(X) != list:
+                X = [X]
+        else:
+            assert type(X) == list, "Expected a list of model inputs!"
+        assert len(self.model_inputs) == len(X), "Number of model inputs (%d) does not match the number given (%d)!" % (len(self.model_inputs), len(X))
+        #print(f"Input shapes: {[x.shape for x in X]}")
+        # Rank and determine the model outputs that we will explain
+        if ranked_outputs is not None and self.multi_output:
+            #print("\nRanking outputs...")
+            model_output_values = self.run(self.model_output, self.model_inputs, X)
+            #print(f"Model output values shape: {model_output_values.shape}")
+            
+            if output_rank_order == "max":
+                model_output_ranks = np.argsort(-model_output_values)[:,:ranked_outputs]
+            elif output_rank_order == "min":
+                model_output_ranks = np.argsort(model_output_values)[:,:ranked_outputs]
+            elif output_rank_order == "max_abs":
+                model_output_ranks = np.argsort(-np.abs(model_output_values))[:,:ranked_outputs]
+            else:
+                assert False, "output_rank_order must be max, min, or max_abs!"
+            #print(f"Ranked outputs shape: {model_output_ranks.shape}")
+        else:
+            model_output_ranks = np.tile(np.arange(len(self.phi_symbolics))[None,:], (X[0].shape[0],1))
+            #print(f"Using all outputs: {model_output_ranks.shape}")
+
+        # Compute the attributions
+        output_phis = []
+        #print("\nComputing attributions...")
+        for i in range(model_output_ranks.shape[1]):
+            #print(f"\nOutput {i}:")
+            phis = []
+            for k in range(len(X)):
+                phis.append(np.zeros(X[k].shape))
+                #print(f"Initialized phis[{k}] with shape: {phis[k].shape}")
+                
+            for j in range(X[0].shape[0]):
+                #print(f"\n  Sample {j}:")
+                if hasattr(self.data, '__call__'):
+                    bg_data = self.data([X[l][j] for l in range(len(X))])
+                    if type(bg_data) != list:
+                        bg_data = [bg_data]
+                else:
+                    bg_data = self.data
+
+                tiled_X = [np.tile(X[l][j:j+1], (bg_data[l].shape[0],) + tuple([1 for k in range(len(X[l].shape)-1)])) for l in range(len(X))]                
+                #print(f"  Tiled X shapes: {[t.shape for t in tiled_X]}")
+                
+                joint_input = [np.concatenate([tiled_X[l], bg_data[l]], 0) for l in range(len(X))]
+                #print(f"  Joint input shapes: {[j.shape for j in joint_input]}")
+
+                # run attribution computation graph
+                feature_ind = model_output_ranks[j,i]
+                #print(f"  Feature index: {feature_ind}")
+
+                sample_phis = self.run(self.phi_symbolic(feature_ind), self.model_inputs, joint_input)
+                #print(f"  Sample phis shapes: {[s.shape if s is not None else None for s in sample_phis]}")
+
+                # Combine the multipliers with the difference from reference
+                # to get the final attributions
+                phis_j = self.combine_mult_and_diffref(
+                    mult=[sample_phis[l][:-bg_data[l].shape[0]]
+                          for l in range(len(X))],
+                    orig_inp=[X[l][j] for l in range(len(X))],
+                    bg_data=bg_data)
+
+                # assign the attributions to the right part of the output arrays
+                for l in range(len(X)):
+                    phis[l][j] = phis_j[l] 
+
+            output_phis.append(phis[0] if not self.multi_input else phis)
+            #print(f"Output {i} final shapes: {[o.shape for o in (phis if self.multi_input else [phis[0]])]}")
+
+        #print("\nFinal results:")
+        if not self.multi_output:
+            #print("Single output shape:", output_phis[0].shape if not self.multi_input else [o.shape for o in output_phis[0]])
+            return output_phis[0]
+        elif ranked_outputs is not None:
+            #print(f"Ranked outputs: {len(output_phis)} outputs")
+            #print(f"Ranks shape: {model_output_ranks.shape}")
+            return output_phis, model_output_ranks
+        else:
+            #print(f"All outputs: {len(output_phis)} outputs")
+            return output_phis

@@ -182,20 +182,50 @@ def nonlinearity_1d(input_ind):
         return nonlinearity_1d_handler(input_ind, explainer, op, *grads, **kwargs)
     return handler
 
+
+'''def nonlinearity_1d(input_ind):
+    def handler(explainer, op, *grads):
+        return nonlinearity_1d_handler(input_ind, explainer, op, *grads)
+    return handler
+
+def nonlinearity_1d_handler(input_ind, explainer, op, *grads):    
+    # make sure only the given input varies
+    for i in range(len(op.inputs)):
+        if i != input_ind:
+            assert not explainer._variable_inputs(op)[i], str(i) + "th input to " + op.name + " cannot vary!"
+    
+    xin0,rin0 = tf.split(op.inputs[input_ind], 2)
+    xout,rout = tf.split(op.outputs[0], 2)
+    
+    delta_in0 = xin0 - rin0
+    dup0 = [2] + [1 for i in delta_in0.shape[1:]]
+    
+    out = [None for _ in op.inputs]
+    orig_grads = explainer.orig_grads[op.type](op, grads[0])
+    
+    result = tf.where(
+        tf.tile(tf.abs(delta_in0), dup0) < 1e-6,
+        orig_grads[input_ind] if len(op.inputs) > 1 else orig_grads,
+        grads[0] * tf.tile((xout - rout) / delta_in0, dup0)
+    )
+    
+    out[input_ind] = result
+    return out'''
+
 def nonlinearity_1d_handler(input_ind, explainer, op, *grads, xin0=None, rin0=None):
     """Handle nonlinear operations with one variable input."""
-    print("\n=== TF2 nonlinearity_1d_handler debug ===")
+    '''print("\n=== TF2 nonlinearity_1d_handler debug ===")
     print(f"Op type: {op.type}")
     print(f"Op name: {op.name}")
     print(f"Input index: {input_ind}")
     print(f"Upstream gradient shape: {grads[0].shape}")
-    print(f"Upstream gradient first few values: {grads[0].numpy().flatten()[:5]}")
+    print(f"Upstream gradient first few values: {grads[0].numpy().flatten()[:5]}")'''
     
     # Get outputs by applying the operation directly
     xout = getattr(tf.raw_ops, op.type)(features=xin0)
     rout = getattr(tf.raw_ops, op.type)(features=rin0)
     
-    print("\nInput tensors:")
+    '''print("\nInput tensors:")
     print(f"xin0 shape: {xin0.shape}")
     print(f"xin0 first few values: {xin0.numpy().flatten()[:5]}")
     print(f"rin0 shape: {rin0.shape}")
@@ -205,38 +235,41 @@ def nonlinearity_1d_handler(input_ind, explainer, op, *grads, xin0=None, rin0=No
     print(f"xout shape: {xout.shape}")
     print(f"xout first few values: {xout.numpy().flatten()[:5]}")
     print(f"rout shape: {rout.shape}")
-    print(f"rout first few values: {rout.numpy().flatten()[:5]}")
+    print(f"rout first few values: {rout.numpy().flatten()[:5]}")'''
     
     # Calculate input differences
     delta_in0 = xin0 - rin0
     dup0 = [2] + [1 for i in delta_in0.shape[1:]]
     
-    print("\nDelta calculations:")
+    '''print("\nDelta calculations:")
     print(f"delta_in0 shape: {delta_in0.shape}")
     print(f"delta_in0 first few values: {delta_in0.numpy().flatten()[:5]}")
-    print(f"dup0: {dup0}")
+    print(f"dup0: {dup0}")'''
     
     # Get original gradients for zero-delta case
-    with tf.GradientTape() as tape:
-        tape.watch(xin0)
-        y = getattr(tf.raw_ops, op.type)(features=xin0)
-    orig_grads = tape.gradient(y, xin0, output_gradients=grads[0])
+    if 0:
+        with tf.GradientTape() as tape:
+            tape.watch(xin0)
+            y = getattr(tf.raw_ops, op.type)(features=xin0)
+        orig_grads = tape.gradient(y, xin0, output_gradients=grads[0])
+        
+        print("\nOriginal gradients:")
+        print(f"orig_grads shape: {orig_grads.shape}")
+        print(f"orig_grads first few values: {orig_grads.numpy().flatten()[:5]}")
+        
+        # Compute DeepLIFT attribution
+        result = tf.where(
+            tf.tile(tf.abs(delta_in0), dup0) < 1e-6,
+            orig_grads,  # Use original gradients for tiny differences
+            grads[0] * tf.tile((xout - rout) / delta_in0, dup0)  # DeepLIFT gradient
+        )
+    else: # DEBUGGING TRICK TO TEMP SKIP THE ABOVE
+        result = grads[0] * tf.tile((xout - rout) / delta_in0, dup0) 
     
-    print("\nOriginal gradients:")
-    print(f"orig_grads shape: {orig_grads.shape}")
-    print(f"orig_grads first few values: {orig_grads.numpy().flatten()[:5]}")
-    
-    # Compute DeepLIFT attribution
-    result = tf.where(
-        tf.tile(tf.abs(delta_in0), dup0) < 1e-6,
-        orig_grads,  # Use original gradients for tiny differences
-        grads[0] * tf.tile((xout - rout) / delta_in0, dup0)  # DeepLIFT gradient
-    )
-    
-    print("\nFinal result:")
+    '''print("\nFinal result:")
     print(f"result shape: {result.shape}")
     print(f"result first few values: {result.numpy().flatten()[:5]}")
-    print("=== handler finished ===\n")
+    print("=== handler finished ===\n")'''
     
     out = [None for _ in range(len(op.inputs))]
     out[input_ind] = result
@@ -523,7 +556,10 @@ if 0:
     op_handlers["Softmax"] = softmax
 
 else: # debug mode only
-    op_handlers["Relu"] = nonlinearity_1d(0)
+    if 1:
+        op_handlers["Relu"] = nonlinearity_1d(0)
+    else:
+        op_handlers["Relu"] = passthrough
 
     # ops that are linear and only allow a single input to vary
     op_handlers["Reshape"] =  passthrough

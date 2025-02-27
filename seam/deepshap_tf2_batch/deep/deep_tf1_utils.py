@@ -19,10 +19,6 @@ def tf_maxpool(inputs, layer, grads):
     mask = tape.gradient(outputs, inputs)
     return grads * mask
 
-def tf_passthrough(inputs, layer, grads):
-    """Gradient function for layers that just pass through gradients."""
-    return grads
-
 def tf_avgpool(inputs, layer, grads):
     """Gradient function for AvgPooling layers."""
     out_shape = layer.output_shape
@@ -163,157 +159,6 @@ def forward_walk_ops(start_ops, tensor_blacklist, op_type_blacklist, within_ops)
                         op_stack.append(c)
     return found_ops
 
-'''def _get_concrete_ops(tensor_or_op):
-    """Helper function to get concrete ops from Keras tensors or TF ops."""
-    print(f"\nDebug _get_concrete_ops - Input type: {type(tensor_or_op)}")
-    
-    if isinstance(tensor_or_op, tf.keras.layers.Layer):
-        print("- Processing as Keras layer")
-        return tensor_or_op.output.op
-    elif hasattr(tensor_or_op, '_keras_history'):
-        print("- Processing as Keras tensor")
-        print(f"- Shape: {tensor_or_op.shape}")
-        print(f"- Keras history: {tensor_or_op._keras_history}")
-        
-        # For Keras tensors, create a concrete function that returns this tensor
-        dummy_input = tf.zeros([1] + list(tensor_or_op.shape[1:]))
-        print(f"- Created dummy input with shape: {dummy_input.shape}")
-        
-        @tf.function
-        @tf.autograph.experimental.do_not_convert
-        def get_tensor(x):
-            return x
-        
-        concrete_func = get_tensor.get_concrete_function(dummy_input)
-        print(f"- Concrete function output op: {concrete_func.outputs[0].op}")
-        return concrete_func.outputs[0].op
-    elif isinstance(tensor_or_op, tf.Tensor):
-        print("- Processing as TF tensor")
-        return tensor_or_op.op
-    elif isinstance(tensor_or_op, tf.Operation):
-        print("- Processing as TF operation")
-        return tensor_or_op
-    else:
-        raise TypeError(f"Unsupported type: {type(tensor_or_op)}")'''
-
-def get_model_graph(model):
-    """Get the full computation graph from a Keras model."""
-    # Create dummy input matching model's input shape
-    dummy_input = tf.zeros([1] + list(model.input_shape[1:]))
-    
-    # Get concrete function
-    @tf.function
-    @tf.autograph.experimental.do_not_convert
-    def get_graph(x):
-        return model(x)
-    
-    # Get the concrete function and graph
-    concrete_func = get_graph.get_concrete_function(dummy_input)
-    graph = concrete_func.graph
-    
-    # Get all operations from the graph
-    return list(graph.get_operations())
-
-def filter_computation_ops(ops):
-    """Filter out resource and constant ops to focus on computation."""
-    compute_ops = []
-    # Note: Switch/Merge operations are TF1-specific. In TF2, dropout is handled by 
-    # Identity ops during inference and the Keras layer during training
-    compute_types = {
-        'Conv2D', 'BiasAdd', 'MatMul', 'Relu', 'Sigmoid', 'Tanh',
-        'LeakyRelu', 'MaxPool', 'AvgPool', 'Add', 'AddV2', 'Mul', 'Sub', 'Div',
-        'ExpandDims', 'Squeeze', 'Reshape', 'Identity'
-    }
-    
-    for op in ops:
-        # Skip resource operations
-        if op.type.endswith('_resource'):
-            continue
-        # Skip constant operations
-        if op.type == 'Const':
-            continue
-        # Skip read variable operations
-        if op.type == 'ReadVariableOp':
-            continue
-        # Skip final Identity op
-        if op.type == 'Identity' and op.name == 'Identity':
-            continue
-        # Skip input placeholder
-        if op.type == 'Placeholder':
-            continue
-        # Keep computation ops
-        if op.type in compute_types:
-            compute_ops.append(op)
-            
-    return compute_ops
-
-def backward_walk_ops_tf2(start_ops, tensor_blacklist, all_ops, dependence_breakers=None):
-    """TF2 version of backward walk that finds all ops between the outputs and inputs.
-    
-    Args:
-        start_ops: List of starting operations to walk back from
-        tensor_blacklist: Set of tensors to block walking through
-        all_ops: Set of all operations to consider
-        dependence_breakers: List of operation types that should break dependencies
-    
-    Returns:
-        List of operations between start_ops and inputs, in forward propagation order
-    """
-    found_ops = []  # Changed from set to list
-    visited = set()  # Use a separate set for checking if we've seen an op
-    
-    def recurse(op):
-        if op not in visited and op in all_ops:
-            visited.add(op)
-            # Don't continue if this op breaks dependencies
-            if dependence_breakers and op.type in dependence_breakers:
-                return
-            # First recurse through inputs (deeper ops)
-            for inp in op.inputs:
-                if inp not in tensor_blacklist and hasattr(inp, 'op'):
-                    recurse(inp.op)
-            # Then add current op (maintains forward prop order)
-            found_ops.append(op)
-    
-    for op in start_ops:
-        recurse(op)
-    
-    # Reverse to get forward propagation order
-    found_ops.reverse()
-    return found_ops
-
-def forward_walk_ops_tf2(start_ops, tensor_blacklist, all_ops, dependence_breakers=None):
-    """TF2 version of forward walk that finds all ops between inputs and outputs.
-    
-    Args:
-        start_ops: List of starting operations to walk forward from
-        tensor_blacklist: Set of tensors to block walking through
-        all_ops: Set of all operations to consider
-        dependence_breakers: List of operation types that should break dependencies
-    
-    Returns:
-        List of operations between start_ops and outputs, in forward propagation order
-    """
-    found_ops = []  # Changed from set to list
-    visited = set()  # Use a separate set for checking if we've seen an op
-    
-    def recurse(op):
-        if op not in visited and op in all_ops:
-            visited.add(op)
-            found_ops.append(op)  # Add in forward order
-            # Don't continue if this op breaks dependencies
-            if dependence_breakers and op.type in dependence_breakers:
-                return
-            for out in op.outputs:
-                if out not in tensor_blacklist:
-                    for consumer in out.consumers():
-                        recurse(consumer)
-    
-    for op in start_ops:
-        recurse(op)
-    
-    return found_ops
-
 def gather(explainer, op, *grads):
     #params = op.inputs[0]
     indices = op.inputs[1]
@@ -400,7 +245,8 @@ def nonlinearity_1d_handler(input_ind, explainer, op, *grads):
     print(f"Op name: {op.name}")
     print(f"Input index: {input_ind}")
     print(f"Upstream gradient shape: {grads[0].shape}")
-    print(f"Upstream gradient first few values: {grads[0]}")
+    print(f"Upstream gradient symbolic shape: {tf.shape(grads[0])}")
+    print(f"Upstream gradient symbolic: {grads[0]}")
     
     # make sure only the given input varies
     for i in range(len(op.inputs)):
@@ -412,10 +258,11 @@ def nonlinearity_1d_handler(input_ind, explainer, op, *grads):
     
     print("\nInput tensors:")
     print(f"xin0 shape: {xin0.shape}")
+    print(f"xin0 symbolic shape: {tf.shape(xin0)}")
     print(f"xin0 first few values: {xin0}")
     print(f"rin0 shape: {rin0.shape}")
+    print(f"rin0 symbolic shape: {tf.shape(rin0)}")
     print(f"rin0 first few values: {rin0}")
-    
     print("\nOutput tensors:")
     print(f"xout shape: {xout.shape}")
     print(f"xout first few values: {xout}")
@@ -442,11 +289,9 @@ def nonlinearity_1d_handler(input_ind, explainer, op, *grads):
         orig_grads[input_ind] if len(op.inputs) > 1 else orig_grads,
         grads[0] * tf.tile((xout - rout) / delta_in0, dup0)
     )
-    
-    print("\nFinal result:")
+
     print(f"result shape: {result.shape}")
-    print(f"result first few values: {result}")
-    print("=== handler finished ===\n")
+    print(f"result symbolic shape: {tf.shape(result)}")
     
     out[input_ind] = result
     return out
@@ -590,7 +435,10 @@ if 0:
     op_handlers["Softmax"] = softmax
 
 else: # debug mode only
-    op_handlers["Relu"] = nonlinearity_1d(0)
+    if 1:
+        op_handlers["Relu"] = nonlinearity_1d(0)
+    else:
+        op_handlers["Relu"] = passthrough
 
     # ops that are linear and only allow a single input to vary
     op_handlers["Reshape"] =  passthrough
@@ -629,4 +477,3 @@ else: # debug mode only
     op_handlers["ResourceGather"] = passthrough
     op_handlers["MaxPool"] = passthrough
     op_handlers["Softmax"] = passthrough
-
