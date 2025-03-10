@@ -19,10 +19,6 @@ def tf_maxpool(inputs, layer, grads):
     mask = tape.gradient(outputs, inputs)
     return grads * mask
 
-def tf_passthrough(inputs, layer, grads):
-    """Gradient function for layers that just pass through gradients."""
-    return grads
-
 def tf_avgpool(inputs, layer, grads):
     """Gradient function for AvgPooling layers."""
     out_shape = layer.output_shape
@@ -39,106 +35,11 @@ def tf_avgpool(inputs, layer, grads):
         padding
     )
 
-def backward_walk_ops_tf2(start_ops, compute_ops, dependence_breakers):
-    """Do a backwards walk from the given ops to find all connected ops.
-    
-    Args:
-        start_ops: Operations to start walking from
-        compute_ops: List of computation ops to consider
-        dependence_breakers: Operation types that break attribution dependence
-    """
-    found_ops = []
-    op_stack = [op for op in start_ops]
-    
-    while op_stack:
-        op = op_stack.pop()
-        if op.type not in dependence_breakers and op not in found_ops:
-            found_ops.append(op)
-            for input_tensor in op.inputs:
-                for compute_op in compute_ops:
-                    if compute_op.outputs and any(out.name == input_tensor.name for out in compute_op.outputs):
-                        op_stack.append(compute_op)
-    
-    return found_ops
-
-def forward_walk_ops_tf2(start_ops, compute_ops, dependence_breakers):
-    """Do a forwards walk from the given ops to find all connected ops.
-    
-    Args:
-        start_ops: Operations to start walking from
-        compute_ops: List of computation ops to consider
-        dependence_breakers: Operation types that break attribution dependence
-    """
-    found_ops = []
-    op_stack = [op for op in start_ops]
-    
-    while op_stack:
-        op = op_stack.pop()
-        if op.type not in dependence_breakers and op not in found_ops:
-            found_ops.append(op)
-            for output_tensor in op.outputs:
-                for compute_op in compute_ops:
-                    if any(t.name == output_tensor.name for t in compute_op.inputs):
-                        op_stack.append(compute_op)
-    
-    return found_ops
-
-def get_model_graph(model):
-    """Get the full computation graph from a Keras model."""
-    # Create dummy input matching model's input shape
-    dummy_input = tf.zeros([1] + list(model.input_shape[1:]))
-    
-    # Get concrete function
-    @tf.function
-    @tf.autograph.experimental.do_not_convert
-    def get_graph(x):
-        return model(x)
-    
-    # Get the concrete function and graph
-    concrete_func = get_graph.get_concrete_function(dummy_input)
-    graph = concrete_func.graph
-    
-    # Get all operations from the graph
-    return list(graph.get_operations())
-
-def gather(explainer, op, *grads, xin0=None, rin0=None, xin1=None, rin1=None):
-    """Handle gather operations with pre-split tensors."""
-    var = explainer._variable_inputs(op)
-    if var[1] and not var[0]:
-        assert len(op.inputs[1].shape) == 2, "Only scalar indices supported right now in GatherV2!"
-        
-        if xin1 is None or rin1 is None:
-            print("WARNING: Using fallback tensor splitting - this should not happen")
-            xin1, rin1 = tf.split(tf.cast(op.inputs[1], tf.float32), 2)
-        
-        xout, rout = tf.split(op.outputs[0], 2)
-        dup_in1 = [2] + [1 for i in xin1.shape[1:]]
-        dup_out = [2] + [1 for i in xout.shape[1:]]
-        delta_in1_t = tf.tile(xin1 - rin1, dup_in1)
-        out_sum = tf.reduce_sum(grads[0] * tf.tile(xout - rout, dup_out), 
-                               list(range(len(op.inputs[1].shape), len(grads[0].shape))))
-        
-        result = tf.where(
-            tf.abs(delta_in1_t) < 1e-6,
-            tf.zeros_like(delta_in1_t),
-            out_sum / delta_in1_t
-        )
-        
-        if op.type == "ResourceGather":
-            return [None, result]
-        return [None, result, None]
-        
-    elif var[0] and not var[1]:
-        return [explainer.orig_grads[op.type](op, grads[0]), None]  # linear in this case
-    else:
-        assert False, "Axis not yet supported to be varying for gather op!"
-
 ### OP HANDLERS ###
 
 def passthrough(explainer, op, *grads):
     """Pass through the gradient unchanged."""
     return grads[0]  # Just return the incoming gradient
-    #return explainer.orig_grads[op.type](grads[0])
 
 def break_dependence(explainer, op, *grads):
     """ This function name is used to break attribution dependence in the graph traversal.
@@ -182,73 +83,55 @@ def nonlinearity_1d(input_ind):
         return nonlinearity_1d_handler(input_ind, explainer, op, *grads, **kwargs)
     return handler
 
-
-'''def nonlinearity_1d(input_ind):
-    def handler(explainer, op, *grads):
-        return nonlinearity_1d_handler(input_ind, explainer, op, *grads)
-    return handler
-
-def nonlinearity_1d_handler(input_ind, explainer, op, *grads):    
-    # make sure only the given input varies
-    for i in range(len(op.inputs)):
-        if i != input_ind:
-            assert not explainer._variable_inputs(op)[i], str(i) + "th input to " + op.name + " cannot vary!"
-    
-    xin0,rin0 = tf.split(op.inputs[input_ind], 2)
-    xout,rout = tf.split(op.outputs[0], 2)
-    
-    delta_in0 = xin0 - rin0
-    dup0 = [2] + [1 for i in delta_in0.shape[1:]]
-    
-    out = [None for _ in op.inputs]
-    orig_grads = explainer.orig_grads[op.type](op, grads[0])
-    
-    result = tf.where(
-        tf.tile(tf.abs(delta_in0), dup0) < 1e-6,
-        orig_grads[input_ind] if len(op.inputs) > 1 else orig_grads,
-        grads[0] * tf.tile((xout - rout) / delta_in0, dup0)
-    )
-    
-    out[input_ind] = result
-    return out'''
-
-def nonlinearity_1d_handler(input_ind, explainer, op, *grads, xin0=None, rin0=None):
+def nonlinearity_1d_handler(input_ind, explainer, op, *grads, xin0=None, rin0=None, verbose=False):
     """Handle nonlinear operations with one variable input."""
     '''print("\n=== TF2 nonlinearity_1d_handler debug ===")
     print(f"Op type: {op.type}")
     print(f"Op name: {op.name}")
     print(f"Input index: {input_ind}")
-    print(f"Upstream gradient shape: {grads[0].shape}")
-    print(f"Upstream gradient first few values: {grads[0].numpy().flatten()[:5]}")'''
-    
+    '''
+
+    np.set_printoptions(suppress=True, precision=8)
+
+    if verbose:
+        print('xin0 shape', xin0.shape)
+        print('xin0 ', xin0)
+        print('rin0 shape', rin0.shape)
+        print('rin0', rin0)
+
     # Get outputs by applying the operation directly
     xout = getattr(tf.raw_ops, op.type)(features=xin0)
     rout = getattr(tf.raw_ops, op.type)(features=rin0)
     
-    '''print("\nInput tensors:")
-    print(f"xin0 shape: {xin0.shape}")
-    print(f"xin0 first few values: {xin0.numpy().flatten()[:5]}")
-    print(f"rin0 shape: {rin0.shape}")
-    print(f"rin0 first few values: {rin0.numpy().flatten()[:5]}")
-    
-    print("\nOutput tensors:")
-    print(f"xout shape: {xout.shape}")
-    print(f"xout first few values: {xout.numpy().flatten()[:5]}")
-    print(f"rout shape: {rout.shape}")
-    print(f"rout first few values: {rout.numpy().flatten()[:5]}")'''
+    if verbose:
+        print(f"xout shape: {xout.shape}")
+        print(f"xout: {xout}")
+        print(f"rout shape: {rout.shape}")
+        print(f"rout: {rout}")
     
     # Calculate input differences
     delta_in0 = xin0 - rin0
     dup0 = [2] + [1 for i in delta_in0.shape[1:]]
     
-    '''print("\nDelta calculations:")
-    print(f"delta_in0 shape: {delta_in0.shape}")
-    print(f"delta_in0 first few values: {delta_in0.numpy().flatten()[:5]}")
-    print(f"dup0: {dup0}")'''
+    if verbose:
+        print(f"delta_in0 shape: {delta_in0.shape}")
+        print(f"delta_in0: {delta_in0}")
+        print(f"dup0: {dup0}")
+        print(f"upstream_grad: {grads[0].shape}")
+        print(f"upstream_grad: {grads[0].numpy()}")
     
     # Get original gradients for zero-delta case
-    if 0:
-        with tf.GradientTape() as tape:
+    if 1:
+        result = tf.where(
+            tf.tile(tf.abs(delta_in0), dup0) < 1e-6,
+            grads[0],  # Use upstream gradients directly for tiny differences
+            grads[0] * tf.tile((xout - rout) / delta_in0, dup0)  # DeepLIFT gradient
+        )
+        
+        out = [None for _ in range(len(op.inputs))]
+        out[input_ind] = result
+
+        '''with tf.GradientTape() as tape:
             tape.watch(xin0)
             y = getattr(tf.raw_ops, op.type)(features=xin0)
         orig_grads = tape.gradient(y, xin0, output_gradients=grads[0])
@@ -262,17 +145,17 @@ def nonlinearity_1d_handler(input_ind, explainer, op, *grads, xin0=None, rin0=No
             tf.tile(tf.abs(delta_in0), dup0) < 1e-6,
             orig_grads,  # Use original gradients for tiny differences
             grads[0] * tf.tile((xout - rout) / delta_in0, dup0)  # DeepLIFT gradient
-        )
+        )'''
     else: # DEBUGGING TRICK TO TEMP SKIP THE ABOVE
         result = grads[0] * tf.tile((xout - rout) / delta_in0, dup0) 
     
-    '''print("\nFinal result:")
-    print(f"result shape: {result.shape}")
-    print(f"result first few values: {result.numpy().flatten()[:5]}")
-    print("=== handler finished ===\n")'''
-    
     out = [None for _ in range(len(op.inputs))]
     out[input_ind] = result
+
+    if verbose:
+        print(f"out shape: {out[input_ind].shape}")
+        print(f"out: {out[input_ind]}")
+
     return out
 
 def nonlinearity_2d_handler(input_ind0, input_ind1, op_func, explainer, op, *grads, xin0=None, rin0=None, xin1=None, rin1=None):
@@ -591,7 +474,10 @@ else: # debug mode only
     # ops that allow up to two inputs to vary are are linear when only one input varies
     op_handlers["Mul"] = passthrough
     op_handlers["RealDiv"] = passthrough
-    op_handlers["MatMul"] = passthrough
+    if 1:
+        op_handlers["MatMul"] = passthrough
+    else:
+        op_handlers["MatMul"] = nonlinearity_1d_nonlinearity_2d(0, 1, lambda x, y: tf.matmul(x, y))
 
     # ops that need their own custom attribution functions
     op_handlers["GatherV2"] = passthrough

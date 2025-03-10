@@ -244,56 +244,49 @@ def nonlinearity_1d_handler(input_ind, explainer, op, *grads):
     print(f"Op type: {op.type}")
     print(f"Op name: {op.name}")
     print(f"Input index: {input_ind}")
-    print(f"Upstream gradient shape: {grads[0].shape}")
-    print(f"Upstream gradient symbolic shape: {tf.shape(grads[0])}")
-    print(f"Upstream gradient symbolic: {grads[0]}")
+    print(f"Op inputs length: {len(op.inputs)}")
+    print(f"Op inputs types: {[type(inp) for inp in op.inputs]}")
+    print(f"Op inputs names: {[inp.name for inp in op.inputs]}")
+    print(f"Op inputs shapes: {[inp.shape for inp in op.inputs]}")
+    print(f"Variable inputs check: {explainer._variable_inputs(op)}")
     
-    # make sure only the given input varies
     for i in range(len(op.inputs)):
         if i != input_ind:
             assert not explainer._variable_inputs(op)[i], str(i) + "th input to " + op.name + " cannot vary!"
-    
+
     xin0,rin0 = tf.split(op.inputs[input_ind], 2)
     xout,rout = tf.split(op.outputs[0], 2)
-    
-    print("\nInput tensors:")
-    print(f"xin0 shape: {xin0.shape}")
-    print(f"xin0 symbolic shape: {tf.shape(xin0)}")
-    print(f"xin0 first few values: {xin0}")
-    print(f"rin0 shape: {rin0.shape}")
-    print(f"rin0 symbolic shape: {tf.shape(rin0)}")
-    print(f"rin0 first few values: {rin0}")
-    print("\nOutput tensors:")
-    print(f"xout shape: {xout.shape}")
-    print(f"xout first few values: {xout}")
-    print(f"rout shape: {rout.shape}")
-    print(f"rout first few values: {rout}")
     
     delta_in0 = xin0 - rin0
     dup0 = [2] + [1 for i in delta_in0.shape[1:]]
     
-    print("\nDelta calculations:")
-    print(f"delta_in0 shape: {delta_in0.shape}")
-    print(f"delta_in0 first few values: {delta_in0}")
-    print(f"dup0: {dup0}")
-    
     out = [None for _ in op.inputs]
     orig_grads = explainer.orig_grads[op.type](op, grads[0])
-    
-    print("\nOriginal gradients:")
-    print(f"orig_grads shape: {orig_grads.shape if isinstance(orig_grads, tf.Tensor) else [g.shape for g in orig_grads]}")
-    print(f"orig_grads first few values: {orig_grads}")
     
     result = tf.where(
         tf.tile(tf.abs(delta_in0), dup0) < 1e-6,
         orig_grads[input_ind] if len(op.inputs) > 1 else orig_grads,
         grads[0] * tf.tile((xout - rout) / delta_in0, dup0)
     )
-
-    print(f"result shape: {result.shape}")
-    print(f"result symbolic shape: {tf.shape(result)}")
-    
     out[input_ind] = result
+
+    # Create debug tensors
+    debug_tensors = {
+        'xin0': xin0,
+        'rin0': rin0,
+        'xout': xout,
+        'rout': rout,
+        'delta_in0': delta_in0,
+        'dup0': dup0,
+        'upstream_grad': grads[0],
+        'out': out[input_ind]
+    }
+
+    # Store debug tensors in explainer for later evaluation
+    if not hasattr(explainer, 'debug_tensors'):
+        explainer.debug_tensors = {}
+    explainer.debug_tensors[op.name] = debug_tensors
+
     return out
 
 

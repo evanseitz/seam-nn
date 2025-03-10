@@ -5,31 +5,40 @@ from .utils import standard_combine_mult_and_diffref
 import tensorflow as tf
 from .deep_tf2_utils import (
     op_handlers,
-    backward_walk_ops_tf2,
-    forward_walk_ops_tf2,
-    break_dependence,
-    get_model_graph,
-    passthrough,
     nonlinearity_1d
 )
 
+# Add global variables for gradient debugging
+last_layer_gradients = None
+last_op_type = None
+last_layer_name = None
 
 class CustomGradientLayer(tf.keras.layers.Layer):
     def __init__(self, op_type, op_name, op, handler, explainer):
         super().__init__(name=f'custom_grad_{op_name}')
         self.layer = op
+        print(f"\nCustomGradientLayer init for {op_name}")
+        print(f"Layer input shape: {self.layer.input_shape}")
+        print(f"Layer output shape: {self.layer.output_shape}")
         self.explainer = explainer
         self.handler = handler
         self.op_type = op_type
         self.internal_ops = self._trace_internal_ops()
 
     def call(self, inputs):
-        outputs = self.layer(inputs)
-        outputs = tf.identity(outputs)  # Ensure outputs remain connected
+        print(f"\nCustomGradientLayer call")
+        print(f"Inputs shape: {inputs.shape}")
         
-        # Convert operations to their types for passing to custom_gradient_function
-        op_types = [op.type for op in self.internal_ops]
-        return custom_gradient_function(outputs, inputs, op_types)
+        # Watch the inputs tensor
+        with tf.GradientTape() as tape:
+            tape.watch(inputs)
+            outputs = self.layer(inputs)
+            outputs = tf.identity(outputs)  # Ensure outputs remain connected
+        
+        print(f"Outputs shape: {outputs.shape}")
+        
+        # Return outputs and gradient function, passing layer name
+        return custom_gradient_function(outputs, inputs, self.internal_ops)
     
     def _trace_internal_ops(self):
         """Trace internal operations of the layer."""
@@ -52,282 +61,148 @@ class CustomGradientLayer(tf.keras.layers.Layer):
         traced_fn = tf.function(trace_ops)
         concrete_fn = traced_fn.get_concrete_function(sample_input)
         
-        # Filter out non-tensor operations
+        # Print ALL operations, including fused ones
+        print("\nALL operations in layer:")
+        for op in concrete_fn.graph.get_operations():
+            print(f"- {op.type}: {op.name}")
+            if hasattr(op, 'get_attr'):
+                try:
+                    fused_ops = op.get_attr('fused_ops')
+                    print(f"  Fused ops: {fused_ops}")
+                except:
+                    pass
+        
+        # Filter operations but keep all BatchNorm and Identity ops
         ops = [
             op for op in concrete_fn.graph.get_operations() 
-            if op.type not in ['Placeholder', 'Const', 'NoOp', 'ExpandDims', 'Identity', 'ReadVariableOp']
+            if (op.type not in ['Placeholder', 'Const', 'NoOp', 'ReadVariableOp'] or
+                'batch_normalization' in op.name or
+                op.type == 'Identity')  # Keep Identity ops
             and any(isinstance(output, tf.Tensor) for output in op.outputs)
         ]
         
+        # Store operation types as strings
+        op_types = [str(op.type) for op in ops]  # Convert to strings
+        
         if self.explainer.verbose:
             print(f"\nTraced operations for {self.layer.name}:")
-            for op in ops:
-                print(f"- {op.type}: {op.name}")
-        return ops
-
+            for op_type in op_types:
+                print(f"- {op_type}")
+        
+        return op_types
 
 
 @tf.custom_gradient
 def custom_gradient_function(outputs, inputs, op_types):
     """Standalone function to apply custom gradients"""
+    layer_name = tf.get_current_name_scope().split('/')[-1]
+    print(f"\n\nNew CustomGradientLayer for ops: {op_types} in {layer_name}")
 
     def grad_fn(upstream, variables=None):
-        print("\nCustomGradientLayer grad")
-        print(f"Upstream gradient shape: {upstream.shape}")
-        print(f"Input shape: {inputs.shape}")
-        print(f"Output shape: {outputs.shape}")
+        global last_layer_gradients, last_op_type, last_layer_name
+        
+        print("\nGradient transition details:")
         print(f"Operation types: {op_types}")
         
-        # Debug initial upstream gradients
-        print("\nInitial upstream gradients (first 5):")
-        if len(upstream.shape) == 3:
-            tf.print(upstream[0, 0, :5])
-        elif len(upstream.shape) == 2:
-            tf.print(upstream[0, :5])
-        else:
-            tf.print(upstream[:5])
-
+        # Check layer transition if we have previous gradients
+        #if last_layer_gradients is not None:
+            #_check_gradient_change(last_layer_gradients, upstream, f"Layer transition to {layer_name}")
+        
+        # Create modified_grads
         modified_grads = upstream
-
-        for op_type in op_types:
-            if op_type in op_handlers:
-                handler = op_handlers[op_type]
-                print(f"\nProcessing operation: {op_type}")
-                print(f"Handler: {handler.__name__}")
+        last_layer_gradients = modified_grads
+        last_layer_name = layer_name
+        
+        num_var_grads = 1
+        for op_idx, op_type in enumerate(op_types):
+            num_var_grads += 1
+            print(f"\n\tChecking operation {op_idx}: {op_type}")
                 
-                # Debug gradients before modification
-                print(f"Gradients before {op_type} (first 5):")
-                if len(modified_grads.shape) == 3:
-                    tf.print(modified_grads[0, 0, :5])
-                elif len(modified_grads.shape) == 2:
-                    tf.print(modified_grads[0, :5])
+            if op_type in op_handlers:
+                last_op_type = op_type
+                handler = op_handlers[op_type]
+
+                if handler.__name__ == 'handler' and handler.__qualname__.startswith('nonlinearity_1d.<locals>'):
+                    print(f"\n\t🟢 Using custom handler for {op_type}")
+
+                    #input_ind = handler.__closure__[0].cell_contents
+
+                    n_backgrounds = len(inputs) // 2  # Half of inputs are backgrounds
+                    xin0 = tf.stack(inputs[:n_backgrounds])  # First half -> shape (n_backgrounds, 256)
+                    rin0 = tf.stack(inputs[n_backgrounds:])  # Second half -> shape (n_backgrounds, 256)
+
+                    # Create a more complete mock op object
+                    class MockOp:
+                        def __init__(self, op_type):
+                            self.type = op_type
+                            self.inputs = [None]
+                            self.outputs = [None]
+                            self.name = f"mock_{op_type}"
+
+                    mock_op = MockOp(op_type)
+                    modified_grads = handler(None, mock_op, modified_grads, xin0=xin0, rin0=rin0)[0]
+                    
+                    # After modifying gradients:
+                    #_check_gradient_change(upstream, modified_grads, op_type)
                 else:
-                    tf.print(modified_grads[:5])
-
-                if handler == break_dependence:
-                    print("Breaking dependence")
-                    continue
-
-                if handler == passthrough:
-                    print("Using passthrough handler")
-                    print(f"Passthrough gradient shape: {modified_grads.shape}")
-                    # Force gradient tracking for passthrough
-                    modified_grads = tf.identity(modified_grads) #NEW
-
-                else:
-                    print(f"Processing op: {op_type}")
-                    if handler.__name__ == 'handler' and handler.__qualname__.startswith('nonlinearity_1d.<locals>'):
-                        print(f"Using custom handler for {op_type}")
-
-                        input_ind = handler.__closure__[0].cell_contents
-                        print(f"Input index: {input_ind}")
-
-                        if len(inputs.shape) == 2:
-                            xin0, rin0 = tf.split(inputs[input_ind], 2)
-                        else:
-                            xin0, rin0 = tf.split(inputs, 2, axis=0)
-                        print(f"xin0 shape: {xin0.shape}")
-                        print(f"rin0 shape: {rin0.shape}")
-
-                        print("ReLU input values (first 5):")
-                        if len(xin0.shape) == 3:
-                            tf.print(xin0[0, 0, :5])
-                        elif len(xin0.shape) == 2:
-                            tf.print(xin0[0, :5])
-                        else:
-                            tf.print(xin0[:5])
-                            
-                        print("ReLU reference values (first 5):")
-                        if len(rin0.shape) == 3:
-                            tf.print(rin0[0, 0, :5])
-                        elif len(rin0.shape) == 2:
-                            tf.print(rin0[0, :5])
-                        else:
-                            tf.print(rin0[:5])
-
-                        # Create a more complete mock op object
-                        class MockOp:
-                            def __init__(self, op_type):
-                                self.type = op_type
-                                self.inputs = [None]
-                                self.outputs = [None]
-                                self.name = f"mock_{op_type}"
-
-                        mock_op = MockOp(op_type)
-                        modified_grads = handler(None, mock_op, modified_grads, xin0=xin0, rin0=rin0)[0]
-                        
-                        # Force gradient tracking after modification
-                        modified_grads = tf.identity(modified_grads) #NEW
-                        
-                        print(f"Modified gradient shape: {modified_grads.shape if modified_grads is not None else None}")
-                        print(f"Modified gradients after {op_type} (first 5):")
-                        if len(modified_grads.shape) == 3:
-                            tf.print(modified_grads[0, 0, :5])
-                        elif len(modified_grads.shape) == 2:
-                            tf.print(modified_grads[0, :5])
-                        else:
-                            tf.print(modified_grads[:5])
-                        
-                        if modified_grads is None:
-                            print("WARNING: modified_grads is None, using upstream")
-                            modified_grads = upstream
+                    print("\tUsing passthrough handler")
 
                 # Debug gradients after operation
-                print(f"Final gradients after {op_type} (first 5):")
-                if len(modified_grads.shape) == 3:
-                    tf.print(modified_grads[0, 0, :5])
-                elif len(modified_grads.shape) == 2:
-                    tf.print(modified_grads[0, :5])
-                else:
-                    tf.print(modified_grads[:5])
+                print(f"\tFinal gradients after {op_type} (first 5):")
+                tf.print(modified_grads[:5])
 
-        print("\nReturning gradients:")
-        print(f"Modified gradients shape: {modified_grads.shape}")
-        print("Final modified gradients (first 5):")
-        if len(modified_grads.shape) == 3:
-            tf.print(modified_grads[0, 0, :5])
-        elif len(modified_grads.shape) == 2:
-            tf.print(modified_grads[0, :5])
-        else:
-            tf.print(modified_grads[:5])
+        print("\n\tReturning gradients:")
+        print(f"\tModified gradients shape: {modified_grads.shape}")
+        print("\tFinal modified gradients (first 5):")
+        tf.print(modified_grads[:5])
 
         # Different return values based on operation type
-        if 'Conv2D' in op_types:
-            # Conv2D case - return 5 gradients
-            # 1 for input, 1 for kernel, 1 for bias, 2 for additional variables
-            var_grads = [None] * 4  # Conv2D has 4 additional gradients
-            print(f"Conv2D gradients: {var_grads}")
-            return (modified_grads,) + tuple(var_grads)
-        elif 'MatMul' in op_types or 'BiasAdd' in op_types:
-            # Dense layer case - return 4 gradients
-            var_grads = [None] * 3  # For kernel, bias, and any additional variable
-            print(f"Dense layer gradients: {var_grads}")
-            return (modified_grads,) + tuple(var_grads)
-        elif 'Relu' in op_types:
-            # ReLU case - return 3 gradients
-            var_grads = [None] * 2  # ReLU typically has 2 trainable variables
-            print(f"ReLU gradients: {var_grads}")
-            return (modified_grads,) + tuple(var_grads)
-        elif any(op in op_types for op in ['AddV2', 'Rsqrt', 'Mul', 'Sub']):
-            # BatchNorm case - return 9 gradients
-            # 1 for input, 4 for trainable vars (gamma, beta, mean, var), 
-            # and 4 for internal ops
-            var_grads = [None] * 8  # BatchNorm has 8 additional gradients
-            print(f"BatchNorm gradients: {var_grads}")
-            return (modified_grads,) + tuple(var_grads)
-        elif 'Reshape' in op_types:
-            # Reshape case - return 3 gradients
-            # 1 for input, 1 for shape tensor, 1 for any additional variable
-            var_grads = [None] * 2  # Reshape has 2 additional gradients
-            print(f"Reshape gradients: {var_grads}")
-            return (modified_grads,) + tuple(var_grads)
-        elif 'MaxPool' in op_types or 'Squeeze' in op_types:
-            # MaxPool/Squeeze case - return 4 gradients
-            # 1 for input, 3 for configuration variables (ksize, strides, padding)
-            var_grads = [None] * 3  # MaxPool/Squeeze has 3 additional gradients
-            print(f"MaxPool/Squeeze gradients: {var_grads}")
-            return (modified_grads,) + tuple(var_grads)
-        else:
-            # No operations case - return 2 gradients
-            print("No operations - returning 2 gradients")
-            return modified_grads, None
+        var_grads = [None] * num_var_grads
+        return (modified_grads,) + tuple(var_grads)
 
+    # Return both the forward pass output and the gradient function
     return outputs, grad_fn
 
 
-
-
-
-
-
-
-
-'''class CustomGradientLayer(tf.keras.layers.Layer):
-    def __init__(self, op_type, op_name, op, handler, explainer):
-        super().__init__(name=f'custom_grad_{op_name}')
-        self.layer = op
-        self.explainer = explainer
-        self.handler = handler
-        self.op_type = op_type
-        self.internal_ops = self._trace_internal_ops()
-
-    @tf.custom_gradient
-    def call(self, inputs):
-        outputs = self.layer(inputs)
+def _check_gradient_change(upstream_grads, modified_grads, op_name, tolerance=1e-6):
+    """Check if gradients have changed more than tolerance."""
+    # Skip check if shapes don't match
+    if upstream_grads.shape != modified_grads.shape:
+        print(f"Skipping gradient check for {op_name} due to shape mismatch:")
+        print(f"Upstream shape: {upstream_grads.shape}")
+        print(f"Modified shape: {modified_grads.shape}")
+        return
         
-        def grad_fn(upstream, variables=None):
-            print(f"\nCustomGradientLayer grad for {self.layer.name}")
-            print(f"Upstream gradient shape: {upstream.shape}")
-
-            modified_grads = upstream
-
-            for op in self.internal_ops:
-                if op.type in self.explainer.op_handlers:
-                    handler = self.explainer.op_handlers[op.type]
-                    
-                    if handler == break_dependence:
-                        continue
-                        
-                    if handler == passthrough:
-                        with tf.GradientTape() as tape:
-                            tape.watch(inputs)
-                            layer_output = self.layer(inputs)
-                        modified_grads = tape.gradient(layer_output, inputs, output_gradients=upstream)
-                        print("Using passthrough gradients")
-                    else:
-                        print(f"Processing op: {op.type}")
-                        if handler.__name__ == 'handler' and handler.__qualname__.startswith('nonlinearity_1d.<locals>'):
-                            print(f"Using custom handler for {op.type}")
-                            
-                            input_ind = handler.__closure__[0].cell_contents
-                            
-                            if len(inputs.shape) == 2:
-                                xin0, rin0 = tf.split(inputs[input_ind], 2)
-                            else:
-                                xin0, rin0 = tf.split(inputs, 2, axis=0)
-                            modified_grads = handler(self.explainer, op, modified_grads, xin0=xin0, rin0=rin0)[0]
-                        else:
-                            modified_grads = upstream
-            
-            # Handle variable gradients
-            if variables is not None:
-                var_grads = [None] * len(variables)  # Return None for variable gradients
-                return modified_grads, var_grads
-            return modified_grads
-
-        return outputs, grad_fn
-
-
-    def _trace_internal_ops(self):
-        """Trace internal operations of the layer."""
-        # Handle input shape more carefully
-        if isinstance(self.layer.input_shape, list):
-            input_shape = tuple([1] + list(self.layer.input_shape[0][1:]))
-        else:
-            input_shape = tuple([1] + list(self.layer.input_shape[1:]))
-            
-        # Create sample input
-        sample_input = tf.random.normal(input_shape)
+    # Convert to numpy for consistent comparison
+    up = upstream_grads.numpy()
+    mod = modified_grads.numpy()
+    
+    # Calculate max absolute difference
+    diff = np.abs(up - mod)
+    max_diff = np.max(diff)
+    
+    # Only report if difference exceeds tolerance
+    if max_diff > tolerance:
+        print(f"\n🔴 Gradient change detected at {op_name}:")
+        # Show first few values
+        #print(f"First 5 values:")
+        #print(f"From: {np.array2string(up[0, :5], precision=16)}")
+        #print(f"To:   {np.array2string(mod[0, :5], precision=16)}")
         
-        @tf.autograph.experimental.do_not_convert
-        def trace_ops(inputs):
-            with tf.GradientTape() as tape:
-                outputs = self.layer(inputs)
-            return outputs
-            
-        # Convert to tf.function and get concrete function
-        traced_fn = tf.function(trace_ops)
-        concrete_fn = traced_fn.get_concrete_function(sample_input)
+        # Show where maximum difference occurs
+        max_idx = np.unravel_index(np.argmax(diff), diff.shape)
+        print(f"Max difference: {max_diff} at index {max_idx}")
+        print(f"Values at max diff:")
+        print(f"From: {up[max_idx]}")
+        print(f"To:   {mod[max_idx]}")
         
-        # Filter out Placeholder operations
-        ops = [op for op in concrete_fn.graph.get_operations() if op.type != 'Placeholder']
-        
-        if self.explainer.verbose:
-            print(f"\nTraced operations for {self.layer.name}:")
-            for op in ops:
-                print(f"- {op.type}: {op.name}")
-        return ops'''
-
+        # Show statistics about the differences
+        nonzero_diff = diff[diff > tolerance]
+        if len(nonzero_diff) > 0:
+            total_elements = up.size
+            percent_changed = (len(nonzero_diff) / total_elements) * 100
+            print(f"{percent_changed:.1f}% of values changed ({len(nonzero_diff)} / {total_elements})")
+            print(f"Mean difference where changed: {np.mean(nonzero_diff)}")
 
 
 @tf.autograph.experimental.do_not_convert
@@ -366,9 +241,6 @@ class TF2DeepExplainer(Explainer):
         # Initialize operation handlers and tracking for different operation types
         self.op_handlers = op_handlers.copy()
         
-        # Setup operation tracking between inputs and outputs
-        self.between_ops = self._setup_op_tracking()
-        
         # Now build the model with custom gradients
         self.model_custom = self._build_custom_gradient_model(use_custom_gradients=True)
 
@@ -400,119 +272,37 @@ class TF2DeepExplainer(Explainer):
         """Compute and store expected value from background data."""
         background_output = self.model(self.background)
         self.expected_value = tf.reduce_mean(background_output, axis=0)
-
-    def _setup_op_tracking(self):
-        """Setup operation tracking between inputs and outputs.
-        
-        This method:
-        1. Gets the raw computation graph from the model
-        2. Filters out training-phase operations while keeping core computation
-        3. Identifies input and output operations
-        4. Performs bidirectional graph traversal to find all operations between input and output
-        
-        Returns:
-            List of operations that form the computation path between inputs and outputs
-        """
-        # Get all operations and setup computation graph
-        all_ops = get_model_graph(self.model)  # Get raw computation graph
-                
-        # Filter out training-phase operations but keep core computation
-        # Note: In TF2, dropout and batch norm are handled differently than TF1:
-        # - Dropout uses Identity ops during inference instead of Switch/Merge
-        # - BatchNorm's moving averages are handled by the layer implementation
-        training_phase_ops = {
-            "Switch", "Merge",  # Control flow ops
-            "AssignMovingAvg", "AssignMovingAvgDefault",  # BatchNorm moving stats
-            "ReadVariableOp", "ResourceGather",  # Variable ops
-            "Const",  # Constants
-            "NoOp"  # No operations
-        }
-        
-        self.compute_ops = [op for op in all_ops if op.type not in training_phase_ops]
-        
-        # Find input operation (used as starting point for graph traversal)
-        self.input_op = next(op for op in all_ops 
-                           if op.type == "Placeholder" and op.name == "x")
-        
-        # Add input op to compute ops if not already there
-        if self.input_op not in self.compute_ops:
-            self.compute_ops.append(self.input_op)
-
-        # Find output op by looking at the model's output layer
-        output_layer = self.model.layers[-1]
-        output_name = output_layer.name
-        
-        # Find the BiasAdd op that corresponds to this output layer
-        # Note: BiasAdd is typically the last computation before activation
-        output_ops = [op for op in self.compute_ops 
-                      if op.type == "BiasAdd" and output_name in op.name]
-        
-        if len(output_ops) != 1:
-            # If we can't find it by name, try finding the last BiasAdd in compute_ops
-            output_ops = [op for op in self.compute_ops if op.type == "BiasAdd"]
-            if not output_ops:
-                raise ValueError("Could not find output operation")
-            self.output_op = output_ops[-1]  # Take the last BiasAdd
-        else:
-            self.output_op = output_ops[0]
-        
-        # Find all operations between inputs and outputs using bidirectional walk
-        dependence_breakers = [k for k in op_handlers if op_handlers[k] == break_dependence] # Identify operations that should break dependencies
-        
-        # Do backward walk from output
-        back_ops = backward_walk_ops_tf2(
-            start_ops=[self.output_op],
-            compute_ops=self.compute_ops,
-            dependence_breakers=dependence_breakers
-        )
-        
-        # Then do forward walk from input
-        forward_ops = forward_walk_ops_tf2(
-            start_ops=[self.input_op],
-            compute_ops=self.compute_ops,
-            dependence_breakers=dependence_breakers
-        )
-        
-        # Get intersection of forward and backward reachable ops
-        between_ops = [op for op in forward_ops if op in back_ops]        
-        between_ops = [op for op in between_ops if op.type != 'Placeholder']
-
-        if self.verbose:
-            print(f"\nAll ops: {[op.type for op in all_ops]}")
-            print(f"\nCompute ops: {[op.type for op in self.compute_ops]}")
-            print(f"\nInput op: {self.input_op.type}: {self.input_op.name}")
-            print(f"\nOutput op: {self.output_op.type}: {self.output_op.name}")
-            print(f"\nDependence breakers: {dependence_breakers}")
-            print(f"\nBackward ops: {[op.type for op in back_ops]}")
-            print(f"\nForward ops: {[op.type for op in forward_ops]}")
-        print(f"\nBetween ops: {[op.type for op in between_ops]}")
-
-        return between_ops
     
     def _build_custom_gradient_model(self, use_custom_gradients=True):
         """Build a model with custom gradient computation."""
-        # Create new input layer
         inputs = tf.keras.Input(shape=self.model.input_shape[1:])
         x = inputs
 
-        # Apply each layer in sequence
-        for layer in self.model.layers:
+        print("\nLayer connections:")
+        for i, layer in enumerate(self.model.layers):
             if isinstance(layer, tf.keras.layers.InputLayer):
-                print(f"Skipping input layer: {layer.name}")
-                continue  # Do not wrap InputLayer
+                print(f"\nSkipping input layer: {layer.name}")
+                continue
+            
+            if isinstance(layer, tf.keras.layers.Dropout):
+                print(f"\nSkipping dropout layer: {layer.name}")
+                continue  # Skip Dropout layers entirely
+            
+            print(f"\nLayer {i}: {layer.name} ({layer.__class__.__name__})")
+            print(f"Input shape: {layer.input_shape}")
+            print(f"Output shape: {layer.output_shape}")
+            
             if use_custom_gradients:
-                # Wrap each layer with our custom gradient handler
                 x = CustomGradientLayer(
                     op_type=layer.name,
                     op_name=layer.name,
                     op=layer,
-                    handler=None,  # We'll handle gradients in the layer
+                    handler=None,
                     explainer=self
                 )(x)
             else:
                 x = layer(x)
 
-        # Create and return the new model
         return tf.keras.Model(inputs=inputs, outputs=x, name='model_custom')
 
     def _forward_with_custom_grads(self, inputs):
@@ -526,6 +316,11 @@ class TF2DeepExplainer(Explainer):
         return x
     
     def test_custom_grad(self, X):
+
+        # Print layer connections after BatchNorm
+        for layer in self.model_custom.layers:
+            print(f"Layer: {layer.name}, Input: {layer.input.shape}, Output: {layer.output.shape}")
+
         """Test custom gradient computation.
         
         Note: Current implementation follows TF1's sample-by-sample approach for compatibility,
@@ -559,7 +354,6 @@ class TF2DeepExplainer(Explainer):
                 # This replicates TF1's approach where each sample is compared against all backgrounds
                 tiled_X = [np.tile(x[j:j+1], (len(self.background),) + tuple([1 for k in range(len(x.shape)-1)])) 
                         for x in X]
-                print(f"Tiled X shapes (sample {j}):", [t.shape for t in tiled_X])
                 
                 # Create joint input for this sample:
                 # Stack backgrounds into single array to match TF1's shape
@@ -569,22 +363,18 @@ class TF2DeepExplainer(Explainer):
                     dtype=tf.float32) 
                     for l in range(len(X))]
                 
-                # Process one sample-background pair
-                pair_input = [tf.stack([joint_input[0][j], joint_input[0][j + len(self.background)]])]
-                print(f"Pair input shapes (sample {j}):", [p.shape for p in pair_input])
+                print(f'joint_input shape: {[j.shape for j in joint_input]}')
                 
                 # Compute gradients for this sample using the feature index
                 with tf.keras.backend.learning_phase_scope(0):  # 0 = inference mode #TODO: is this needed?
                     with tf.GradientTape() as tape:
-                        tape.watch(pair_input)
-                        predictions = self.model_custom(pair_input[0])
+                        tape.watch(joint_input)
+                        predictions = self.model_custom(joint_input)
                         target_output = predictions[:,feature_ind] if self.multi_output else predictions
-                        print(f'pair_input[0] shape: {pair_input[0].shape}')
+                        print(f'joint_input shape: {[j.shape for j in joint_input]}')
                         print(f"Target output shape: {target_output.shape}")
 
-                #tf.print("Pair input contributions:", tape.gradient(target_output, pair_input))
-
-                sample_grads = tape.gradient(target_output, pair_input)
+                sample_grads = tape.gradient(target_output, joint_input)
                 all_grads.append(sample_grads)
                 
                 print(f"Sample {j} gradients first 10:", sample_grads[0].numpy().flatten()[:10])
@@ -604,6 +394,8 @@ TODO:
     -   # Note: BiasAdd is typically the last computation before activation
         output_ops = [op for op in self.compute_ops 
                       if op.type == "BiasAdd" and output_name in op.name]
+- /opt/anaconda3/envs/deepstarr2/lib/python3.11/contextlib.py:137: UserWarning: `tf.keras.backend.learning_phase_scope` is deprecated and will be removed after 2020-10-11. To update it, simply pass a True/False value to the `training` argument of the `__call__` method of your layer or model.
+  return next(self.gen)
 
 - background should not be initialized in the constructor, but rather be passed in as an argument to the explain method
 '''
@@ -634,14 +426,26 @@ Key constraints:
 '''
 
 
-'''
-CRITICAL ASSESSMENT BY CHATGPT4
--------------------------------
+"""
+CRITICAL TODO: Investigate data structure difference between TF1 and TF2 implementations
 
+In TF1's nonlinearity_1d_handler:
+- xin0 shape is (3,256)
+- Each row contains [sample_values | reference_values]
+- The same concatenated row is duplicated 3 times (one per background)
 
+In TF2's nonlinearity_1d_handler:
+- xin0 shape is (128,) - just the sample values
+- rin0 shape is (128,) - just the reference values
+- These are kept as separate tensors
 
+Both implementations contain the same information but structured differently:
+TF1: [[xin0|rin0],    TF2: xin0: [sample_values]
+      [xin0|rin0],         rin0: [reference_values]
+      [xin0|rin0]]
 
-
-
-
-'''
+This structural difference needs to be investigated to ensure:
+1. Gradient computations are equivalent
+2. We're not doing unnecessary duplicate computations in TF1
+3. The split vs concatenated approach doesn't affect final attributions
+"""

@@ -201,6 +201,8 @@ class TFDeepExplainer(Explainer):
             else:
                 raise Exception("The model output tensor to be explained cannot have a static shape in dim 1 of None!")
 
+        self.debug_tensors = {}  # Add this to store debug tensors
+
     def run(self, out, model_inputs, X):
         """ Runs the model while also setting the learning phase flags to False.
         """
@@ -255,7 +257,8 @@ class TFDeepExplainer(Explainer):
                     #print(f"\nStored original gradient for {n}")
                     #print(f"Type: {type(self.orig_grads[n])}")
                     if op_handlers[n] is not passthrough:
-                        reg[n]["type"] = self.custom_grad
+                        reg[n]["type"] = self.custom_grad 
+
                 elif n in self.used_types:
                     raise Exception(n + " was used in the model but is not in the gradient registry!")
             # In TensorFlow 1.10 they started pruning out nodes that they think can't be backpropped
@@ -353,6 +356,13 @@ class TFDeepExplainer(Explainer):
 
                 print(f"Sample phis first 10: {[s.flatten()[:10] if s is not None else None for s in sample_phis]}")
                 sys.stdout.flush()
+
+                # Store the joint input for debug tensor evaluation
+                self._last_joint_input = joint_input
+                
+                # After all gradients are computed
+                print("\nComputation complete, evaluating debug tensors...")
+                self.evaluate_debug_tensors()
                 
                 all_phis.append(sample_phis)  # Store results
                 
@@ -450,3 +460,40 @@ class TFDeepExplainer(Explainer):
         else:
             #print(f"All outputs: {len(output_phis)} outputs")
             return output_phis
+
+    def evaluate_debug_tensors(self):
+        """Evaluate stored debug tensors using the session."""
+        if not hasattr(self, 'model_inputs') or not hasattr(self, '_last_joint_input'):
+            print("WARNING: Missing required input data for tensor evaluation")
+            return
+        
+        print("\nEvaluating debug tensors:")
+        for op_name, tensors in self.debug_tensors.items():
+            print(f"\nDebug values for {op_name}:")
+            try:
+                # Create feed_dict with the joint input values
+                feed_dict = {}
+                if isinstance(self.model_inputs, list):
+                    for inp, joint in zip(self.model_inputs, self._last_joint_input):
+                        feed_dict[inp] = joint
+                else:
+                    feed_dict[self.model_inputs] = self._last_joint_input[0]
+                
+                # Evaluate tensors with feed_dict
+                for k, v in tensors.items():
+                    try:
+                        if isinstance(v, (int, float, bool)):  # Handle numeric values directly
+                            print(f"{k}: {v}")
+                        elif hasattr(v, 'eval'):  # It's a TF tensor
+                            evaluated = self.session.run(v, feed_dict=feed_dict)
+                            if hasattr(evaluated, 'shape'):
+                                print(f"{k} shape: {evaluated.shape}")
+                            print(f"{k}: {evaluated}")
+                        else:
+                            print(f"{k}: {v} (type: {type(v)})")
+                    except Exception as e:
+                        print(f"Error evaluating {k}: {e}")
+            except Exception as e:
+                print(f"Error evaluating tensors for {op_name}: {e}")
+                print("Feed dict keys:", list(feed_dict.keys()))
+                print("Feed dict values shapes:", [v.shape for v in feed_dict.values()])
