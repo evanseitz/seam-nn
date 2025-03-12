@@ -416,7 +416,8 @@ class Identifier:
         
         sys.setrecursionlimit(100000)  # Fix for large dendrograms
         
-        plt.figure(figsize=figsize)
+        fig = plt.figure(figsize=figsize)
+        ax = fig.add_subplot(111)
         plt.title('Hierarchical Clustering Dendrogram')
         plt.xlabel('Sample index')
         plt.ylabel('Distance')
@@ -440,17 +441,20 @@ class Identifier:
         
         # Clean up plot styling
         plt.xticks([])
-        ax = plt.gca()
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
         
+        # Store return values
+        ret_fig, ret_ax = fig, ax
+        
         if save_path:
-            plt.savefig(save_path + '/msm_covariance_dendrogram.png', facecolor='w', dpi=dpi, bbox_inches='tight')
-            plt.close()
+            fig.savefig(save_path + '/msm_covariance_dendrogram.png', facecolor='w', dpi=dpi, bbox_inches='tight')
+            plt.close(fig)
         else:
             plt.show()
+            plt.close(fig)
             
-        return plt.gcf(), ax
+        return ret_fig, ret_ax
     
     def plot_msm_covariance_square(self, view_window=None, show_clusters=True, view_linkage_space=False, 
                                    save_path=None, dpi=200):
@@ -525,7 +529,7 @@ class Identifier:
         ax.set_ylabel("Position" if not view_linkage_space else "Linkage Order")
         
         # Add coordinate formatter
-        def format_coord(x, y):
+        '''def format_coord(x, y):
             try:
                 col, row = int(x), int(y)
                 if 0 <= col < matrix.shape[1] and 0 <= row < matrix.shape[0]:
@@ -542,15 +546,19 @@ class Identifier:
             except (ValueError, IndexError):
                 return f"x={x:.2f}, y={y:.2f}"
         
-        ax.format_coord = format_coord
+        ax.format_coord = format_coord'''
+        
+        # Store return values
+        ret_fig, ret_ax = fig, ax
         
         if save_path:
-            plt.savefig(save_path + '/msm_covariance_square.png', facecolor='w', dpi=dpi, bbox_inches='tight')
-            plt.close()
+            fig.savefig(save_path + '/msm_covariance_square.png', facecolor='w', dpi=dpi, bbox_inches='tight')
+            plt.close(fig)
         else:
             plt.show()
+            plt.close(fig)
         
-        return fig, ax
+        return ret_fig, ret_ax
     
     def set_entropy_multiplier(self, entropy_multiplier):
         """Set the entropy multiplier for TFBS activity detection.
@@ -750,8 +758,8 @@ class Identifier:
         if orientation == 'horizontal':
             state_matrix = state_matrix.T
         
-        # Create plot
-        fig, ax = plt.subplots(figsize=(10, 10))
+        fig = plt.figure(figsize=(10, 10))
+        ax = fig.add_subplot(111)
         
         # Plot heatmap
         if mode == 'continuous':
@@ -764,7 +772,8 @@ class Identifier:
                 yticklabels=True,
                 square=True,
                 linewidths=1,
-                linecolor='black'
+                linecolor='black',
+                ax=ax
             ).collections[0].colorbar.ax
             _add_colorbar_border(cbar_ax)
         else:  # binary mode
@@ -776,7 +785,8 @@ class Identifier:
                 yticklabels=True,
                 square=True,
                 linewidths=1,
-                linecolor='black'
+                linecolor='black',
+                ax=ax
             )
             # Update legend to match new color
             legend_elements = [
@@ -790,7 +800,7 @@ class Identifier:
                 'loc': 'upper left' if orientation == 'vertical' else 'lower right',
                 'ncol': 1 if orientation == 'vertical' else 2
             }
-            plt.legend(**legend_params)
+            ax.legend(**legend_params)
         
         # Add border to matrix
         ax.add_patch(patches.Rectangle(
@@ -804,15 +814,18 @@ class Identifier:
         
         # Set labels
         xlabel, ylabel = _get_axis_labels(orientation)
-        plt.xlabel(xlabel)
-        plt.ylabel(ylabel)
-        plt.title('TFBS Activity Matrix')
-        plt.tight_layout()
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.set_title('TFBS Activity Matrix')
         
+        # Handle layout and display
         if save_path:
-            plt.savefig(save_path + '/state_matrix_%s.png' % mode, facecolor='w', dpi=dpi, bbox_inches='tight')
-            plt.close()
+            plt.savefig(save_path + '/state_matrix_%s.png' % mode, 
+                       facecolor='w', dpi=dpi, bbox_inches='tight')
+            plt.close(fig)
         else:
+            plt.tight_layout()
             plt.show()
+            plt.close(fig)
         
         return fig, ax

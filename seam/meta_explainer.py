@@ -264,19 +264,18 @@ class MetaExplainer:
             plt.tight_layout()
             
             if save_path:
-                plt.savefig(save_path + '/cluster_predictions.png', facecolor='w', dpi=dpi, bbox_inches='tight')
+                plt.savefig(save_path + '/cluster_%s_%s.png' % (metric, plot_type), facecolor='w', dpi=dpi, bbox_inches='tight')
                 plt.close()
             else:
                 plt.show()
         
         else:  # bar plot
-            fig_width = 1.5 if metric == 'counts' else 1.0
-            plt.figure(figsize=(fig_width, 5))
+            plt.figure(figsize=(1.5, 5))
             
             y_positions = np.arange(len(boxplot_data))
             values = [np.median(data) if metric == 'prediction' else data[0] 
                     for data in boxplot_data]
-            height = 0.8 if metric == 'prediction' else 1.0
+            height = 1.0
             
             if show_ref and self.ref_seq is not None:
                 ref_cluster = self.membership_df.loc[self.ref_idx, 'Cluster']
@@ -297,7 +296,7 @@ class MetaExplainer:
             plt.tight_layout()
             
             if save_path:
-                plt.savefig(save_path + '/cluster_counts.png', facecolor='w', dpi=dpi, bbox_inches='tight')
+                plt.savefig(save_path + '/cluster_%s_%s.png' % (metric, plot_type), facecolor='w', dpi=dpi, bbox_inches='tight')
                 plt.close()
             else:
                 plt.show()
@@ -589,7 +588,7 @@ class MetaExplainer:
         plt.tight_layout()
 
         if save_path:
-            if show_tfbs_clusters is None and tfbs_clusters is None:
+            if show_tfbs_clusters is False and tfbs_clusters is None:
                 plt.savefig(save_path + f'/msm_{column.lower()}.png', facecolor='w', dpi=dpi, bbox_inches='tight')
             elif show_tfbs_clusters is not None and tfbs_clusters is not None and column == 'Entropy':
                 plt.savefig(save_path + f'/msm_{column.lower()}_identified.png', facecolor='w', dpi=dpi, bbox_inches='tight')

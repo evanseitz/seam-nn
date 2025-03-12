@@ -6,6 +6,11 @@ TODO:
     - save outputs to self
     - png or pdf option for saving
 
+- Missing save outputs:
+    - umap_ascending.png / descending.png
+    - all_maps_average_y_adaptive.png / all_maps_average_y_fixed.png
+
+
 - Colab examples:
     - Fig.2 reproduced:
         - Documentation at top of notebook about intent of demo and its figure in the paper
