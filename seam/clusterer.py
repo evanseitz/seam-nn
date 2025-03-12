@@ -488,7 +488,7 @@ class Clusterer:
         plt.tight_layout()
         
         if save_path:
-            plt.savefig(save_path, facecolor='w', dpi=dpi, bbox_inches='tight')
+            plt.savefig(save_path + '/attributions_embedding.png', facecolor='w', dpi=dpi, bbox_inches='tight')
             plt.close()
         else:
             plt.show()
@@ -541,9 +541,9 @@ class Clusterer:
         plt.ylabel(f'Ψ{dims[1]+1}')
         plt.gca().set_aspect('equal')
         plt.tight_layout()
-        
+
         if save_path:
-            plt.savefig(save_path, facecolor='w', dpi=dpi, bbox_inches='tight')
+            plt.savefig(save_path + '/attributions_embedding_histogram.png', facecolor='w', dpi=dpi, bbox_inches='tight')
             plt.close()
         else:
             plt.show()
@@ -584,7 +584,7 @@ class Clusterer:
         plt.gca().spines['right'].set_visible(False)
         
         if save_path:
-            plt.savefig(save_path, facecolor='w', dpi=dpi, bbox_inches='tight')
+            plt.savefig(save_path + '/attributions_dendrogram.png', facecolor='w', dpi=dpi, bbox_inches='tight')
             plt.close()
         else:
             plt.show()

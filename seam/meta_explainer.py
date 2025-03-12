@@ -260,6 +260,14 @@ class MetaExplainer:
                     plt.axvline(np.median(ref_data), c='red', 
                             label='Ref', zorder=-100)
                     plt.legend(loc='best')
+
+            plt.tight_layout()
+            
+            if save_path:
+                plt.savefig(save_path + '/cluster_predictions.png', facecolor='w', dpi=dpi, bbox_inches='tight')
+                plt.close()
+            else:
+                plt.show()
         
         else:  # bar plot
             fig_width = 1.5 if metric == 'counts' else 1.0
@@ -286,13 +294,13 @@ class MetaExplainer:
             plt.gca().invert_yaxis()
             plt.axvline(x=0, color='black', linewidth=0.5, zorder=100)
         
-        plt.tight_layout()
-        
-        if save_path:
-            plt.savefig(save_path, facecolor='w', dpi=dpi, bbox_inches='tight')
-            plt.close()
-        else:
-            plt.show()
+            plt.tight_layout()
+            
+            if save_path:
+                plt.savefig(save_path + '/cluster_counts.png', facecolor='w', dpi=dpi, bbox_inches='tight')
+                plt.close()
+            else:
+                plt.show()
 
     def generate_msm(self, n_seqs=1000, batch_size=50, gpu=False):
         """Generate a Mechanism Summary Matrix (MSM) from cluster attribution maps.
@@ -399,7 +407,7 @@ class MetaExplainer:
                 square_cells=False, view_window=None, gui=False,
                 show_tfbs_clusters=False, tfbs_clusters=None,
                 entropy_multiplier=0.5, cov_matrix=None, row_order=None,
-                revels=None):
+                revels=None, save_path=None, dpi=200):
         """Visualize the Mechanism Summary Matrix (MSM) as a heatmap.
         
         Parameters
@@ -431,6 +439,10 @@ class MetaExplainer:
             Order of rows in cov_matrix. Required if show_tfbs_clusters is True.
         revels : pandas.DataFrame, optional
             Revels matrix for entropy calculations. Required if show_tfbs_clusters is True.
+        save_path : str, optional
+            Path to save figure. If None, display instead
+        dpi : int
+            DPI for saved figure
         """
         if show_tfbs_clusters:
             if not hasattr(self, 'msm') or self.msm is None:
@@ -575,6 +587,15 @@ class MetaExplainer:
         cbar.ax.set_ylabel(cmap_settings['label'], rotation=270, fontsize=8, labelpad=10)
         
         plt.tight_layout()
+
+        if save_path:
+            if show_tfbs_clusters is None and tfbs_clusters is None:
+                plt.savefig(save_path + f'/msm_{column.lower()}.png', facecolor='w', dpi=dpi, bbox_inches='tight')
+            elif show_tfbs_clusters is not None and tfbs_clusters is not None and column == 'Entropy':
+                plt.savefig(save_path + f'/msm_{column.lower()}_identified.png', facecolor='w', dpi=dpi, bbox_inches='tight')
+            plt.close()
+        else:
+            plt.show()
         
         return fig, main_ax
 
@@ -645,7 +666,7 @@ class MetaExplainer:
             'label': 'Percent mismatch' if column == 'Reference' else 'Percent match'
         }
 
-    def generate_logos(self, logo_type='attribution', background_separation=False, 
+    def generate_logos(self, logo_type='average', background_separation=False, 
                       mut_rate=0.01, entropy_multiplier=0.5,
                       figsize=(20, 2.5), batch_size=50, font_name='sans',
                       stack_order='big_on_top', center_values=True, 
@@ -654,8 +675,10 @@ class MetaExplainer:
         
         Parameters
         ----------
-        logo_type : {'attribution', 'pwm', 'enrichment'}, default='attribution'
-            Type of logo to generate.
+        logo_type : {'average', 'pwm', 'enrichment'} to specify type of logo to generate.
+            - 'average': average attribution maps
+            - 'pwm': position frequency matrix (based on sequence statistics)
+            - 'enrichment': enrichment relative to background frequencies (based on sequence statistics)
         background_separation : bool, default=False
             Whether to separate background signal from logos.
             Uses entropy-based background computation focused on highly variable positions.
@@ -672,7 +695,8 @@ class MetaExplainer:
         stack_order : {'big_on_top', 'small_on_top', 'fixed'}, default='big_on_top'
             Order to stack characters in each position.
         center_values : bool, default=True
-            Whether to center values in each position.
+            Whether to center values in each position. Only applies to 'average' logo type.
+            Automatically set to False for 'pwm' and 'enrichment' logos.
         color_scheme : str or dict, default='classic'
             Color scheme for logo characters.
         """
@@ -680,9 +704,16 @@ class MetaExplainer:
         cluster_order = self.get_cluster_order(sort_method=self.sort_method)
         
         # Compute background if needed
-        if background_separation and logo_type == 'attribution':
+        if background_separation and logo_type == 'average':
             if not hasattr(self, 'background'):
                 self.compute_background(mut_rate, entropy_multiplier)
+        
+        # For enrichment logos, compute background PFM if not already done
+        if logo_type == 'enrichment' and not hasattr(self, 'background_pfm'):
+            # Calculate background PFM from all sequences
+            all_seqs = self.mave['Sequence']
+            seq_array = motifs.create(all_seqs, alphabet=self.alphabet)
+            self.background_pfm = seq_array.counts
         
         # Get cluster matrices
         cluster_matrices = []
@@ -690,13 +721,14 @@ class MetaExplainer:
             k_idxs = self.mave['Cluster'] == k
             seqs_k = self.mave.loc[k_idxs, 'Sequence']
             
-            if logo_type == 'attribution':
+            if logo_type == 'average':
                 maps_avg = np.mean(self.attributions[k_idxs], axis=0)
                 if background_separation:
                     maps_avg -= self.background
                 cluster_matrices.append(maps_avg)
                 
             elif logo_type in ['pwm', 'enrichment']:
+                center_values = False
                 # Calculate position frequency matrix
                 seq_array = motifs.create(seqs_k, alphabet=self.alphabet)
                 pfm = seq_array.counts
@@ -705,7 +737,8 @@ class MetaExplainer:
                 if logo_type == 'pwm':
                     # Convert to PPM and calculate information content
                     ppm = pd.DataFrame(pfm.normalize(pseudocounts=pseudocounts))
-                    background = np.array([1.0 / len(self.alphabet)] * len(self.alphabet))
+                    background = getattr(self, 'background_freqs', 
+                                       np.array([1.0 / len(self.alphabet)] * len(self.alphabet)))
                     ppm += 1e-6  # Avoid log(0)
                     info_content = np.sum(ppm * np.log2(ppm / background), axis=1)
                     cluster_matrices.append(np.array(ppm.multiply(info_content, axis=0)))
@@ -721,7 +754,7 @@ class MetaExplainer:
         
         # Always compute global y-limits for attribution logos
         y_min_max = None
-        if logo_type == 'attribution':
+        if logo_type == 'average':
             y_mins = []
             y_maxs = []
             # Make a copy of logo_array to avoid modifying the original when centering

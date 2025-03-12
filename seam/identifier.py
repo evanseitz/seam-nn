@@ -45,7 +45,7 @@ class Identifier:
         # Calculate covariance matrix
         self.cov_matrix = self.revels.cov()
         
-    def cluster_covariance(self, method='average', n_clusters=None, cut_height=None):
+    def cluster_msm_covariance(self, method='average', n_clusters=None, cut_height=None):
         """
         Cluster the covariance matrix using hierarchical clustering.
         
@@ -150,9 +150,8 @@ class Identifier:
 
         return X_rot, Y_rot
 
-    def plot_pairwise_matrix(self, theta_lclc, view_window=None, 
-                            threshold=None, save_dir=None, cbar_title='Pairwise', 
-                            gridlines=True, xtick_spacing=1):
+    def plot_pairwise_matrix(self, theta_lclc, view_window=None, threshold=None, cbar_title='Pairwise',
+                             gridlines=True, xtick_spacing=1, save_path=None):
         """Plot pairwise matrix visualization.
         Adapted from https://github.com/jbkinney/mavenn/blob/master/mavenn/src/visualization.py
         Original authors: Tareen, A. and Kinney, J.
@@ -319,15 +318,15 @@ class Identifier:
 
         plt.tight_layout()
         
-        if save_dir is not None:
-            plt.savefig(f"{save_dir}/{cbar_title.lower()}_matrix.pdf", 
+        if save_path is not None:
+            plt.savefig(f"{save_path}/{cbar_title.lower()}_matrix.png", 
                     facecolor='w', dpi=600)
             plt.close()
             
         return fig, ax
 
-    def plot_covariance_triangular(self, view_window=None, save_dir=None, xtick_spacing=5, 
-                       show_clusters=False):
+    def plot_msm_covariance_triangular(self, view_window=None, xtick_spacing=5, show_clusters=False,
+                                       save_path=None, dpi=200):
         """
         Plot the covariance matrix.
         
@@ -335,7 +334,7 @@ class Identifier:
         ----------
         view_window : tuple, optional
             (start, end) positions to view
-        save_dir : str, optional
+        save_path : str, optional
             Directory to save the plot
         xtick_spacing : int, optional
             Show every nth x-tick label (default: 5)
@@ -355,7 +354,7 @@ class Identifier:
             view_window=view_window, 
             cbar_title='Covariance',
             gridlines=False,
-            save_dir=save_dir,
+            save_path=None, # default to None
             xtick_spacing=xtick_spacing
         )
         
@@ -385,11 +384,17 @@ class Identifier:
                              plt.matplotlib.transforms.Affine2D().rotate_deg(-45)
                 )
                 ax.add_patch(rect)
+
+        if save_path:
+            plt.savefig(save_path + '/msm_covariance_triangular.png', facecolor='w', dpi=dpi, bbox_inches='tight')
+            plt.close()
+        else:
+            plt.show()
         
         return fig, ax
     
-    def plot_dendrogram(self, figsize=(15, 10), leaf_rotation=90, 
-                    leaf_font_size=8, save_path=None, dpi=200):
+    def plot_msm_covariance_dendrogram(self, figsize=(15, 10), leaf_rotation=90, leaf_font_size=8,
+                        save_path=None, dpi=200):
         """
         Plot the dendrogram from hierarchical clustering.
         
@@ -440,13 +445,15 @@ class Identifier:
         ax.spines['right'].set_visible(False)
         
         if save_path:
-            plt.savefig(save_path, facecolor='w', dpi=dpi, bbox_inches='tight')
+            plt.savefig(save_path + '/msm_covariance_dendrogram.png', facecolor='w', dpi=dpi, bbox_inches='tight')
             plt.close()
-            return None
         else:
-            return plt.gcf(), ax
+            plt.show()
+            
+        return plt.gcf(), ax
     
-    def plot_covariance_square(self, view_window=None, show_clusters=True, view_linkage_space=False):
+    def plot_msm_covariance_square(self, view_window=None, show_clusters=True, view_linkage_space=False, 
+                                   save_path=None, dpi=200):
         """
         Plot covariance matrix in square format using seaborn heatmap.
         
@@ -536,6 +543,12 @@ class Identifier:
                 return f"x={x:.2f}, y={y:.2f}"
         
         ax.format_coord = format_coord
+        
+        if save_path:
+            plt.savefig(save_path + '/msm_covariance_square.png', facecolor='w', dpi=dpi, bbox_inches='tight')
+            plt.close()
+        else:
+            plt.show()
         
         return fig, ax
     
@@ -693,7 +706,8 @@ class Identifier:
         
         return state_matrix
     
-    def plot_state_matrix(self, active_clusters, mode='binary', orientation='vertical', save_path=None):
+    def plot_state_matrix(self, active_clusters, mode='binary', orientation='vertical',
+                          save_path=None, dpi=200):
         """Plot state matrix showing TFBS activity in each cluster.
         
         Parameters
@@ -796,8 +810,9 @@ class Identifier:
         plt.tight_layout()
         
         if save_path:
-            plt.savefig(save_path, facecolor='w', dpi=600, bbox_inches='tight')
+            plt.savefig(save_path + '/state_matrix_%s.png' % mode, facecolor='w', dpi=dpi, bbox_inches='tight')
             plt.close()
-            return None
+        else:
+            plt.show()
         
         return fig, ax

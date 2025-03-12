@@ -1,11 +1,15 @@
 TODO:
 
+- remove all __pycache__ (or gitignore all)
+
 - All Classes:
     - save outputs to self
+    - png or pdf option for saving
 
 - Colab examples:
     - Fig.2 reproduced:
-        - Documentation at top of notebook about intent of demo and its figure in the paper 
+        - Documentation at top of notebook about intent of demo and its figure in the paper
+        - save_figs and save_data options like in local script
     - DeepSTARR mismatch figure reproduced (index 22612; Dev)
         - color logos by reference sequence 
     - DeepSTARR background separation figure reproduced (test set index 4071; Hk)
@@ -16,6 +20,7 @@ TODO:
         - compare to Seed-and-Wobble?
         - see Blavatnik folder in 6_CSHL Google Drive
         - see TFBind presentation in 6_CSHL/SEAM
+        - plot PWMs and enrichment logos
     - REVO? BEAM?
     - ChromBPNet?
     - PIK3R3?
@@ -160,6 +165,8 @@ Colab:
     - SQUID replicates update
     - Yagi's data workflow and GUI
     - SEAM remaining figures
+    - 'ward' vs other linkages
+    - use all_maps_average to prove a point?
 
 - Motif finding:
     - best attribution method?

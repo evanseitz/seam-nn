@@ -85,20 +85,7 @@ def custom_gradient_function(outputs, inputs, op_types):
                     n_backgrounds = len(inputs) // 2
                     xin0 = tf.stack(inputs[:n_backgrounds])
                     rin0 = tf.stack(inputs[n_backgrounds:])
-                    
-                    # Compute outputs first
-                    xout = getattr(tf.raw_ops, op_type)(features=xin0)
-                    rout = getattr(tf.raw_ops, op_type)(features=rin0)
-                    combined_outputs = tf.concat([xout, rout], axis=0)
-                    
-                    # Create mock op with actual outputs
-                    mock_op = type('MockOp', (), {
-                        'type': op_type, 
-                        'inputs': [None], 
-                        'outputs': [combined_outputs],  # Store the actual outputs
-                        'name': f"mock_{op_type}"
-                    })()
-                    
+                    mock_op = type('MockOp', (), {'type': op_type, 'inputs': [None], 'outputs': [None], 'name': f"mock_{op_type}"})()
                     modified_grads = handler(None, mock_op, modified_grads, xin0=xin0, rin0=rin0)[0]
                     print(f"  Modified gradients (first 5): {modified_grads.numpy().flatten()[:5]}")
                 else:
@@ -165,6 +152,30 @@ CUSTOM_GRAD_REGISTRY = {
     # Users can add their own definitions here
 }
 
+'''def get_original_grad_fn(op_type, grads, inputs):
+    """Get original gradient either from custom registry or TF registry"""
+    # First check our custom registry
+    if op_type in CUSTOM_GRAD_REGISTRY:
+        return CUSTOM_GRAD_REGISTRY[op_type](grads, inputs)
+    
+    # Fall back to TF registry
+    tf_grad_fn = tf.gradient_function(op_type)
+    if tf_grad_fn is not None:
+        return tf_grad_fn(op, grads)
+        
+    # If all else fails, return identity
+    print(f"Warning: No gradient function found for {op_type}, using identity")
+    return grads'''
+
+# In TF1's DeepLIFT, they store the original gradient functions from TensorFlow's registry
+# and use these complete gradient functions which receive both the operation and incoming gradients.
+# This is more comprehensive than just using raw ops like ReluGrad, as the original functions
+# may handle internal state or edge cases differently.
+#
+# TF1 approach:
+# 1. Store original gradient functions: self.orig_grads[op.type] = registry[op.type]["type"]
+# 2. Use them later: orig_grads = self.orig_grads[op.type](op, grads[0])
+
 from tensorflow.python.framework import ops as tf_ops
 from tensorflow.python.ops import gen_nn_ops
 
@@ -192,7 +203,6 @@ def nonlinearity_1d_handler(input_ind, op, *grads, xin0=None, rin0=None):
     combined_inputs = tf.concat([xin0, rin0], axis=0)
     orig_grads = get_original_grad_fn(op.type, grads[0], combined_inputs)
 
-    print('orig_grads', orig_grads)
 
     if 0:  # Switch for vanilla ReLU behavior (debugging only)
         # Concatenate inputs and backgrounds to match gradient batch size
@@ -200,18 +210,27 @@ def nonlinearity_1d_handler(input_ind, op, *grads, xin0=None, rin0=None):
         modified_grads = grads[0] * active_mask
         out = [None for _ in range(len(op.inputs))]
         out[input_ind] = modified_grads
+
+        print(f"orig_grads: {orig_grads}")
+
         return out
     else:
-        xout, rout = tf.split(op.outputs[0], 2)
+        xout = getattr(tf.raw_ops, op.type)(features=xin0)
+        rout = getattr(tf.raw_ops, op.type)(features=rin0)
+        
+        # Calculate input differences
         delta_in0 = xin0 - rin0
         dup0 = [2] + [1 for i in delta_in0.shape[1:]]
+
         result = tf.where(
             tf.tile(tf.abs(delta_in0), dup0) < 1e-6,
             orig_grads[input_ind] if len(op.inputs) > 1 else orig_grads,
             grads[0] * tf.tile((xout - rout) / delta_in0, dup0)
         )
+        
         out = [None for _ in range(len(op.inputs))]
         out[input_ind] = result
+
         return out
     
 if 1:  # Switch for custom nonlinearity handling
@@ -253,10 +272,16 @@ if __name__ == "__main__":
         tape.watch(x_with_backgrounds)
         orig_pred = model_output_idx(x_with_backgrounds)
         custom_pred = custom_model(x_with_backgrounds)
-
-    # Get gradients directly with respect to predictions
-    orig_grads = tape.gradient(orig_pred, x_with_backgrounds)
-    custom_grads = tape.gradient(custom_pred, x_with_backgrounds)
-
-    print(f"Original gradients first 10:", orig_grads[0].numpy().flatten()[:10])
-    print(f"Custom gradients first 10:", custom_grads[0].numpy().flatten()[:10])
+        orig_loss = tf.reduce_mean(orig_pred)
+        custom_loss = tf.reduce_mean(custom_pred)
+    
+    orig_grads = tape.gradient(orig_loss, x_with_backgrounds)
+    custom_grads = tape.gradient(custom_loss, x_with_backgrounds)
+    
+    print("Original prediction shape:", orig_pred.shape)
+    print("Custom prediction shape:", custom_pred.shape)
+    print("Original gradient shape:", orig_grads.shape)
+    print("Custom gradient shape:", custom_grads.shape)
+    
+    print("\nFirst 10 original gradients:", orig_grads.numpy().flatten()[:10])
+    print("First 10 custom gradients:", custom_grads.numpy().flatten()[:10]) 

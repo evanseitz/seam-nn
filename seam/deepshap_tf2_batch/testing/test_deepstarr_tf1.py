@@ -200,3 +200,8 @@ if 0:
     print(attribution_df.head())
     fig = squid.impress.plot_additive_logo(attribution_df, center=True, alphabet=alphabet, fig_size=[20,2.5])#,
     plt.show()
+
+
+if 1:
+
+    explainer.test_gradient_flow()

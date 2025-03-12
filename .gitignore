@@ -109,4 +109,8 @@ ENV/
 
 # hide models used for testing
 seam/deepshap_tf2_batch/testing/deepstarr_assets
+examples/deepstarr_data.h5
+examples/deepstarr.model.h5
+examples/deepstarr.model.json
+examples/outputs_deepstarr_local_20647_deepshap
 

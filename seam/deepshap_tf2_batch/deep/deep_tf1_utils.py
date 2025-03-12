@@ -249,37 +249,58 @@ def nonlinearity_1d_handler(input_ind, explainer, op, *grads):
     print(f"Op inputs names: {[inp.name for inp in op.inputs]}")
     print(f"Op inputs shapes: {[inp.shape for inp in op.inputs]}")
     print(f"Variable inputs check: {explainer._variable_inputs(op)}")
-    
-    for i in range(len(op.inputs)):
-        if i != input_ind:
-            assert not explainer._variable_inputs(op)[i], str(i) + "th input to " + op.name + " cannot vary!"
 
-    xin0,rin0 = tf.split(op.inputs[input_ind], 2)
-    xout,rout = tf.split(op.outputs[0], 2)
+    if 0: # force vanilla ReLU behavior for testing
+        xin0,rin0 = tf.split(op.inputs[input_ind], 2)
+        combined_inputs = tf.concat([xin0, rin0], axis=0)
+        active_mask = tf.cast(combined_inputs > 0, dtype=grads[0].dtype)
+        result = grads[0] * active_mask
+        out = [None for _ in op.inputs]
+        out[input_ind] = result
+
+        orig_grads = explainer.orig_grads[op.type](op, grads[0])
     
-    delta_in0 = xin0 - rin0
-    dup0 = [2] + [1 for i in delta_in0.shape[1:]]
-    
-    out = [None for _ in op.inputs]
-    orig_grads = explainer.orig_grads[op.type](op, grads[0])
-    
-    result = tf.where(
-        tf.tile(tf.abs(delta_in0), dup0) < 1e-6,
-        orig_grads[input_ind] if len(op.inputs) > 1 else orig_grads,
-        grads[0] * tf.tile((xout - rout) / delta_in0, dup0)
-    )
-    out[input_ind] = result
+    else:
+        for i in range(len(op.inputs)):
+            if i != input_ind:
+                assert not explainer._variable_inputs(op)[i], str(i) + "th input to " + op.name + " cannot vary!"
+
+        xin0,rin0 = tf.split(op.inputs[input_ind], 2)
+        xout,rout = tf.split(op.outputs[0], 2)
+        
+        delta_in0 = xin0 - rin0
+        dup0 = [2] + [1 for i in delta_in0.shape[1:]]
+        
+        out = [None for _ in op.inputs]
+        orig_grads = explainer.orig_grads[op.type](op, grads[0])
+        
+        result = tf.where(
+            tf.tile(tf.abs(delta_in0), dup0) < 1e-6,
+            orig_grads[input_ind] if len(op.inputs) > 1 else orig_grads,
+            grads[0] * tf.tile((xout - rout) / delta_in0, dup0)
+        )
+
+        out[input_ind] = result
 
     # Create debug tensors
     debug_tensors = {
-        'xin0': xin0,
-        'rin0': rin0,
-        'xout': xout,
-        'rout': rout,
-        'delta_in0': delta_in0,
-        'dup0': dup0,
-        'upstream_grad': grads[0],
-        'out': out[input_ind]
+        #'result': result,
+        #'final_out[input_ind]': out[input_ind],
+        #'xin0': xin0,
+        #'rin0': rin0,
+        #'xout': xout,
+        #'rout': rout,
+        #'delta_in0': delta_in0,
+        #'dup0': dup0,
+        #'xout-rout/delta_in0': (xout - rout) / delta_in0,
+        #'upstream_grad': grads[0],
+        'orig_grads': orig_grads,
+        #'grads': grads[0],
+        #'small_delta_mask': small_delta_mask,
+        #'Number of True values': tf.reduce_sum(tf.cast(small_delta_mask, tf.int32)),
+        #'input_ind': input_ind,
+        #'op.inputs length': len(op.inputs),
+        #'out': out[input_ind]
     }
 
     # Store debug tensors in explainer for later evaluation

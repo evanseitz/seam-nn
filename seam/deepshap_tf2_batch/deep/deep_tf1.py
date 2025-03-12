@@ -257,7 +257,7 @@ class TFDeepExplainer(Explainer):
                     #print(f"\nStored original gradient for {n}")
                     #print(f"Type: {type(self.orig_grads[n])}")
                     if op_handlers[n] is not passthrough:
-                        reg[n]["type"] = self.custom_grad 
+                        reg[n]["type"] = self.custom_grad
 
                 elif n in self.used_types:
                     raise Exception(n + " was used in the model but is not in the gradient registry!")
@@ -497,3 +497,69 @@ class TFDeepExplainer(Explainer):
                 print(f"Error evaluating tensors for {op_name}: {e}")
                 print("Feed dict keys:", list(feed_dict.keys()))
                 print("Feed dict values shapes:", [v.shape for v in feed_dict.values()])
+
+
+    def test_gradient_flow(self):
+        """Test function to trace gradient flow through the model."""
+        print("\n=== Testing gradient flow in TF1 ===")
+        
+        # Store original gradient registry
+        reg = tf_ops._gradient_registry._registry
+        orig_registry = {}
+        for n in op_handlers:
+            if n in reg:
+                orig_registry[n] = reg[n]["type"]
+        
+        # Add debug tensor collection to custom_grad
+        def debug_custom_grad(op, *grads):
+            # Store tensors we want to evaluate later
+            self.debug_tensors[op.name] = {
+                "op_type": op.type,
+                "input_tensors": op.inputs,
+                "output_tensors": op.outputs,
+                "input_grads": grads[0] if grads else None
+            }
+            
+            # Get the handler result using original gradient function
+            if op.type in self.orig_grads:
+                orig_result = self.orig_grads[op.type](op, *grads)
+                self.debug_tensors[op.name]["orig_grads"] = orig_result
+                
+            # Now get our custom handler result
+            result = op_handlers[op.type](self, op, *grads)
+            
+            # Store the output gradients
+            if isinstance(result, (list, tuple)):
+                self.debug_tensors[op.name]["output_grads"] = result
+            else:
+                self.debug_tensors[op.name]["output_grads"] = [result]
+                
+            return result
+        
+        # Clear existing debug tensors
+        self.debug_tensors = {}
+        
+        # Register our debug custom_grad
+        for n in op_handlers:
+            if n in reg and op_handlers[n] is not passthrough:
+                reg[n]["type"] = debug_custom_grad
+        
+        try:
+            # Clear any existing graph for this output
+            self.phi_symbolics[0] = None
+            
+            # Build and run the graph
+            phi_symbolic_output = self.phi_symbolic(0)
+            result = self.run(phi_symbolic_output, self.model_inputs, self._last_joint_input)
+            
+            # Now evaluate all the debug tensors
+            self.evaluate_debug_tensors()
+            
+            print("\nFinal gradients:", [r.flatten()[:5] if r is not None else None for r in result])
+        finally:
+            # Restore original gradient registry
+            for n, grad_fn in orig_registry.items():
+                if n in reg:
+                    reg[n]["type"] = grad_fn
+        
+        return result

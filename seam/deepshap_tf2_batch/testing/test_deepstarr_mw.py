@@ -59,23 +59,9 @@ background = tf.convert_to_tensor(background, dtype=tf.float32)
 # Set random seeds
 tf.random.set_seed(42)
 
-# Define handlers
-op_handlers = {}
-if 1:  # Switch for custom nonlinearity handling
-    op_handlers["Relu"] = nonlinearity_1d(0)
-    print("Registered handlers:", list(op_handlers.keys()))
-
 # Select output head to explain
 output_layer = model.outputs[class_idx]
 model_output_idx = tf.keras.Model(inputs=model.input, outputs=output_layer)
-
-# Create model with custom gradients
-custom_model = build_custom_gradient_model(model_output_idx, op_handlers)
-
-# Print layer operations to verify ReLU is being detected
-for layer in custom_model.layers:
-    if hasattr(layer, 'internal_ops'):
-        print(f"Layer {layer.name} operations:", layer.internal_ops)
 
 # Prepare input with backgrounds
 if not isinstance(x_ref, list):
@@ -97,6 +83,13 @@ x_with_backgrounds = [tf.convert_to_tensor(
     dtype=tf.float32) 
     for l in range(len(x_ref))]
 
+custom_model = build_custom_gradient_model(model_output_idx)
+
+# Print layer operations to verify ReLU is being detected
+for layer in custom_model.layers:
+    if hasattr(layer, 'internal_ops'):
+        print(f"Layer {layer.name} operations:", layer.internal_ops)
+
 # Compare gradients between original and custom model
 with tf.GradientTape(persistent=True) as tape:
     tape.watch(x_with_backgrounds)
@@ -110,7 +103,7 @@ custom_grads = tape.gradient(custom_pred, x_with_backgrounds)
 print(f"Original gradients first 10:", orig_grads[0].numpy().flatten()[:10])
 print(f"Custom gradients first 10:", custom_grads[0].numpy().flatten()[:10])
 
-def analyze_original_model_gradients(base_model, inputs, class_idx):
+'''def analyze_original_model_gradients(base_model, inputs, class_idx):
     """Analyze gradients through the original model layer by layer."""
     print("\n=== Original Model Gradient Analysis ===")
     
@@ -162,4 +155,4 @@ def analyze_original_model_gradients(base_model, inputs, class_idx):
     return input_grads
 
 print("\nAnalyzing original model gradients...")
-orig_grads_detailed = analyze_original_model_gradients(model, x_with_backgrounds, class_idx)
+orig_grads_detailed = analyze_original_model_gradients(model, x_with_backgrounds, class_idx)'''

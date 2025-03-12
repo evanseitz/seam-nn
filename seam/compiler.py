@@ -94,19 +94,27 @@ class Compiler:
         sequences = [''.join(seq) for seq in seq_chars]
         return sequences
     
-    def _compute_hamming_cpu(self, seq1, seq2):
-        """Compute Hamming distance between two sequences using CPU."""
-        return int(distance.hamming(list(seq1), list(seq2)) * len(seq1))
-    
-    def _compute_hamming_gpu(self, ref_seq, sequences):
-        """Compute Hamming distances for all sequences at once using GPU."""
-        # Use scipy.spatial.distance.hamming for consistency with CPU version
-        distances = []
-        ref_list = list(ref_seq)
-        for seq in sequences:
-            d = distance.hamming(ref_list, list(seq)) * len(ref_seq)
-            distances.append(int(d))
-        return np.array(distances)
+    def _compute_hamming_onehot(self, ref_onehot, seq_onehot):
+        """Compute Hamming distances directly from one-hot encodings.
+        
+        Args:
+            ref_onehot: Reference sequence one-hot encoding (L, A)
+            seq_onehot: Query sequence(s) one-hot encoding (N, L, A)
+            
+        Returns:
+            Array of Hamming distances
+        """
+        # Get indices of 1s (i.e., which nucleotide is present at each position)
+        ref_indices = np.argmax(ref_onehot, axis=1)  # Shape: (L,)
+        seq_indices = np.argmax(seq_onehot, axis=2)  # Shape: (N, L)
+        
+        # Compare indices and sum differences
+        if seq_indices.ndim == 2:
+            # Multiple sequences case
+            return np.sum(ref_indices != seq_indices, axis=1)
+        else:
+            # Single sequence case
+            return np.sum(ref_indices != seq_indices)
     
     def _compute_gia(self, y_pred, y_bg):
         """Compute GIA score."""
@@ -136,12 +144,8 @@ class Compiler:
         # Compute Hamming distances if reference provided
         if self.x_ref is not None:
             print("Computing Hamming distances...")
-            ref_seq = self._oh2seq_cpu(self.x_ref[0]) if not self.gpu else self._oh2seq_gpu(self.x_ref)[0]
-            
-            if self.gpu:
-                df['Hamming'] = self._compute_hamming_gpu(ref_seq, sequences)
-            else:
-                df['Hamming'] = [self._compute_hamming_cpu(ref_seq, seq) for seq in tqdm(sequences, desc='Hamming')]
+            # Use one-hot method directly with the original one-hot encodings
+            df['Hamming'] = self._compute_hamming_onehot(self.x_ref[0], self.x)
         
         # Compute GIA scores if background provided
         if self.y_bg is not None:
