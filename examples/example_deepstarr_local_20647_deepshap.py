@@ -19,7 +19,6 @@ import os, sys, time
 import random
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn
 import tensorflow as tf
 import squid
 from urllib.request import urlretrieve

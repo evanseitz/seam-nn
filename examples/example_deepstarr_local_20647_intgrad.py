@@ -19,7 +19,6 @@ import os, sys, time
 import random
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn
 import tensorflow as tf
 import squid
 from urllib.request import urlretrieve
@@ -56,12 +55,12 @@ save_logos = True # Whether to save sequence logos (Boolean); render_logos must 
 dpi = 200 # DPI for saved figures
 save_data = True # Whether to save output data (Boolean)
 delete_downloads = False # Whether to delete downloaded models and data after use (Boolean)
-# TODO: view_dendrogram for even faster debugging
+# TODO: view_dendrogram = False for even faster debugging
 
 # If starting from scratch, set all to False:
-load_previous_mave = True # Whether to load previously-generated x_mut and y_mut (Boolean)
-load_previous_attributions = True # Whether to load previously-generated attribution maps (Boolean)
-load_previous_linkage = True # Whether to load previously-generated linkage matrix (Boolean)
+load_previous_mave = False # Whether to load previously-generated x_mut and y_mut (Boolean)
+load_previous_attributions = False # Whether to load previously-generated attribution maps (Boolean)
+load_previous_linkage = False # Whether to load previously-generated linkage matrix (Boolean)
 
 # =============================================================================
 # Initial setup based on user settings
