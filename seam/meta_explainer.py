@@ -979,3 +979,121 @@ class MetaExplainer:
         cluster_maps = self.attributions[self.mave['Cluster'] == original_idx]
         
         return cluster_maps
+
+    def plot_attribution_variation(self, scope='all', metric='std', save_path=None, view_window=None, 
+                                 figsize=(20, 1.5), dpi=600, colors=None, xtick_spacing=5):
+        """Visualize the variation in attribution values across attribution maps for each nucleotide position.
+        
+        Parameters
+        ----------
+        scope : {'all', 'clusters'}, default='all'
+            Scope of variation calculation:
+            - 'all': Use all individual attribution maps
+            - 'clusters': Use cluster-averaged attribution maps
+        metric : {'std', 'var'}, default='std'
+            Metric to use for variation calculation:
+            - 'std': Standard deviation
+            - 'var': Variance
+        save_path : str, optional
+            Path to save figure. If None, display instead.
+        view_window : list of [start, end], optional
+            If provided, crop the x-axis to this window of positions.
+        figsize : tuple, default=(20, 1.5)
+            Figure size in inches.
+        dpi : int, default=600
+            DPI for saved figure.
+        colors : dict, optional
+            Dictionary mapping nucleotide indices to RGB colors.
+            Default: {0: [0, .5, 0], 1: [0, 0, 1], 2: [1, .65, 0], 3: [1, 0, 0]}
+            for A, C, G, T respectively.
+        xtick_spacing : int, default=5
+            Show x-axis labels every nth position. Set to 1 to show all positions.
+            
+        Returns
+        -------
+        numpy.ndarray
+            Array of variation values (std or var) for each position and nucleotide
+        """
+        if not hasattr(self, 'attributions') or self.attributions is None:
+            raise ValueError("No attribution maps found. Run compute() first.")
+            
+        if scope not in ['all', 'clusters']:
+            raise ValueError("scope must be one of: 'all', 'clusters'")
+            
+        if metric not in ['std', 'var']:
+            raise ValueError("metric must be one of: 'std', 'var'")
+            
+        # Get appropriate attribution maps based on scope
+        if scope == 'all':
+            maps_to_analyze = self.attributions
+        else:  # clusters
+            # Get cluster-averaged attribution maps
+            cluster_maps = []
+            cluster_order = self.cluster_order if self.cluster_order is not None else np.sort(self.mave['Cluster'].unique())
+            for k in cluster_order:
+                k_maps = self.get_cluster_maps(k)
+                cluster_maps.append(np.mean(k_maps, axis=0))
+            maps_to_analyze = np.stack(cluster_maps, axis=0)
+            
+        # Calculate variation metric across maps
+        if metric == 'std':
+            variation = np.std(maps_to_analyze, axis=0)  # shape: (L, A)
+        else:  # var
+            variation = np.var(maps_to_analyze, axis=0)  # shape: (L, A)
+        
+        # Set default colors if not provided
+        if colors is None:
+            colors = {
+                0: [0, .5, 0],   # A: green
+                1: [0, 0, 1],    # C: blue
+                2: [1, .65, 0],  # G: orange
+                3: [1, 0, 0]     # T: red
+            }
+        
+        # Create position indices and apply view window
+        if view_window is not None:
+            start, end = view_window
+            variation = variation[start:end]
+            plot_positions = np.arange(len(variation))
+            seq_positions = np.arange(start, end)
+        else:
+            plot_positions = np.arange(len(variation))
+            seq_positions = plot_positions
+        
+        # Create plot
+        plt.figure(figsize=figsize)
+        
+        # Plot bars for each nucleotide
+        bar_width = 0.2
+        for i, nuc in enumerate(self.alphabet):
+            plt.bar(plot_positions + i * bar_width, variation[:, i], 
+                   width=bar_width, color=colors[i], label=nuc)
+        
+        # Customize plot with spaced ticks
+        tick_mask = np.zeros_like(plot_positions, dtype=bool)
+        tick_mask[::xtick_spacing] = True
+        plt.xticks(plot_positions[tick_mask] + 1.5 * bar_width, 
+                  seq_positions[tick_mask],
+                  rotation=90)
+        
+        # Set x-axis limits to show full range with small padding
+        plt.xlim(plot_positions[0] - 0.25, plot_positions[-1] + 0.85)
+        
+        # Add y-axis label based on metric
+        plt.ylabel('Std Dev' if metric == 'std' else 'Variance')
+        
+        # Remove unnecessary spines
+        plt.gca().spines['left'].set_visible(False)
+        plt.gca().spines['right'].set_visible(False)
+        plt.gca().spines['top'].set_visible(False)
+        
+        plt.tight_layout()
+        
+        if save_path:
+            plt.savefig(save_path + '/attribution_variation_%s_%s.png' % (metric, scope), 
+                       dpi=dpi, bbox_inches='tight')
+            plt.close()
+        else:
+            plt.show()
+            
+        return variation

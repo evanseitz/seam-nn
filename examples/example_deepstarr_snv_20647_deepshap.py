@@ -9,9 +9,9 @@ Tested using:
     - SEAM 0.4.3
 
 Parameters:
-    - 30,000 sequences
+    - 30,000 sequences # TODO: set to 10,000 for faster runtime
     - 10% mutation rate
-    - Integrated gradients # TODO deepshap?
+    - Integrated gradients
     - Hierarchical clustering (ward)
 """
 
@@ -45,18 +45,19 @@ seq_index = 20647  # Example locus from DeepSTARR test set used in SEAM Figure 2
 task_index = 1  # Housekeeping (Hk) program
 
 mut_rate = 0.1 # mutation rate for in silico mutagenesis
-num_seqs = 10000#30000 # number of sequences to generate
+num_seqs = 10000 # number of sequences to generate
 attribution_method = 'deepshap' # {saliency, smoothgrad, intgrad, deepshap, ism} # TODO: deepshap under construction
 
 gpu = len(tf.config.list_physical_devices('GPU')) > 0 # Whether to use GPU (Boolean)
 save_figs = True # Whether to save quantitative figures (Boolean)
-view_logos = True # Whether to view sequence logos (Boolean)
-save_logos = True # Whether to save sequence logos (Boolean)
+render_logos = True # Whether to view sequence logos (Boolean)
+save_logos = True # Whether to save sequence logos (Boolean); render_logos must be True
 dpi = 200 # DPI for saved figures
 save_data = True # Whether to save output data (Boolean)
 delete_downloads = False # Whether to delete downloaded models and data after use (Boolean)
-# TODO: view_dendrogram for even faster debugging
+# TODO: view_dendrogram = False for even faster debugging
 
+# If starting from scratch, set all to False:
 load_previous_mave = True # Whether to load previously-generated x_mut and y_mut (Boolean)
 load_previous_attributions = True # Whether to load previously-generated attribution maps (Boolean)
 load_previous_linkage = True # Whether to load previously-generated linkage matrix (Boolean)
@@ -64,9 +65,9 @@ load_previous_linkage = True # Whether to load previously-generated linkage matr
 # =============================================================================
 # Initial setup based on user settings
 # =============================================================================
-if save_data:
+if save_data:# or load_previous_mave or load_previous_attributions or load_previous_linkage:
     py_dir = os.path.dirname(os.path.abspath(__file__))
-    save_path = os.path.join(py_dir, f'outputs_deepstarr_local_{seq_index}_{attribution_method}')
+    save_path = os.path.join(py_dir, f'outputs_deepstarr_snv_{seq_index}_{attribution_method}')
     if not os.path.exists(save_path):
         os.makedirs(save_path)
     if save_figs:
@@ -157,8 +158,8 @@ if load_previous_mave is False:
     )
 
     # Set up mutagenizer class for in silico MAVE
-    mut_generator = squid.mutagenizer.RandomMutagenesis(
-        mut_rate=mut_rate
+    mut_generator = squid.mutagenizer.CombinatorialMutagenesis(
+        max_order=1
     )
 
     # Generate in silico MAVE
@@ -178,6 +179,8 @@ fig = squid.impress.plot_y_hist(
     y_mut,
     save_dir=save_path_figs
 )
+if not save_path_figs:
+    plt.show()
 
 # =============================================================================
 # SEAM API
@@ -208,7 +211,7 @@ if load_previous_attributions is False:
     attributer = Attributer(
         model,
         method=attribution_method,
-        task_index=task_index
+        task_index=task_index,
     )
 
     # Show params for specific method
@@ -220,6 +223,7 @@ if load_previous_attributions is False:
         x_ref=x_ref,
         save_window=None,
         batch_size=256,
+        baseline_type='dinuc_shuffle', #TODO: check if this messes up other methods
         gpu=gpu
     )
     t2 = time.time() - t1
@@ -229,7 +233,7 @@ if load_previous_attributions is False:
         np.save(os.path.join(save_path, f'attributions_{attribution_method}.npy'), attributions)
 
 # Render logo of attribution map for reference sequence
-if view_logos is True:
+if render_logos is True:
     reference_logo = BatchLogo(attributions[ref_index:ref_index+1],
         alphabet=alphabet,
         fig_size=[20,2.5],
@@ -357,7 +361,7 @@ meta.plot_msm(column='Reference',
 # Plot meta-attribution maps for each cluster
 # =============================================================================
 # Generate attribution logos
-if view_logos is True:
+if render_logos is True:
     logo_type = 'average' # {average, pwm, enrichment}
 
     meta_logos = meta.generate_logos(logo_type=logo_type,
@@ -423,7 +427,7 @@ meta_logos_no_bg = meta.generate_logos(
     figsize=(20, 2.5)
 )
 
-if view_logos is True:
+if render_logos is True:
     if sort_method is not None:
         ref_cluster = meta.membership_df.loc[ref_index, 'Cluster_Sorted']
     else:
@@ -561,7 +565,7 @@ active_clusters = tfbs_positions['Active_Clusters'].tolist()
 # Create fixed colors for each TFBS
 tfbs_colors = [plt.cm.Pastel1(i % 9) for i in range(len(position_lists))]
 
-if view_logos is True:
+if render_logos is True:
     if save_logos is True:
         save_path_logos_average_no_bg = os.path.join(save_path_logos, 'average_no_bg')
         if not os.path.exists(save_path_logos_average_no_bg):

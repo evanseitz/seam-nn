@@ -1,5 +1,11 @@
 TODO:
 
+- PK:
+    - DeepSHAP SNVs figure
+    - Variability logo metric and make box plot (CLIPNET)
+    - Background amplitude vs foreground; stratify by prediction
+    - Kmer spectra on backgrounds - yagi?
+
 - remove all __pycache__ (or gitignore all)
 
 - All Classes:
@@ -12,9 +18,10 @@ TODO:
 
 
 - Colab examples:
+    - for any example with IntGrad, show baseline_type is an option
     - Fig.2 reproduced:
         - Documentation at top of notebook about intent of demo and its figure in the paper
-        - save_figs and save_data options like in local script
+        - save_figs and save_data options like in local script --> one example?
     - DeepSTARR mismatch figure reproduced (index 22612; Dev)
         - color logos by reference sequence 
     - DeepSTARR background separation figure reproduced (test set index 4071; Hk)
@@ -172,6 +179,11 @@ Colab:
     - SEAM remaining figures
     - 'ward' vs other linkages
     - use all_maps_average to prove a point?
+    - intgrad zeros vs intgrad dinuc --> same appearance with cluster average?
+        - compare to average over all maps in library; smoothGrad comparison, etc.
+    - PCA with more dims
+    - Hessian or PW vs purely additive
+        - or pairwise directly using PBM
 
 - Motif finding:
     - best attribution method?
@@ -186,10 +198,7 @@ Colab:
     - Carlos (work on protein dataset)
     - ...
 
-
-- nucleotide variation bar plots (chrombpnet/fold2/crop190_690)
-
 - optimized REVO
 
 - Future SEAM studies:
-	- protein compartments
+	- protein compartments (PLM dataset)

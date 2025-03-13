@@ -158,14 +158,9 @@ if load_previous_mave is False:
     )
 
     # Set up mutagenizer class for in silico MAVE
-    if 1:
-        mut_generator = squid.mutagenizer.RandomMutagenesis(
-            mut_rate=mut_rate
-        )
-    else:
-        mut_generator = squid.mutagenizer.CombinatorialMutagenesis(
-            max_order=1
-        )
+    mut_generator = squid.mutagenizer.RandomMutagenesis(
+        mut_rate=mut_rate
+    )
 
     # Generate in silico MAVE
     mave = squid.mave.InSilicoMAVE(mut_generator,
@@ -410,6 +405,15 @@ if render_logos is True:
 # SEAM API
 # Background separation
 # =============================================================================
+# Plot variation in attribution values across attribution maps for each nucleotide position
+meta.plot_attribution_variation(
+    scope='clusters',  # {'all', 'clusters'}
+    metric='std',  # {'std', 'var'}
+    #view_window=[0, 500],
+    save_path=save_path_figs,
+    dpi=dpi
+)
+
 # Separate individual clusters from average background over clusters
 background_multiplier = 0.5  # default threshold factor for background separation
 
@@ -554,7 +558,6 @@ fig, ax = identifier.plot_state_matrix(
 # SEAM API
 # Plot meta-attribution maps after background separation and TFBS identification
 # =============================================================================
-
 position_lists = tfbs_positions['Positions'].tolist()
 active_clusters = tfbs_positions['Active_Clusters'].tolist()
 

@@ -3,6 +3,7 @@ import sys
 from tqdm import tqdm
 import numpy as np
 import tensorflow as tf
+from typing import Union, Optional
 
 try:
     import shap
@@ -176,13 +177,6 @@ class Attributer:
         else:
             return self._smoothgrad_cpu(X, num_samples, mean, stddev)
 
-    def intgrad(self, X, baseline_type='zeros', num_steps=25, gpu=True, multiply_by_inputs=False):
-        """Compute Integrated Gradients attribution maps."""
-        if gpu:
-            return self._intgrad_gpu(X, baseline_type, num_steps, multiply_by_inputs)
-        else:
-            return self._intgrad_cpu(X, baseline_type, num_steps, multiply_by_inputs)
-        
     def _smoothgrad_cpu(self, X, num_samples=50, mean=0.0, stddev=0.1):
         """CPU implementation of SmoothGrad."""
         scores = []
@@ -209,17 +203,38 @@ class Attributer:
         # Reshape and reduce
         grads = tf.reshape(grads, [-1, num_samples, tf.shape(X)[1], tf.shape(X)[2]])
         return tf.reduce_mean(grads, axis=1)
-
-    def _intgrad_cpu(self, X, baseline_type='zeros', num_steps=25, multiply_by_inputs=False):
-        """CPU-optimized implementation using loop-based computation."""
-        scores = []
-        for x in X:
-            x = np.expand_dims(x, axis=0)  # Add batch dimension: (1, L, A)
-            baseline = self._set_baseline(x, baseline_type)
-            score = self._integrated_grad(x, baseline, num_steps, multiply_by_inputs)
-            scores.append(score[0])  # Remove batch dimension before appending
-        return np.stack(scores, axis=0)  # Stack to get (N, L, A)
-
+    
+    def intgrad(self, X, baseline_type='zeros', num_steps=25, gpu=True, multiply_by_inputs=False, seed=None):
+        """Compute Integrated Gradients attribution maps.
+        
+        Parameters
+        ----------
+        X : array-like
+            Input sequences
+        baseline_type : str
+            Type of baseline to use:
+            - 'zeros': Zero baseline
+            - 'random_shuffle': Random shuffle of input sequence
+            - 'dinuc_shuffle': Dinucleotide-preserved shuffle of input sequence (default)
+        num_steps : int
+            Number of steps for integration
+        gpu : bool
+            Whether to use GPU-optimized implementation
+        multiply_by_inputs : bool
+            Whether to multiply gradients by inputs
+        seed : int, optional
+            Random seed for reproducibility in shuffling methods
+            
+        Returns
+        -------
+        array-like
+            Attribution maps
+        """
+        if gpu:
+            return self._intgrad_gpu(X, baseline_type, num_steps, multiply_by_inputs, seed=seed)
+        else:
+            return self._intgrad_cpu(X, baseline_type, num_steps, multiply_by_inputs, seed=seed)
+    
     def _integrated_grad(self, x, baseline, num_steps, multiply_by_inputs=False):
         """Compute Integrated Gradients for a single input."""
         alphas = tf.linspace(0.0, 1.0, num_steps+1)
@@ -235,16 +250,50 @@ class Attributer:
             return avg_grads * (x - baseline)
         return avg_grads
     
+    def _intgrad_cpu(self, X, baseline_type='zeros', num_steps=25, multiply_by_inputs=False, seed=None):
+        """CPU-optimized implementation using loop-based computation."""
+        scores = []
+        for i, x in enumerate(X):
+            x = np.expand_dims(x, axis=0)  # Add batch dimension: (1, L, A)
+            
+            # Explicitly handle each baseline type
+            if baseline_type == 'zeros':
+                baseline = np.zeros_like(x)
+            elif baseline_type == 'random_shuffle':
+                # Set random seed for reproducibility if provided
+                if seed is not None:
+                    np.random.seed(seed)
+                baseline = self._random_shuffle(x)
+            elif baseline_type == 'dinuc_shuffle':
+                if i == 0:  # Only compute all shuffles once at the start
+                    baselines = self._batch_dinuc_shuffle(X, num_shuffles=1, seed=seed)
+                baseline = np.expand_dims(baselines[i], axis=0)
+            else:
+                raise ValueError("baseline_type must be one of: 'zeros', 'random_shuffle', 'dinuc_shuffle'")
+            
+            score = self._integrated_grad(x, baseline, num_steps, multiply_by_inputs)
+            scores.append(score[0])  # Remove batch dimension before appending
+        return np.stack(scores, axis=0)  # Stack to get (N, L, A)
+
     @tf.function(jit_compile=True)
-    def _intgrad_gpu(self, X, baseline_type='zeros', num_steps=25, multiply_by_inputs=False):
+    def _intgrad_gpu(self, X, baseline_type='zeros', num_steps=25, multiply_by_inputs=False, seed=None):
         """GPU-optimized implementation using vectorized computation."""
         # Ensure input is float32
         X = tf.cast(X, tf.float32)
         
+        # Explicitly handle each baseline type
         if baseline_type == 'zeros':
             baseline = tf.zeros_like(X, dtype=tf.float32)
-        else:
+        elif baseline_type == 'random_shuffle':
+            # Set random seed for reproducibility if provided
+            if seed is not None:
+                tf.random.set_seed(seed)
             baseline = tf.cast(tf.vectorized_map(self._random_shuffle, X), tf.float32)
+        elif baseline_type == 'dinuc_shuffle':
+            # Pre-compute all shuffles at once for efficiency
+            baseline = tf.cast(self._batch_dinuc_shuffle(X, num_shuffles=1, seed=seed), tf.float32)
+        else:
+            raise ValueError("baseline_type must be one of: 'zeros', 'random_shuffle', 'dinuc_shuffle'")
         
         # Compute path inputs for all samples at once
         alphas = tf.linspace(0.0, 1.0, num_steps+1)
@@ -403,12 +452,202 @@ class Attributer:
         for x in dataset.batch(batch_size):
             outputs.append(func(x, **kwargs))
         return np.concatenate(outputs, axis=0)
+    
+    def _set_baseline(self, x, baseline_type, seed=None):
+        """Set baseline for Integrated Gradients.
+        
+        Parameters
+        ----------
+        x : array-like
+            Input sequence to generate baseline for
+        baseline_type : str
+            Type of baseline to use:
+            - 'zeros': Zero baseline
+            - 'random_shuffle': Random shuffle of input sequence
+            - 'dinuc_shuffle': Dinucleotide-preserved shuffle of input sequence (default)
+        num_backgrounds : int
+            Number of background sequences to generate for shuffling methods
+        seed : int, optional
+            Random seed for reproducibility in shuffling methods
+        
+        Returns
+        -------
+        array-like
+            Baseline sequence(s)
+        """
+        if baseline_type == 'zeros':
+            return np.zeros_like(x)
+        elif baseline_type == 'random_shuffle':
+            return self._random_shuffle(x, seed=seed)
+        elif baseline_type == 'dinuc_shuffle':
+            return self._batch_dinuc_shuffle(x, num_shuffles=1, seed=seed)[0]
+        else:
+            raise ValueError("baseline_type must be one of: 'dinuc_shuffle', 'random_shuffle', 'zeros'")
 
-    def _set_baseline(self, x, baseline_type):
-        """Set baseline for Integrated Gradients."""
-        if baseline_type == 'random':
-            return self._random_shuffle(x)
-        return np.zeros_like(x)
+    @staticmethod
+    def _one_hot_to_tokens(one_hot):
+        """Convert an L x D one-hot encoding into an L-vector of integers.
+        
+        Parameters
+        ----------
+        one_hot : np.ndarray
+            One-hot encoded sequence with shape (length, D)
+            
+        Returns
+        -------
+        np.ndarray
+            Vector of integers representing sequence
+        """
+        tokens = np.tile(one_hot.shape[1], one_hot.shape[0])
+        seq_inds, dim_inds = np.where(one_hot)
+        tokens[seq_inds] = dim_inds
+        return tokens
+
+    @staticmethod
+    def _tokens_to_one_hot(tokens, one_hot_dim):
+        """Convert an L-vector of integers to an L x D one-hot encoding.
+        
+        Parameters
+        ----------
+        tokens : np.ndarray
+            Vector of integers representing sequence
+        one_hot_dim : int
+            Dimension of one-hot encoding (usually 4 for DNA)
+            
+        Returns
+        -------
+        np.ndarray
+            One-hot encoded sequence
+        """
+        identity = np.identity(one_hot_dim + 1)[:, :-1]
+        return identity[tokens]
+
+    @staticmethod
+    def _dinuc_shuffle(seq, rng=None):
+        """Create shuffle of sequence preserving dinucleotide frequencies.
+        
+        Parameters
+        ----------
+        seq : np.ndarray
+            L x D one-hot encoded sequence
+        rng : np.random.RandomState, optional
+            Random number generator
+            
+        Returns
+        -------
+        np.ndarray
+            Shuffled sequence preserving dinucleotide frequencies
+        """
+        if rng is None:
+            rng = np.random.RandomState()
+            
+        # Convert to tokens
+        tokens = Attributer._one_hot_to_tokens(seq)
+        
+        # Get unique tokens
+        chars, tokens = np.unique(tokens, return_inverse=True)
+        
+        # Get next indices for each token
+        shuf_next_inds = []
+        for t in range(len(chars)):
+            mask = tokens[:-1] == t
+            inds = np.where(mask)[0]
+            shuf_next_inds.append(inds + 1)
+        
+        # Shuffle next indices
+        for t in range(len(chars)):
+            inds = np.arange(len(shuf_next_inds[t]))
+            if len(inds) > 1:
+                inds[:-1] = rng.permutation(len(inds) - 1)
+            shuf_next_inds[t] = shuf_next_inds[t][inds]
+        
+        # Build result
+        counters = [0] * len(chars)
+        ind = 0
+        result = np.empty_like(tokens)
+        result[0] = tokens[ind]
+        
+        for j in range(1, len(tokens)):
+            t = tokens[ind]
+            ind = shuf_next_inds[t][counters[t]]
+            counters[t] += 1
+            result[j] = tokens[ind]
+        
+        return Attributer._tokens_to_one_hot(chars[result], seq.shape[1])
+
+    @staticmethod
+    def _batch_dinuc_shuffle(
+        sequence: Union[np.ndarray, tf.Tensor],
+        num_shuffles: int = 1,
+        seed: Optional[int] = None
+    ) -> Union[np.ndarray, tf.Tensor]:
+        """Generate multiple dinucleotide-preserved shuffles efficiently.
+        
+        Parameters
+        ----------
+        sequence : Union[np.ndarray, tf.Tensor]
+            One-hot encoded sequence(s) with shape (length, 4), (1, length, 4),
+            or (batch_size, length, 4)
+        num_shuffles : int
+            Number of shuffled sequences to generate per input sequence
+        seed : int, optional
+            Random seed for reproducibility
+            
+        Returns
+        -------
+        Union[np.ndarray, tf.Tensor]
+            Batch of shuffled sequences. If input is batched, shape will be
+            (batch_size, length, 4). If num_shuffles > 1, shape will be
+            (num_shuffles, length, 4) for single input or 
+            (batch_size, num_shuffles, length, 4) for batched input.
+        """
+        # Convert to numpy if needed
+        was_tensor = isinstance(sequence, tf.Tensor)
+        if was_tensor:
+            sequence = sequence.numpy()
+        
+        # Handle different input shapes
+        if len(sequence.shape) == 2:  # (length, 4)
+            sequence = sequence[np.newaxis, ...]  # Add batch dimension
+            single_sequence = True
+        elif len(sequence.shape) == 3:  # (batch_size, length, 4) or (1, length, 4)
+            single_sequence = sequence.shape[0] == 1
+        else:
+            raise ValueError("Input sequence must have shape (length, 4), (1, length, 4), or (batch_size, length, 4)")
+        
+        # Create RandomState with seed
+        rng = np.random.RandomState(seed)
+        
+        if single_sequence:
+            # Generate shuffles for single sequence
+            shuffled_sequences = [
+                Attributer._dinuc_shuffle(sequence[0], rng=rng) 
+                for _ in range(num_shuffles)
+            ]
+            shuffled = np.stack(shuffled_sequences, axis=0)
+        else:
+            # Generate one shuffle per sequence in batch
+            if num_shuffles > 1:
+                # Generate multiple shuffles per sequence
+                shuffled_sequences = [[
+                    Attributer._dinuc_shuffle(seq, rng=rng)
+                    for _ in range(num_shuffles)
+                ] for seq in sequence]
+                shuffled = np.stack([np.stack(seq_shuffles, axis=0) 
+                                   for seq_shuffles in shuffled_sequences], axis=0)
+            else:
+                # Generate one shuffle per sequence
+                shuffled_sequences = [
+                    Attributer._dinuc_shuffle(seq, rng=rng)
+                    for seq in sequence
+                ]
+                shuffled = np.stack(shuffled_sequences, axis=0)
+        
+        # Convert back to tensor if input was tensor
+        if was_tensor:
+            shuffled = tf.convert_to_tensor(shuffled, dtype=tf.float32)
+            
+        return shuffled
 
     @staticmethod
     def _random_shuffle(x):
@@ -509,11 +748,14 @@ class Attributer:
         elif self.method == 'intgrad':
             gpu = kwargs.get('gpu', self.gpu)  # Use instance default if not specified
             multiply_by_inputs = kwargs.get('multiply_by_inputs', False)
-            batch_values = self.intgrad(x_batch, 
-                                    baseline_type='zeros',
-                                    num_steps=kwargs.get('num_steps', 50),
-                                    gpu=gpu,
-                                    multiply_by_inputs=multiply_by_inputs
+            baseline_type = kwargs.get('baseline_type', 'zeros')  # Get from kwargs with default
+            batch_values = self.intgrad(
+                x_batch, 
+                baseline_type=baseline_type,
+                num_steps=kwargs.get('num_steps', 50),
+                gpu=gpu,
+                multiply_by_inputs=multiply_by_inputs,
+                seed=kwargs.get('seed', None)
             )
         elif self.method == 'ism':
             gpu = kwargs.get('gpu', self.gpu)
@@ -583,6 +825,11 @@ class Attributer:
                 'gpu': 'bool, Whether to use GPU acceleration (default: True)',
                 'num_steps': 'int, Number of integration steps (default: 50)',
                 'multiply_by_inputs': 'bool, Whether to multiply gradients by inputs (default: False)',
+                'baseline_type': ('str, Type of baseline to use (default: zeros). Options:\n'
+                               '    - zeros: Zero baseline\n'
+                               '    - random_shuffle: Random shuffle of input sequence\n'
+                               '    - dinuc_shuffle: Dinucleotide-preserved shuffle'),
+                'seed': 'int, Random seed for reproducibility in shuffling methods (optional)',
                 'batch_size': 'int, Batch size for processing (default: 128)',
                 'func': ('callable, Function to reduce model output to scalar (default: tf.math.reduce_mean). '
                         'Required if model output is not already a scalar.')
