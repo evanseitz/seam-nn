@@ -1082,7 +1082,6 @@ class MetaExplainer:
         # Add y-axis label based on metric
         plt.ylabel('Std Dev' if metric == 'std' else 'Variance')
         
-        # Remove unnecessary spines
         plt.gca().spines['left'].set_visible(False)
         plt.gca().spines['right'].set_visible(False)
         plt.gca().spines['top'].set_visible(False)

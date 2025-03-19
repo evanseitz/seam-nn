@@ -260,7 +260,8 @@ class BatchLogo:
         return fig, axes
     
     def draw_single(self, idx, fixed_ylim=True, view_window=None, fig_size=None, 
-                    highlight_ranges=None, highlight_colors=None, highlight_alpha=0.5):
+                    highlight_ranges=None, highlight_colors=None, highlight_alpha=0.5,
+                    border=True):
         """Draw a single logo
         
         Parameters
@@ -282,12 +283,14 @@ class BatchLogo:
             If None, defaults to plt.cm.Pastel1 (9 colors)
         highlight_alpha : float, default=0.5
             Alpha transparency for highlights
+        border : bool, default=True
+            Whether to show the axis spines (border)
         """
         if idx not in self.processed_logos:
             raise ValueError(f"Logo {idx} has not been processed yet. Run process_all() first.")
         
         fig, ax = plt.subplots(figsize=fig_size if fig_size is not None else self.figsize)
-        self._draw_single_logo(ax, self.processed_logos[idx], fixed_ylim=fixed_ylim)
+        self._draw_single_logo(ax, self.processed_logos[idx], fixed_ylim=fixed_ylim, border=border)
         
         # Add highlighting if specified
         if highlight_ranges is not None:
@@ -333,7 +336,7 @@ class BatchLogo:
         plt.tight_layout()
         return fig, ax
     
-    def _draw_single_logo(self, ax, logo_data, fixed_ylim=True):
+    def _draw_single_logo(self, ax, logo_data, fixed_ylim=True, border=True):
         """Draw a single logo on the given axes.
         
         Parameters
@@ -344,6 +347,8 @@ class BatchLogo:
             Logo data containing glyphs
         fixed_ylim : bool, default=True
             Whether to use same y-axis limits across all logos
+        border : bool, default=True
+            Whether to show the axis spines (border)
         """
         timing = {}
         
@@ -383,13 +388,9 @@ class BatchLogo:
                           linewidth=self.kwargs['baseline_width'],
                           zorder=-1)
             
-            # Show spines
-            if self.kwargs['show_spines']:
-                for spine in ax.spines.values():
-                    spine.set_visible(True)
-            else:
-                for spine in ax.spines.values():
-                    spine.set_visible(False)
+            # Show/hide spines based on border parameter
+            for spine in ax.spines.values():
+                spine.set_visible(border)
         
         #print("Logo drawing details:", timing)
 

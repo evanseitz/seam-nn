@@ -242,7 +242,10 @@ if render_logos is True:
 
     reference_logo.process_all()
 
-    fig, ax = reference_logo.draw_single(ref_index)
+    fig, ax = reference_logo.draw_single(
+        ref_index,
+        border=False
+    )
     if save_logos:
         fig.savefig(os.path.join(save_path, 'reference_logo.png'), facecolor='w', dpi=dpi, bbox_inches='tight')
         plt.close()
@@ -382,6 +385,7 @@ if render_logos is True:
             cluster_index,
             fixed_ylim=True, # fixed y-axis limits as defined over all cluster-averaged logos
             fig_size=(10, 2.5),
+            border=False,
             view_window=view_window
         )
         if save_logos:
@@ -437,7 +441,9 @@ if render_logos is True:
     fig, ax = reference_logo.draw_single(
         0,
         fixed_ylim=False,
-        #view_window=view_window
+        fig_size=(10,2.5),
+        border=False,
+        view_window=view_window
         )
     if save_logos:
         fig.savefig(os.path.join(save_path_logos, '1_reference_logo.png'), facecolor='w', dpi=dpi, bbox_inches='tight')
@@ -446,10 +452,12 @@ if render_logos is True:
         plt.show()
 
     # Reference cluster: noise reduction via averaging
-    fig, ax =meta_logos.draw_single(
+    fig, ax = meta_logos.draw_single(
         ref_cluster,
         fixed_ylim=False,
-        #view_window=view_window
+        fig_size=(10,2.5),
+        border=False,
+        view_window=view_window
         )
     if save_logos:
         fig.savefig(os.path.join(save_path_logos, '2_reference_cluster.png'), facecolor='w', dpi=dpi, bbox_inches='tight')
@@ -461,7 +469,9 @@ if render_logos is True:
     fig, ax = meta_logos_no_bg.draw_single(
         ref_cluster,
         fixed_ylim=False,
-        #view_window=view_window
+        fig_size=(10,2.5),
+        border=False,
+        view_window=view_window
         )
     if save_logos:
         fig.savefig(os.path.join(save_path_logos, '3_reference_cluster_no_bg.png'), facecolor='w', dpi=dpi, bbox_inches='tight')
@@ -584,6 +594,7 @@ if render_logos is True:
             cluster_index,
             fixed_ylim=True,
             fig_size=(10, 2.5),
+            border=False,
             view_window=view_window,
             highlight_ranges=active_positions if active_positions else None,
             highlight_colors=active_colors if active_positions else None

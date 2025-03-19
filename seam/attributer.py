@@ -689,6 +689,10 @@ class Attributer:
         Returns:
             numpy.ndarray: Attribution maps (shape: (N, L, A))
         """
+        # Ensure model is in evaluation mode
+        if hasattr(self.model, 'eval'):
+            self.model.eval()
+            
         if x_ref is not None:
             x_ref = x_ref.astype('uint8')
             if x_ref.ndim == 2:

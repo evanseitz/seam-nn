@@ -1,7 +1,6 @@
 TODO:
 
 - PK:
-    - DeepSHAP SNVs figure
     - Variability logo metric and make box plot (CLIPNET)
     - Background amplitude vs foreground; stratify by prediction
     - Kmer spectra on backgrounds - yagi?
@@ -119,6 +118,7 @@ Colab:
     - add xtick_spacing to plot_covariance_square
     - background_entropy currently only defined for 4 nucleotides
     - calculate expected effect for each cluster? (change in y-value from WT cluster)
+    - fix state matrix bug (multiplier > 1?)
 
 - Impress:
     - move all plotting code to impress.py?
@@ -128,6 +128,7 @@ Colab:
 
 - GUI Class:
     - update for latest repository
+        - new logomaker (remove old logo versions)
     - if adaptive logos not pre-generated, automatically show fixed
     - PWM bits are not correct (should be max 2, not 4)
     - MSM window: boxplots of y values in margin or separate window
@@ -172,6 +173,7 @@ Colab:
     - DRE-m0-seq601
 
 - Other:
+    - Discussion: augment libraries with all SNVs, pairwise, (higher order?), or a collection of known population variants
     - backup SEAM Colabs on github
     - backup SQUID Colabs on github
     - SQUID replicates update
@@ -202,3 +204,6 @@ Colab:
 
 - Future SEAM studies:
 	- protein compartments (PLM dataset)
+
+- DeepSHAP:
+    - no longer need sequence_utils.py?
