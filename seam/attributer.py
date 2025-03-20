@@ -342,31 +342,51 @@ class Attributer:
         """CPU implementation of ISM."""
         X = X.astype(np.float32)  # Ensure float32
         scores = []
+        
+        # Pre-allocate mutation array for reuse
+        mut_seq = np.zeros_like(X[0:1], dtype=np.float32)
+        
         for x in X:
-            x = np.expand_dims(x, axis=0)
+            x = x[np.newaxis]  # Faster than expand_dims
             score_matrix = np.zeros_like(x[0], dtype=np.float32)
             
             # Get wild-type prediction
-            wt_pred = self.func(self.model(tf.constant(x)))  # Convert to tensor
+            wt_pred = self.func(self.model(tf.constant(x, dtype=tf.float32)))
             
-            L, A = x.shape[1:]
-            for pos in range(L):
-                x_mut = np.copy(x)
-                orig_base = np.argmax(x_mut[0, pos])
+            # Store all mutation predictions first
+            mut_preds = np.empty((x.shape[1] * (x.shape[2]-1)), dtype=np.float32)
+            mut_locs = []
+            
+            # Reuse pre-allocated array
+            mut_seq[:] = x
+            
+            idx = 0
+            for pos in range(x.shape[1]):
+                for b in range(1, x.shape[2]):
+                    mut_seq[0, pos] = np.roll(x[0, pos], b)
+                    new_base = np.where(mut_seq[0, pos] == 1)[0][0]
+                    
+                    mut_preds[idx] = float(self.func(self.model(tf.constant(mut_seq))))
+                    mut_locs.append((pos, new_base))
+                    idx += 1
                 
-                for offset in range(1, A):
-                    new_base = (orig_base + offset) % A
-                    x_mut[0, pos] = np.zeros(A)
-                    x_mut[0, pos, new_base] = 1
-                    
-                    mut_pred = self.func(self.model(tf.constant(x_mut)))  # Convert to tensor
-                    
-                    if log2fc:
-                        score_matrix[pos, new_base] = (
-                            float(tf.math.log(mut_pred + 1e-10) - tf.math.log(wt_pred + 1e-10))
-                        )
+                # Restore original sequence for next position
+                mut_seq[0, pos] = x[0, pos]
+            
+            # Apply log2fc calculation after collecting all predictions
+            if log2fc:
+                pred_min = min(min(mut_preds), float(wt_pred))
+                offset = abs(pred_min) + 1
+                wt_pred_adj = wt_pred + offset
+                
+                for (pos, new_base), mut_pred in zip(mut_locs, mut_preds):
+                    if mut_pred != wt_pred:
+                        score_matrix[pos, new_base] = np.log2(mut_pred + offset) - np.log2(wt_pred_adj)
                     else:
-                        score_matrix[pos, new_base] = float(mut_pred - wt_pred)
+                        score_matrix[pos, new_base] = 0.
+            else:
+                for (pos, new_base), mut_pred in zip(mut_locs, mut_preds):
+                    score_matrix[pos, new_base] = mut_pred - wt_pred
                         
             scores.append(score_matrix)
         return np.stack(scores, axis=0)
@@ -382,6 +402,10 @@ class Attributer:
         
         # Initialize output tensor
         scores = tf.zeros((batch_size, L, A), dtype=tf.float32)
+        
+        if log2fc:
+            # Store all mutation predictions to find global minimum
+            all_preds = [wt_preds]
         
         # For each position
         for pos in tf.range(L, dtype=tf.int64):
@@ -418,30 +442,74 @@ class Attributer:
                     # Get predictions
                     mut_preds = self.func(self.model(X_mut))
                     
-                    # Compute differences/fold changes
                     if log2fc:
-                        delta = tf.where(
-                            should_mutate,
-                            tf.math.log(mut_preds + 1e-10) - tf.math.log(wt_preds + 1e-10),
-                            tf.zeros_like(mut_preds)
+                        # Store predictions for finding global minimum
+                        all_preds.append(mut_preds)
+                        
+                        # Store mutation locations and predictions for later
+                        scores = tf.tensor_scatter_nd_update(
+                            scores,
+                            tf.stack([
+                                tf.cast(tf.range(batch_size), tf.int64),
+                                tf.fill([batch_size], pos),
+                                tf.fill([batch_size], alt_base)
+                            ], axis=1),
+                            tf.where(
+                                should_mutate,
+                                mut_preds,  # Store raw predictions temporarily
+                                tf.zeros_like(mut_preds)
+                            )
                         )
                     else:
+                        # For non-log2fc, just compute differences directly
+                        scores = tf.tensor_scatter_nd_update(
+                            scores,
+                            tf.stack([
+                                tf.cast(tf.range(batch_size), tf.int64),
+                                tf.fill([batch_size], pos),
+                                tf.fill([batch_size], alt_base)
+                            ], axis=1),
+                            tf.where(
+                                should_mutate,
+                                mut_preds - wt_preds,
+                                tf.zeros_like(mut_preds)
+                            )
+                        )
+        
+        if log2fc:
+            # Find global minimum across all predictions
+            all_preds = tf.stack(all_preds, axis=1)  # [batch_size, num_preds]
+            pred_min = tf.reduce_min(all_preds, axis=1)  # [batch_size]
+            offset = tf.abs(pred_min) + 1
+            
+            # Add offset to wild-type predictions
+            wt_preds_adj = wt_preds + offset[:, tf.newaxis]
+            
+            # Process each position and base
+            for pos in tf.range(L, dtype=tf.int64):
+                for alt_base in tf.range(A, dtype=tf.int64):
+                    mut_preds = scores[:, pos, alt_base]  # Get stored raw predictions
+                    should_mutate = tf.not_equal(mut_preds, 0.0)  # Where we stored predictions
+                    
+                    if tf.reduce_any(should_mutate):
+                        # Add offset and compute log2fc
+                        mut_preds_adj = mut_preds + offset[:, tf.newaxis]
                         delta = tf.where(
                             should_mutate,
-                            mut_preds - wt_preds,
+                            tf.math.log(mut_preds_adj) - tf.math.log(wt_preds_adj),
                             tf.zeros_like(mut_preds)
                         )
-                    
-                    # Update scores
-                    scores = tf.tensor_scatter_nd_update(
-                        scores,
-                        tf.stack([
-                            tf.cast(tf.range(batch_size), tf.int64),
-                            tf.fill([batch_size], pos),
-                            tf.fill([batch_size], alt_base)
-                        ], axis=1),
-                        delta
-                    )
+                        
+                        # Update scores with log2fc values
+                        scores = tf.tensor_scatter_nd_update(
+                            scores,
+                            tf.stack([
+                                tf.cast(tf.range(batch_size), tf.int64),
+                                tf.fill([batch_size], pos),
+                                tf.fill([batch_size], alt_base)
+                            ], axis=1),
+                            delta
+                        )
         
         return scores
 

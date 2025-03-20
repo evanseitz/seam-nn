@@ -115,3 +115,6 @@ examples/deepstarr.model.json
 examples/outputs_deepstarr_local_20647_deepshap
 examples/outputs_deepstarr_snv_20647_deepshap
 examples/outputs_deepstarr_local_20647_intgrad
+examples/outputs_deepstarr_snv_dnv_22612_deepshap
+examples/Zfp187_2626_contig8mers.txt
+examples/outputs_pbm_combinatorial_zfp187

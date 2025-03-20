@@ -180,7 +180,7 @@ class MetaExplainer:
         raise ValueError(f"Unknown sort_method: {sort_method}")
     
     def plot_cluster_stats(self, plot_type='box', metric='prediction', save_path=None, 
-                           show_ref=True, show_fliers=False, fontsize=8, dpi=200):
+                           show_ref=True, show_fliers=False, compact=False, fontsize=8, dpi=200):
         """Plot cluster statistics with various visualization options.
         
         Parameters
@@ -199,6 +199,9 @@ class MetaExplainer:
             If True and reference sequence exists, highlight its cluster
         show_fliers : bool
             If True and plot_type='box', show outlier points
+        compact: bool
+            If False, shows full boxplots. (default: False)
+            If True, uses a compact representation for boxplots with dots and IQR lines.
         fontsize : int
             Font size for tick labels
         dpi : int
@@ -239,12 +242,26 @@ class MetaExplainer:
             average_iqr = np.mean(iqr_values) if iqr_values else 0
             
             plt.figure(figsize=(6.4, 4.8))
-            plt.boxplot(boxplot_data[::-1], vert=False, 
-                    showfliers=show_fliers, 
-                    medianprops={'color': 'black'})
-            plt.yticks(range(1, len(boxplot_data) + 1)[::10],
-                    range(len(boxplot_data))[::-1][::10],
-                    fontsize=fontsize)
+            
+            if not compact:
+                plt.boxplot(boxplot_data[::-1], vert=False, 
+                        showfliers=show_fliers, 
+                        medianprops={'color': 'black'})
+                plt.yticks(range(1, len(boxplot_data) + 1)[::10],
+                        range(len(boxplot_data))[::-1][::10],
+                        fontsize=fontsize)
+            else:
+                for pos, values in enumerate(boxplot_data[::-1]):
+                    values = np.array(values)            
+                    median = np.median(values)
+                    q1 = np.percentile(values, 25)
+                    q3 = np.percentile(values, 75)
+                    plt.plot([q1, q3], [pos+1, pos+1], color='gray', lw=.5)  # plot the IQR line
+                    plt.plot(median, pos+1, 'o', color='k', markersize=1, zorder=100)  # plot the median point
+                plt.yticks(range(1, len(boxplot_data) + 1)[::10],
+                        range(len(boxplot_data))[::-1][::10],
+                        fontsize=fontsize)
+            
             plt.ylabel('Clusters')
             plt.xlabel('DNN')
             plt.gca().xaxis.set_major_locator(plt.MaxNLocator(integer=True))

@@ -9,7 +9,7 @@ TODO:
 
 - All Classes:
     - save outputs to self
-    - png or pdf option for saving
+    - png or pdf (or other) option for saving
 
 - Missing save outputs:
     - umap_ascending.png / descending.png
@@ -20,18 +20,13 @@ TODO:
     - for any example with IntGrad, show baseline_type is an option
     - Fig.2 reproduced:
         - Documentation at top of notebook about intent of demo and its figure in the paper
-        - save_figs and save_data options like in local script --> one example?
     - DeepSTARR mismatch figure reproduced (index 22612; Dev)
         - color logos by reference sequence 
     - DeepSTARR background separation figure reproduced (test set index 4071; Hk)
     - DeepSTARR 3-way mutation figure reproduced --> test with crop mode
         - AP1-m0-seq13748
         - play GIF showing a chain of k-means clusters
-    - PBM dataset example
-        - compare to Seed-and-Wobble?
-        - see Blavatnik folder in 6_CSHL Google Drive
-        - see TFBind presentation in 6_CSHL/SEAM
-        - plot PWMs and enrichment logos
+    - PBM for Hnf4 using UMAP
     - REVO? BEAM?
     - ChromBPNet?
     - PIK3R3?
@@ -41,7 +36,6 @@ TODO:
     - repeat of Colab examples
     - new examples
     - example using TF1 --> TF2 workflow
-    - save all outputs to folder
     - add compute time to script header
 - option to use PyTorch instead of TensorFlow and Captum (ProCapNet example)
 - embed Hessian and attribution map?
@@ -74,7 +68,6 @@ Colab:
 
 - SQUID:
     - update SQUID repository for replicates logic
-    - option for including a default library for each order of mutations (all SNVs=1; 2; 3, etc.)
 
 - Compiler:
     - SEAM utils calls

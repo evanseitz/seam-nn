@@ -6,6 +6,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from scipy.spatial.distance import squareform
 from scipy.cluster import hierarchy
+from scipy.spatial.distance import pdist
 
 def _check_umap_available():
     try:
@@ -352,15 +353,19 @@ class Clusterer:
 
     def _compute_distances_cpu(self):
         """Compute pairwise distances on CPU."""
-        nS = self.maps.shape[0]
-        D_upper = np.zeros(shape=(nS, nS))
-        
-        for i in tqdm(range(nS), desc='Computing distances'):
-            for j in range(i + 1, nS):
-                D_upper[i,j] = np.linalg.norm(self.maps[i,:] - self.maps[j,:])
-        
-        D = D_upper + D_upper.T - np.diag(np.diag(D_upper))  # Match original code
-        return squareform(D)
+        if 0:
+            nS = self.maps.shape[0]
+            D_upper = np.zeros(shape=(nS, nS))
+            
+            for i in tqdm(range(nS), desc='Computing distances'):
+                for j in range(i + 1, nS):
+                    D_upper[i,j] = np.linalg.norm(self.maps[i,:] - self.maps[j,:])
+            
+            D = D_upper + D_upper.T - np.diag(np.diag(D_upper))  # Match original code
+            return squareform(D)
+        else:
+            """Compute pairwise distances on CPU using vectorized operations."""
+            return pdist(self.maps.reshape(self.maps.shape[0], -1))
     
     def normalize(self, embedding, to_sum=False, copy=True):
         """Normalize embedding vectors to [0,1] range.

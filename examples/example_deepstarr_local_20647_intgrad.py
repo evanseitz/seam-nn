@@ -50,22 +50,22 @@ attribution_method = 'intgrad' # {saliency, smoothgrad, intgrad, deepshap, ism} 
 
 gpu = len(tf.config.list_physical_devices('GPU')) > 0 # Whether to use GPU (Boolean)
 save_figs = True # Whether to save quantitative figures (Boolean)
-render_logos = True # Whether to view sequence logos (Boolean)
+render_logos = True # Whether to render sequence logos (Boolean)
 save_logos = True # Whether to save sequence logos (Boolean); render_logos must be True
 dpi = 200 # DPI for saved figures
 save_data = True # Whether to save output data (Boolean)
-delete_downloads = False # Whether to delete downloaded models and data after use (Boolean)
+delete_downloads = False # Whether to delete downloaded models/data after use (Boolean)
 # TODO: view_dendrogram = False for even faster debugging
 
 # If starting from scratch, set all to False:
-load_previous_mave = False # Whether to load previously-generated x_mut and y_mut (Boolean)
+load_previous_library = False # Whether to load previously-generated x_mut and y_mut (Boolean)
 load_previous_attributions = False # Whether to load previously-generated attribution maps (Boolean)
 load_previous_linkage = False # Whether to load previously-generated linkage matrix (Boolean)
 
 # =============================================================================
 # Initial setup based on user settings
 # =============================================================================
-if save_data:# or load_previous_mave or load_previous_attributions or load_previous_linkage:
+if save_data:# or load_previous_library or load_previous_attributions or load_previous_linkage:
     py_dir = os.path.dirname(os.path.abspath(__file__))
     save_path = os.path.join(py_dir, f'outputs_deepstarr_local_{seq_index}_{attribution_method}')
     if not os.path.exists(save_path):
@@ -77,7 +77,7 @@ if save_data:# or load_previous_mave or load_previous_attributions or load_previ
 else:
     save_path = None
 
-if load_previous_mave is True: # save_data must be True
+if load_previous_library is True: # save_data must be True
     x_mut = np.load(os.path.join(save_path, 'x_mut.npy'))
     y_mut = np.load(os.path.join(save_path, 'y_mut.npy'))
 
@@ -150,7 +150,7 @@ print(f"\nWild-type prediction: {pred[0][0]}")
 # SQUID API
 # Create in silico mutagenesis library
 # =============================================================================
-if load_previous_mave is False:
+if load_previous_library is False:
     # Set up predictor class for in silico MAVE
     pred_generator = squid.predictor.ScalarPredictor(pred_fun=model.predict_on_batch,
         task_idx=task_index,

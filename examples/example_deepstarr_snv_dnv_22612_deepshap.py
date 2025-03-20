@@ -9,9 +9,9 @@ Tested using:
     - SEAM 0.4.3
 
 Parameters:
-    - 30,000 sequences # TODO: set to 10,000 for faster runtime
+    - 30,000 sequences
     - 10% mutation rate
-    - Integrated gradients
+    - Integrated gradients # TODO deepshap?
     - Hierarchical clustering (ward)
 """
 
@@ -41,8 +41,8 @@ print(seam.__version__) # 0.4.3
 # =============================================================================
 # TODO: set up for a clean run before pushing to github (and change to intgrad with 30000 seqs)
 
-seq_index = 20647  # Example locus from DeepSTARR test set used in SEAM Figure 2
-task_index = 1  # Housekeeping (Hk) program
+seq_index = 22612  # Example locus from DeepSTARR test set used in SEAM Figure 2
+task_index = 0  # Developmental (Dev) program
 
 mut_rate = 0.1 # mutation rate for in silico mutagenesis
 attribution_method = 'deepshap' # {saliency, smoothgrad, intgrad, deepshap, ism} # TODO: deepshap under construction
@@ -50,23 +50,22 @@ attribution_method = 'deepshap' # {saliency, smoothgrad, intgrad, deepshap, ism}
 gpu = len(tf.config.list_physical_devices('GPU')) > 0 # Whether to use GPU (Boolean)
 save_figs = True # Whether to save quantitative figures (Boolean)
 render_logos = True # Whether to render sequence logos (Boolean)
-save_logos = True # Whether to save sequence logos (Boolean); render_logos must be True
+save_logos = True # Whether to save sequence logos (Boolean)
 dpi = 200 # DPI for saved figures
 save_data = True # Whether to save output data (Boolean)
 delete_downloads = False # Whether to delete downloaded models/data after use (Boolean)
-# TODO: view_dendrogram = False for even faster debugging
+# TODO: view_dendrogram for even faster debugging
 
-# If starting from scratch, set all to False:
-load_previous_library = True # Whether to load previously-generated x_mut and y_mut (Boolean)
-load_previous_attributions = True # Whether to load previously-generated attribution maps (Boolean)
-load_previous_linkage = True # Whether to load previously-generated linkage matrix (Boolean)
+load_previous_library = False # Whether to load previously-generated x_mut and y_mut (Boolean)
+load_previous_attributions = False # Whether to load previously-generated attribution maps (Boolean)
+load_previous_linkage = False # Whether to load previously-generated linkage matrix (Boolean)
 
 # =============================================================================
 # Initial setup based on user settings
 # =============================================================================
-if save_data:# or load_previous_library or load_previous_attributions or load_previous_linkage:
+if save_data:
     py_dir = os.path.dirname(os.path.abspath(__file__))
-    save_path = os.path.join(py_dir, f'outputs_deepstarr_snv_{seq_index}_{attribution_method}')
+    save_path = os.path.join(py_dir, f'outputs_deepstarr_snv_dnv_{seq_index}_{attribution_method}')
     if not os.path.exists(save_path):
         os.makedirs(save_path)
     if save_figs:
@@ -158,7 +157,7 @@ if load_previous_library is False:
 
     # Set up mutagenizer class for in silico MAVE
     mut_generator = squid.mutagenizer.CombinatorialMutagenesis(
-        max_order=1
+        max_order=2
     )
 
     # Generate in silico MAVE
@@ -179,8 +178,6 @@ fig = squid.impress.plot_y_hist(
     y_mut,
     save_dir=save_path_figs
 )
-if not save_path_figs:
-    plt.show()
 
 # =============================================================================
 # SEAM API
@@ -211,7 +208,7 @@ if load_previous_attributions is False:
     attributer = Attributer(
         model,
         method=attribution_method,
-        task_index=task_index,
+        task_index=task_index
     )
 
     # Show params for specific method
@@ -223,7 +220,6 @@ if load_previous_attributions is False:
         x_ref=x_ref,
         save_window=None,
         batch_size=256,
-        baseline_type='dinuc_shuffle', #TODO: check if this messes up other methods
         gpu=gpu
     )
     t2 = time.time() - t1
@@ -626,7 +622,3 @@ if delete_downloads:
         if os.path.exists(filename):
             os.remove(filename)
             print(f"Deleted {filename}")
-
-
-
-
