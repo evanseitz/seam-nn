@@ -192,16 +192,30 @@ class Attributer:
     def _smoothgrad_gpu(self, X, num_samples=50, mean=0.0, stddev=0.1):
         """GPU-optimized implementation with parallel noise generation."""
         X = tf.cast(X, dtype=tf.float32)
+        batch_size = tf.shape(X)[0]
         
-        # Generate all noise samples in parallel
-        noise_shape = [tf.shape(X)[0] * num_samples, tf.shape(X)[1], tf.shape(X)[2]]
-        X_noisy = tf.tile(X, [num_samples, 1, 1]) + tf.random.normal(noise_shape, mean, stddev)
+        # Expand X to (batch_size, 1, L, A) for broadcasting
+        X_expanded = tf.expand_dims(X, axis=1)
         
-        # Single gradient call on all samples
-        grads = self._saliency_map(X_noisy)
+        # Tile along samples dimension to (batch_size, num_samples, L, A)
+        X_tiled = tf.tile(X_expanded, [1, num_samples, 1, 1])
         
-        # Reshape and reduce
-        grads = tf.reshape(grads, [-1, num_samples, tf.shape(X)[1], tf.shape(X)[2]])
+        # Generate noise (batch_size, num_samples, L, A)
+        noise = tf.random.normal(tf.shape(X_tiled), mean, stddev)
+        
+        # Add noise
+        X_noisy = X_tiled + noise
+        
+        # Reshape to (batch_size * num_samples, L, A) for gradient computation
+        X_reshaped = tf.reshape(X_noisy, [-1, tf.shape(X)[1], tf.shape(X)[2]])
+        
+        # Compute gradients
+        grads = self._saliency_map(X_reshaped)
+        
+        # Reshape back to (batch_size, num_samples, L, A)
+        grads = tf.reshape(grads, [batch_size, num_samples, tf.shape(X)[1], tf.shape(X)[2]])
+        
+        # Average over samples
         return tf.reduce_mean(grads, axis=1)
     
     def intgrad(self, X, baseline_type='zeros', num_steps=25, gpu=True, multiply_by_inputs=False, seed=None):

@@ -3,11 +3,16 @@ TODO:
 - paper:
     - Variability logo metric and make box plot (CLIPNET)
     - Background amplitude vs foreground; stratify by prediction
+    - Bg analysis in task 0 vs task 1
     - Kmer spectra on backgrounds - yagi?
+    - Redo Fig.2 RHS with SNV and pairwise; then we can say later that pairwise for PIK3R3 was too much
+    - Sup fig for covariance matrices (take out of Figure 2)
+    - New sup fig from combined Fig. 5 leftovers
 
 
 - examples
     - both:
+        - global on TTK? aAGGA(T/C)AAt
         - global AP-1 needs code for finding all instances of motif from test/train
         - Why is Umap cpu working without pipping
         - for any example with IntGrad, show baseline_type is an option
@@ -15,7 +20,6 @@ TODO:
             - color logos by reference sequence
             - try IntGrad
         - DeepSTARR background separation figure reproduced (test set index 4071; Hk)
-
         - DeepSTARR 3-way mutation figure reproduced --> test with crop mode
             - AP1-m0-seq13748
             - play GIF showing a chain of k-means clusters
@@ -26,11 +30,15 @@ TODO:
             - GIA scores in Compiler
         - direct link to github scripts for examples in README
         - one global example using GIA coloring
+        - REVO
+        - DeepSHAP with PyTorch? (Captum)
+        - Try global using genomic locus with dinuc shuffle?
     - local:
         - example using TF1 --> TF2 workflow
         - Hnf4a UMAP example
         - once global colabs are finished, replicate locally
         - for all local, use DeepSHAP?
+        - folder name specification: e.g., "kmeans_k200" for 200 clusters
     - colab:
         - for all colab, use IntGrad?
         - interactive MSM viewer
@@ -40,12 +48,13 @@ TODO:
 
 
 - plotting:
-    - png or pdf (or other) option for saving
-    - control figure size
     - Missing save outputs:
-        - umap_ascending.png / descending.png
         - all_maps_average_y_adaptive.png / all_maps_average_y_fixed.png
-    - folder name specification: e.g., "kmeans_k200" for 200 clusters
+
+
+- SQUID:
+    - Mutation window for CombinatorialMutagenesis()?
+    - add copies of all colab tutorials (with import versions) to GitHub folder
 
 
 Readthedocs:
@@ -56,7 +65,6 @@ Readthedocs:
 - Attributer:
     - Refactor DeepSHAP code for newer TF versions
     - ISM:
-        - check ism_gpu is working
         - ISM with sum or PCA option
         - option for FastISM?
         - add memory mode for ISM (numpy memmap)
@@ -67,11 +75,23 @@ Readthedocs:
         - no longer need sequence_utils.py?
     - option to use PyTorch instead of TensorFlow and Captum (ProCapNet example)
     - embed Hessian and attribution map?
+    - Global tests (CPU/GPU):
+        - ism: YES (PBM) / NO  --> CHECK ON LOCAL?
+            - check fastism code: https://github.com/kundajelab/fastISM/blob/master/fastISM/ism_base.py
+            - gpu with/without log2fc: _ / _
+        - saliency: yes / yes
+        - smoothgrad: yes / NO --> check latest revision (in place, untested)
+        - intgrad: yes / yes
+            - zeros: yes
+            - random: NO --> worked for local in examples folder maybe? maybe a gpu problem?
+            - dinuc: NO --> see above
+        - deepshap: NO / NO
+        - empirical that works on GPU?
+    - Plot each map within a given int grad trajectory
 
 
 - Compiler:
     - SEAM utils calls
-    - Task-specific predictions in each column
     - Move hamming distance calculation to SEAM utils?
     - save output to self.mave
     - docstring check (readthedocs compatibility)
@@ -93,7 +113,6 @@ Readthedocs:
 
 
 - MetaExplainer:
-    - Check for instances of old bug where highest ‘fixed’ height logo gets chopped
     - add mutual information plot to explainer?
     - JK: plot KL divergence between cluster and BG (2nd distribution) for coloring MSM?
     - Marginal delta_H to show regions of conservation
@@ -189,6 +208,13 @@ Readthedocs:
     - Hessian or PW vs purely additive
         - or pairwise directly using PBM
     - need to say CREB is 15 flanks; DRE is 10 flanks?
+    - Other figures:
+        - PPIF enhancer (cropped)
+            - cropped and hierarchical
+            - compare to Enformer (e.g., cl.36 vs cl.186)
+                - compare backgrounds
+        - compare backgrounds across different attribution methods
+
 
 
 - Motif finding:
@@ -208,6 +234,8 @@ Readthedocs:
 
 - Future SEAM studies:
 	- protein compartments (PLM dataset)
+    - Zoopedia evolutionary data
+    - Other Stark lab DNN with more output heads
 
 
 - Zenodo
