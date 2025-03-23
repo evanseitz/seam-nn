@@ -100,21 +100,22 @@ if load_previous_library is False:
 
     # Convert PBM data to sequence-function library
     kmers = [''.join(mer) for mer in product(alphabet, repeat=seq_length)]
+    forward_seqs = df.iloc[:, 0].str
+    reverse_seqs = df.iloc[:, 1].str
     e_scores = []
+    
+    # Need to avoid the 256/2 = 128 additional entries, which are palindromes
     for mer in tqdm(kmers, desc='kmer'):
-        found = False
-        # Search for the 8-mer in column 0 of the PBM DataFrame
-        for index, value in enumerate(df.iloc[:, 0]):
-            if mer in value:
-                e_scores.append((df.iloc[index, 3] + df.iloc[index, 6])/2) # average e-scores from replicates
-                found = True
-                break  # stop searching once the first match is found
-        # Search for the 8-mer in column 1 (reverse complements)
-        if not found:
-            for index, value in enumerate(df.iloc[:, 1]):
-                if mer in value:
-                    e_scores.append((df.iloc[index, 3] + df.iloc[index, 6])/2) # average e-scores from replicates
-                    break  # stop searching once the first match is found
+        # Search in forward sequences
+        forward_matches = forward_seqs.contains(mer)
+        if forward_matches.any():
+            idx = forward_matches.idxmax()
+            e_scores.append((df.iloc[idx, 3] + df.iloc[idx, 6])/2) # average e-scores from replicates
+        else:
+            # Search in reverse sequences
+            reverse_matches = reverse_seqs.contains(mer)
+            idx = reverse_matches.idxmax()
+            e_scores.append((df.iloc[idx, 3] + df.iloc[idx, 6])/2) # average e-scores from replicates
 
     L, A = seq_length, len(alphabet)
     x_mut = np.zeros(shape=(A**L, L, A), dtype='int8')
@@ -198,7 +199,6 @@ if load_previous_attributions is False:
             
             return tf.convert_to_tensor(results, dtype=tf.float32)
 
-    # Initialize oracle wrapper with our dataset
     oracle = OracleWrapper(x_mut, y_mut)
 
     if 0:  # example single-instance usage of OracleWrapper
@@ -217,8 +217,7 @@ if load_previous_attributions is False:
     t1 = time.time()
     attributions = attributer.compute(
         x=x_mut,
-        batch_size=256,
-        gpu=gpu,
+        gpu=False, # currently custom OracleWrapper not supported on GPU
         log2fc=True
     )
     t2 = time.time() - t1

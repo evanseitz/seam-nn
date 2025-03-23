@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="seam-nn",
-    version="0.4.4",
+    version="0.4.8",
     author="Evan Seitz",
     author_email="evan.e.seitz@gmail.com",
     description="SEAM: Meta-explanations for interpreting sequence-based deep learning models",

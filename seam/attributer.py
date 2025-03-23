@@ -333,7 +333,11 @@ class Attributer:
         """
         try:
             if gpu:
-                return self._ism_gpu(X, log2fc)
+                try:
+                    return self._ism_gpu(X, log2fc)
+                except Exception as e:
+                    print(f"GPU implementation failed with error: {str(e)}")
+                    print("Falling back to CPU")
         except:
             print("GPU implementation failed, falling back to CPU")
         return self._ism_cpu(X, log2fc)

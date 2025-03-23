@@ -8,15 +8,34 @@ from scipy.spatial.distance import squareform
 from scipy.cluster import hierarchy
 from scipy.spatial.distance import pdist
 
-def _check_umap_available():
-    try:
-        import umap
-    except ImportError:
-        raise ImportError(
-            "UMAP is required for this functionality. "
-            "Install it with: pip install umap-learn"
-        )
-    return umap
+def _check_umap_available(gpu=False):
+    """Check if UMAP is available, optionally checking for GPU support.
+    
+    Args:
+        gpu: Whether to check for GPU-accelerated UMAP (default: False)
+    
+    Returns:
+        UMAP class from either cuml (if gpu=True) or umap-learn
+    """
+    if gpu:
+        try:
+            from cuml.manifold import UMAP
+            return UMAP
+        except ImportError:
+            print("cuml not available. Falling back to CPU implementation.")
+            print("For GPU acceleration, install cuml via conda:")
+            print("conda install -c rapidsai -c conda-forge -c nvidia cuml cuda-version=11.8")
+            gpu = False
+    
+    if not gpu:
+        try:
+            import umap
+            return umap.UMAP
+        except ImportError:
+            raise ImportError(
+                "UMAP is required for this functionality. "
+                "Install it with: pip install umap-learn"
+            )
 
 def _check_phate_available():
     try:
@@ -108,13 +127,12 @@ class Clusterer:
     SUPPORTED_METHODS = {'umap', 'phate', 'tsne', 'pca', 'diffmap'}
     SUPPORTED_CLUSTERERS = {'hierarchical', 'kmeans', 'dbscan'}
 
-    def __init__(self, attribution_maps, method='umap', n_components=2, gpu=True):
+    def __init__(self, attribution_maps, method='umap', gpu=True):
         """Initialize the Clusterer.
         
         Args:
             attribution_maps: numpy array of shape (N, L, A) containing attribution maps
             method: Embedding method (default: 'umap')
-            n_components: Number of dimensions for embedding (default: 2)
             gpu: Whether to use GPU acceleration when available (default: True)
         """
         if method not in self.SUPPORTED_METHODS:
@@ -124,7 +142,6 @@ class Clusterer:
         self.cluster_labels = None
         self.maps = attribution_maps
         self.method = method
-        self.n_components = n_components
         self.gpu = gpu
         
         # Reshape maps if needed
@@ -136,67 +153,55 @@ class Clusterer:
         """Compute embedding using specified method.
         
         Args:
-            **kwargs: Method-specific parameters
+            **kwargs: Method-specific parameters. Can be passed directly or as a 'kwargs' dictionary.
             
         Returns:
             numpy.ndarray: Embedded coordinates
         """
         t0 = time.time()
         
+        # Handle case where parameters are passed in a 'kwargs' dictionary
+        if 'kwargs' in kwargs:
+            params = kwargs['kwargs']
+        else:
+            params = kwargs
+            
         if self.method == 'umap':
-            embedding = self._embed_umap(**kwargs)
+            embedding = self._embed_umap(**params)
         elif self.method == 'phate':
-            embedding = self._embed_phate(**kwargs)
+            embedding = self._embed_phate(**params)
         elif self.method == 'tsne':
-            embedding = self._embed_tsne(**kwargs)
+            embedding = self._embed_tsne(**params)
         elif self.method == 'pca':
-            embedding = self._embed_pca(**kwargs)
+            embedding = self._embed_pca(**params)
             
         print(f'Embedding time: {time.time() - t0:.2f}s')
         return embedding
     
     def _embed_umap(self, **kwargs):
         """Compute UMAP embedding with optional GPU acceleration."""
-        umap = _check_umap_available()
-        
-        if self.gpu:
-            try:
-                from cuml.manifold import UMAP
-                print("Using GPU-accelerated UMAP")
-            except ImportError:
-                print("cuml not available. Falling back to CPU implementation.")
-                print("For GPU acceleration, install cuml via conda:")
-                print("conda install -c rapidsai -c conda-forge -c nvidia cuml cuda-version=11.8")
-                UMAP = umap.UMAP
-        else:
-            UMAP = umap.UMAP
-            print("Using CPU UMAP")
-        
-        fit = UMAP(n_components=self.n_components, **kwargs)
+        UMAP = _check_umap_available(self.gpu)
+        print(f"Using {'GPU' if self.gpu else 'CPU'} UMAP")
+        fit = UMAP(**kwargs)
         return fit.fit_transform(self.maps)
     
     def _embed_phate(self, **kwargs):
         """Compute PHATE embedding."""
         phate = _check_phate_available()
-        phate_op = phate.PHATE(n_components=self.n_components, **kwargs)
+        phate_op = phate.PHATE(**kwargs)
         return phate_op.fit_transform(self.maps)
     
-    def _embed_tsne(self, perplexity=30, n_jobs=8, random_state=42, **kwargs):
+    def _embed_tsne(self, **kwargs):
         """Compute t-SNE embedding."""
         TSNE = _check_tsne_available()
-        tsne = TSNE(
-            perplexity=perplexity,
-            metric="euclidean",
-            n_jobs=n_jobs,
-            random_state=random_state,
-            **kwargs
-        )
+        tsne = TSNE(**kwargs)
         return tsne.fit_transform(self.maps)
     
     def _embed_pca(self, **kwargs):
         """Compute PCA embedding."""
         _, _, PCA = _check_sklearn_available()
-        return PCA(n_components=self.n_components, **kwargs).fit_transform(self.maps)
+        pca = PCA(**kwargs)
+        return pca.fit_transform(self.maps)
     
     def _embed_diffusion_maps(self, epsilon=None, batch_size=10000, dist_fname='distances.dat', **kwargs):
         """Compute Diffusion Maps embedding."""
@@ -386,7 +391,8 @@ class Clusterer:
     def plot_embedding(self, embedding, labels=None, dims=[0,1], 
                     normalize=False, cmap='jet', s=2.5, alpha=1.0, 
                     linewidth=0.1, colorbar_label=None, sort_order=None, 
-                    ref_index=None, legend_loc='upper left', save_path=None, dpi=200):
+                    ref_index=None, legend_loc='upper left', figsize=None,
+                    save_path=None, dpi=200, file_format='png'):
         """Plot embedding and optionally color by labels/values.
         
         Args:
@@ -411,8 +417,10 @@ class Clusterer:
             ref_index: Index of reference/wild-type sequence to highlight (default: None)
                 - Will be shown as a black star on the plot
             legend_loc: Location of legend for reference sequence ('best', 'top left', 'upper right', etc.)
+            figsize: Figure size (width, height) in inches (default: None, uses matplotlib default)
             save_path: Path to save figure (if None, displays plot)
             dpi: DPI for saved figure (default: 200)
+            file_format: Format for saved figure (default: 'png'). Common formats: 'png', 'pdf', 'svg', 'eps'
         
         Example usage:
             # Basic plot with reference sequence
@@ -431,6 +439,11 @@ class Clusterer:
             plt.close()
         except:
             pass
+
+        if figsize is not None:
+            plt.figure(figsize=figsize)
+        else:
+            plt.figure()
 
         # Normalize embedding if requested  
         if normalize:
@@ -493,13 +506,15 @@ class Clusterer:
         plt.tight_layout()
         
         if save_path:
-            plt.savefig(save_path + '/attributions_embedding.png', facecolor='w', dpi=dpi, bbox_inches='tight')
+            plt.savefig(save_path + f'/attributions_embedding.{file_format}', 
+                       facecolor='w', dpi=dpi, bbox_inches='tight')
             plt.close()
         else:
             plt.show()
 
     def plot_histogram(self, embedding, dims=[0,1], bins=101, cmap='viridis', 
-                    colorbar_label='Count', save_path=None, dpi=200):
+                    colorbar_label='Count', figsize=None, save_path=None, dpi=200,
+                    file_format='png'):
         """Plot 2D histogram of embedding points.
         
         Args:
@@ -508,13 +523,20 @@ class Clusterer:
             bins: Number of bins for histogram (default: 101)
             cmap: Colormap for histogram (default: 'viridis')
             colorbar_label: Label for colorbar (if None, shows 'Count')
+            figsize: Figure size (width, height) in inches (default: None, uses matplotlib default)
             save_path: Path to save figure (if None, displays plot)
             dpi: DPI for saved figure (default: 200)
+            file_format: Format for saved figure (default: 'png'). Common formats: 'png', 'pdf', 'svg', 'eps'
         """
         try:
             plt.close()
         except:
             pass
+        
+        if figsize is not None:
+            plt.figure(figsize=figsize)
+        else:
+            plt.figure()
         
         # Ensure embedding has enough dimensions
         if embedding.shape[1] <= max(dims):
@@ -548,13 +570,15 @@ class Clusterer:
         plt.tight_layout()
 
         if save_path:
-            plt.savefig(save_path + '/attributions_embedding_histogram.png', facecolor='w', dpi=dpi, bbox_inches='tight')
+            plt.savefig(save_path + f'/attributions_embedding_histogram.{file_format}', 
+                       facecolor='w', dpi=dpi, bbox_inches='tight')
             plt.close()
         else:
             plt.show()
 
     def plot_dendrogram(self, linkage, figsize=(15, 10), leaf_rotation=90, 
-                        leaf_font_size=8, cut_level=None, save_path=None, dpi=200):
+                        leaf_font_size=8, cut_level=None, save_path=None, dpi=200,
+                        file_format='png'):
         """Plot dendrogram from hierarchical clustering linkage matrix.
         
         Args:
@@ -565,6 +589,7 @@ class Clusterer:
             cut_level: Optional height at which to draw horizontal cut line
             save_path: Path to save figure (if None, displays plot)
             dpi: DPI for saved figure (default: 200)
+            file_format: Format for saved figure (default: 'png'). Common formats: 'png', 'pdf', 'svg', 'eps'
         """
         sys.setrecursionlimit(100000)  # Fix for large dendrograms
         
@@ -589,7 +614,8 @@ class Clusterer:
         plt.gca().spines['right'].set_visible(False)
         
         if save_path:
-            plt.savefig(save_path + '/attributions_dendrogram.png', facecolor='w', dpi=dpi, bbox_inches='tight')
+            plt.savefig(save_path + f'/attributions_dendrogram.{file_format}', 
+                       facecolor='w', dpi=dpi, bbox_inches='tight')
             plt.close()
         else:
             plt.show()

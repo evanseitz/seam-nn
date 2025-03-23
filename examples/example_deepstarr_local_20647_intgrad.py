@@ -163,7 +163,8 @@ if load_previous_library is False:
     )
 
     # Generate in silico MAVE
-    mave = squid.mave.InSilicoMAVE(mut_generator,
+    mave = squid.mave.InSilicoMAVE(
+        mut_generator,
         pred_generator,
         seq_length,
         mut_window=mut_window

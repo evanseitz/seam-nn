@@ -180,7 +180,8 @@ class MetaExplainer:
         raise ValueError(f"Unknown sort_method: {sort_method}")
     
     def plot_cluster_stats(self, plot_type='box', metric='prediction', save_path=None, 
-                           show_ref=True, show_fliers=False, compact=False, fontsize=8, dpi=200):
+                           show_ref=True, show_fliers=False, compact=False, fontsize=8, dpi=200, 
+                           figsize=None, file_format='png'):
         """Plot cluster statistics with various visualization options.
         
         Parameters
@@ -206,6 +207,10 @@ class MetaExplainer:
             Font size for tick labels
         dpi : int
             DPI for saved figure
+        figsize : tuple, optional
+            Figure size (width, height) in inches (default: None, uses matplotlib default)
+        file_format : str, optional
+            Format for saved figure (default: 'png'). Common formats: 'png', 'pdf', 'svg', 'eps'
         """        
         # Collect data for each cluster
         boxplot_data = []
@@ -241,7 +246,10 @@ class MetaExplainer:
                         for data in boxplot_data if len(data) > 0]
             average_iqr = np.mean(iqr_values) if iqr_values else 0
             
-            plt.figure(figsize=(6.4, 4.8))
+            if figsize is not None:
+                plt.figure(figsize=figsize)
+            else:
+                plt.figure(figsize=(6.4, 4.8))
             
             if not compact:
                 plt.boxplot(boxplot_data[::-1], vert=False, 
@@ -281,13 +289,17 @@ class MetaExplainer:
             plt.tight_layout()
             
             if save_path:
-                plt.savefig(save_path + '/cluster_%s_%s.png' % (metric, plot_type), facecolor='w', dpi=dpi, bbox_inches='tight')
+                plt.savefig(save_path + '/cluster_%s_%s.%s' % (metric, plot_type, file_format), 
+                           facecolor='w', dpi=dpi, bbox_inches='tight')
                 plt.close()
             else:
                 plt.show()
         
         else:  # bar plot
-            plt.figure(figsize=(1.5, 5))
+            if figsize is not None:
+                plt.figure(figsize=figsize)
+            else:
+                plt.figure(figsize=(1.5, 5))
             
             y_positions = np.arange(len(boxplot_data))
             values = [np.median(data) if metric == 'prediction' else data[0] 
@@ -313,7 +325,8 @@ class MetaExplainer:
             plt.tight_layout()
             
             if save_path:
-                plt.savefig(save_path + '/cluster_%s_%s.png' % (metric, plot_type), facecolor='w', dpi=dpi, bbox_inches='tight')
+                plt.savefig(save_path + '/cluster_%s_%s.%s' % (metric, plot_type, file_format), 
+                           facecolor='w', dpi=dpi, bbox_inches='tight')
                 plt.close()
             else:
                 plt.show()
@@ -423,7 +436,8 @@ class MetaExplainer:
                 square_cells=False, view_window=None, gui=False,
                 show_tfbs_clusters=False, tfbs_clusters=None,
                 entropy_multiplier=0.5, cov_matrix=None, row_order=None,
-                revels=None, save_path=None, dpi=200):
+                revels=None, save_path=None, dpi=200, figsize=None,
+                file_format='png'):
         """Visualize the Mechanism Summary Matrix (MSM) as a heatmap.
         
         Parameters
@@ -459,6 +473,10 @@ class MetaExplainer:
             Path to save figure. If None, display instead
         dpi : int
             DPI for saved figure
+        figsize : tuple, optional
+            Figure size (width, height) in inches (default: None, uses matplotlib default)
+        file_format : str, optional
+            Format for saved figure (default: 'png'). Common formats: 'png', 'pdf', 'svg', 'eps'
         """
         if show_tfbs_clusters:
             if not hasattr(self, 'msm') or self.msm is None:
@@ -489,7 +507,11 @@ class MetaExplainer:
             return None, None, cluster_order, matrix_data
         
         # Setup plot
-        fig = plt.figure(figsize=(10, 6))
+        if figsize is not None:
+            fig = plt.figure(figsize=figsize)
+        else:
+            fig = plt.figure(figsize=(10, 6))
+            
         main_ax = fig.add_subplot(111)
         
         # Get colormap settings
@@ -606,9 +628,11 @@ class MetaExplainer:
 
         if save_path:
             if show_tfbs_clusters is False and tfbs_clusters is None:
-                plt.savefig(save_path + f'/msm_{column.lower()}.png', facecolor='w', dpi=dpi, bbox_inches='tight')
+                plt.savefig(save_path + f'/msm_{column.lower()}.{file_format}', 
+                           facecolor='w', dpi=dpi, bbox_inches='tight')
             elif show_tfbs_clusters is not None and tfbs_clusters is not None and column == 'Entropy':
-                plt.savefig(save_path + f'/msm_{column.lower()}_identified.png', facecolor='w', dpi=dpi, bbox_inches='tight')
+                plt.savefig(save_path + f'/msm_{column.lower()}_identified.{file_format}', 
+                           facecolor='w', dpi=dpi, bbox_inches='tight')
             plt.close()
         else:
             plt.show()
@@ -837,7 +861,7 @@ class MetaExplainer:
         
         return cluster_seqs[['Sequence', 'DNN']]
 
-    def plot_cluster_profiles(self, profiles, save_dir=None, dpi=200):
+    def plot_cluster_profiles(self, profiles, save_dir=None, dpi=200, figsize=None, file_format='png'):
         """Plot overlay of profiles associated with each cluster.
         
         Parameters
@@ -848,6 +872,10 @@ class MetaExplainer:
             Directory to save profile plots. If None, displays instead.
         dpi : int
             DPI for saved figures
+        figsize : tuple, optional
+            Figure size (width, height) in inches (default: None, uses matplotlib default)
+        file_format : str, optional
+            Format for saved figure (default: 'png'). Common formats: 'png', 'pdf', 'svg', 'eps'
         """
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
@@ -856,7 +884,11 @@ class MetaExplainer:
             k_idxs = self.mave.loc[self.mave['Cluster'] == k].index
             cluster_profiles = profiles[k_idxs]
             
-            plt.figure(figsize=(10, 5))
+            if figsize is not None:
+                plt.figure(figsize=figsize)
+            else:
+                plt.figure(figsize=(10, 5))
+                
             for profile in cluster_profiles:
                 plt.plot(profile, alpha=0.1, color='gray')
             plt.plot(cluster_profiles.mean(axis=0), color='red', linewidth=2)
@@ -866,7 +898,7 @@ class MetaExplainer:
             plt.ylabel('Value')
             
             if save_dir:
-                plt.savefig(os.path.join(save_dir, f'cluster_{k}_profiles.png'), 
+                plt.savefig(os.path.join(save_dir, f'cluster_{k}_profiles.{file_format}'), 
                            dpi=dpi, bbox_inches='tight')
                 plt.close()
             else:
@@ -998,7 +1030,7 @@ class MetaExplainer:
         return cluster_maps
 
     def plot_attribution_variation(self, scope='all', metric='std', save_path=None, view_window=None, 
-                                 figsize=(20, 1.5), dpi=600, colors=None, xtick_spacing=5):
+                                 figsize=None, dpi=600, colors=None, xtick_spacing=5, file_format='png'):
         """Visualize the variation in attribution values across attribution maps for each nucleotide position.
         
         Parameters
@@ -1015,8 +1047,8 @@ class MetaExplainer:
             Path to save figure. If None, display instead.
         view_window : list of [start, end], optional
             If provided, crop the x-axis to this window of positions.
-        figsize : tuple, default=(20, 1.5)
-            Figure size in inches.
+        figsize : tuple, optional
+            Figure size (width, height) in inches (default: None, uses matplotlib default)
         dpi : int, default=600
             DPI for saved figure.
         colors : dict, optional
@@ -1025,6 +1057,8 @@ class MetaExplainer:
             for A, C, G, T respectively.
         xtick_spacing : int, default=5
             Show x-axis labels every nth position. Set to 1 to show all positions.
+        file_format : str, optional
+            Format for saved figure (default: 'png'). Common formats: 'png', 'pdf', 'svg', 'eps'
             
         Returns
         -------
@@ -1078,7 +1112,10 @@ class MetaExplainer:
             seq_positions = plot_positions
         
         # Create plot
-        plt.figure(figsize=figsize)
+        if figsize is not None:
+            plt.figure(figsize=figsize)
+        else:
+            plt.figure(figsize=(20, 1.5))
         
         # Plot bars for each nucleotide
         bar_width = 0.2
@@ -1106,7 +1143,7 @@ class MetaExplainer:
         plt.tight_layout()
         
         if save_path:
-            plt.savefig(save_path + '/attribution_variation_%s_%s.png' % (metric, scope), 
+            plt.savefig(save_path + '/attribution_variation_%s_%s.%s' % (metric, scope, file_format), 
                        dpi=dpi, bbox_inches='tight')
             plt.close()
         else:

@@ -1,73 +1,73 @@
 TODO:
 
-- PK:
+- paper:
     - Variability logo metric and make box plot (CLIPNET)
     - Background amplitude vs foreground; stratify by prediction
     - Kmer spectra on backgrounds - yagi?
 
-- remove all __pycache__ (or gitignore all)
 
-- All Classes:
-    - save outputs to self
+- examples
+    - both:
+        - global AP-1 needs code for finding all instances of motif from test/train
+        - Why is Umap cpu working without pipping
+        - for any example with IntGrad, show baseline_type is an option
+        - DeepSTARR mismatch figure reproduced (index 22612; Dev)
+            - color logos by reference sequence
+            - try IntGrad
+        - DeepSTARR background separation figure reproduced (test set index 4071; Hk)
+
+        - DeepSTARR 3-way mutation figure reproduced --> test with crop mode
+            - AP1-m0-seq13748
+            - play GIF showing a chain of k-means clusters
+        - REVO? BEAM?
+        - ChromBPNet?
+        - PIK3R3?
+        - DeepSTARR global analysis with interactive plots --> send to Yagi
+            - GIA scores in Compiler
+        - direct link to github scripts for examples in README
+        - one global example using GIA coloring
+    - local:
+        - example using TF1 --> TF2 workflow
+        - Hnf4a UMAP example
+        - once global colabs are finished, replicate locally
+        - for all local, use DeepSHAP?
+    - colab:
+        - for all colab, use IntGrad?
+        - interactive MSM viewer
+        - interactive embedding viewer
+        - add note to all about use of IntGrad vs DeepSHAP (in paper)
+        - Colab instructions to use GUI, and to download inputs
+
+
+- plotting:
     - png or pdf (or other) option for saving
-
-- Missing save outputs:
-    - umap_ascending.png / descending.png
-    - all_maps_average_y_adaptive.png / all_maps_average_y_fixed.png
-
-
-- Colab examples:
-    - for any example with IntGrad, show baseline_type is an option
-    - Fig.2 reproduced:
-        - Documentation at top of notebook about intent of demo and its figure in the paper
-    - DeepSTARR mismatch figure reproduced (index 22612; Dev)
-        - color logos by reference sequence 
-    - DeepSTARR background separation figure reproduced (test set index 4071; Hk)
-    - DeepSTARR 3-way mutation figure reproduced --> test with crop mode
-        - AP1-m0-seq13748
-        - play GIF showing a chain of k-means clusters
-    - PBM for Hnf4 using UMAP
-    - REVO? BEAM?
-    - ChromBPNet?
-    - PIK3R3?
-    - DeepSTARR global analysis with interactive plots --> send to Yagi
-        - GIA scores in Compiler
-- local examples in examples/ directory:
-    - repeat of Colab examples
-    - new examples
-    - example using TF1 --> TF2 workflow
-    - add compute time to script header
-- option to use PyTorch instead of TensorFlow and Captum (ProCapNet example)
-- embed Hessian and attribution map?
-- save directory params
-    - options to save output in Colab
+    - control figure size
+    - Missing save outputs:
+        - umap_ascending.png / descending.png
+        - all_maps_average_y_adaptive.png / all_maps_average_y_fixed.png
     - folder name specification: e.g., "kmeans_k200" for 200 clusters
+
 
 Readthedocs:
     - API figure (use squid as template)
     - Check all readthedocs pages for accuracy
 
-Colab:
-    - rerun computation times with A100
-        - update header with GPU and time
-        - update SEAM README with GPU and time
-    - interactive MSM viewer
-    - interactive embedding viewer
 
 - Attributer:
     - Refactor DeepSHAP code for newer TF versions
     - ISM:
+        - check ism_gpu is working
         - ISM with sum or PCA option
         - option for FastISM?
         - add memory mode for ISM (numpy memmap)
     - Empirical Mutagenesis Maps (for combinatorially-complete library)
     - DeepSHAP for TF2: dinuc_shuffle, etc. in batch mode with GPUs
         - pytorch version?
+    - DeepSHAP:
+        - no longer need sequence_utils.py?
+    - option to use PyTorch instead of TensorFlow and Captum (ProCapNet example)
+    - embed Hessian and attribution map?
 
-- Ensembler Class for combining model folds?
-
-- SQUID:
-    - update SQUID repository for replicates logic
 
 - Compiler:
     - SEAM utils calls
@@ -78,15 +78,19 @@ Colab:
     - discover alphabet from mave.csv and save to self.alphabet
         - e.g., alphabet = sorted(list(set(mave['Sequence'][0:100].apply(list).sum())))
     - mave.to_csv('mave.csv', index=False)
+    - remove redundant sequences (in general) and after concat with SNV/DNV; or check if it’s already in the code (or put it there in compile)
+    - ensembler() to combine model folds?
+
 
 - Clusterer:
     - implement other methods from cuml.manifold?
+        - tsne GPU
+        - pca GPU
+    - phate GPU?
     - add diffusion maps code
-    - control figure size in plot_embedding, plot_histogram, plot_dendrogram
-    - save output to self
-    - can the CPU hierarchical clustering be made faster?
     - higher-dimensional PCA into k-means?
     - reuse DM distance matrix for clustering?
+
 
 - MetaExplainer:
     - Check for instances of old bug where highest ‘fixed’ height logo gets chopped
@@ -103,6 +107,7 @@ Colab:
     - use marginal bar plots on the right side of the MSM figure
     - background_entropy currently only defined for 4 nucleotides; see latex equation
 
+
 - Identifier:
     - code to combine TFBS states based on squares in covariance matrix
         - use more complicated locus: Ohler6-m0-seq171
@@ -113,11 +118,13 @@ Colab:
     - calculate expected effect for each cluster? (change in y-value from WT cluster)
     - fix state matrix bug (multiplier > 1?)
 
+
 - Impress:
     - move all plotting code to impress.py?
         - plot_dendrogram
         - minimize other redundancies between functions in identifier.py and clusterer.py
         - etc.
+
 
 - GUI Class:
     - update for latest repository
@@ -162,8 +169,10 @@ Colab:
     - New tab to merge clusters and label them (e.g., AP-1, etc)
         - Visualize state vs. TFBS presence graph
 
+
 - Biophysical modeling:
     - DRE-m0-seq601
+
 
 - Other:
     - Discussion: augment libraries with all SNVs, pairwise, (higher order?), or a collection of known population variants
@@ -179,6 +188,8 @@ Colab:
     - PCA with more dims
     - Hessian or PW vs purely additive
         - or pairwise directly using PBM
+    - need to say CREB is 15 flanks; DRE is 10 flanks?
+
 
 - Motif finding:
     - best attribution method?
@@ -188,15 +199,19 @@ Colab:
         - TFBS clusters
     - poised?
 
+
 - Sharing:
     - Danko Lab
     - Carlos (work on protein dataset)
     - ...
 
-- optimized REVO
 
 - Future SEAM studies:
 	- protein compartments (PLM dataset)
 
-- DeepSHAP:
-    - no longer need sequence_utils.py?
+
+- Zenodo
+    - update colab downloads
+    - add all downloaded files:
+        - Zfp187_2626_contig8mers.txt
+        - Hnf4...

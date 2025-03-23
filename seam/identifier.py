@@ -151,7 +151,8 @@ class Identifier:
         return X_rot, Y_rot
 
     def plot_pairwise_matrix(self, theta_lclc, view_window=None, threshold=None, cbar_title='Pairwise',
-                             gridlines=True, xtick_spacing=1, save_path=None):
+                             gridlines=True, xtick_spacing=1, figsize=None, save_path=None, dpi=200,
+                             file_format='png'):
         """Plot pairwise matrix visualization.
         Adapted from https://github.com/jbkinney/mavenn/blob/master/mavenn/src/visualization.py
         Original authors: Tareen, A. and Kinney, J.
@@ -162,8 +163,22 @@ class Identifier:
             Pairwise matrix parameters (shape: (L,C,L,C))
         view_window : tuple, optional
             (start, end) positions to view
+        threshold : float, optional
+            Threshold for matrix values
+        cbar_title : str, optional
+            Title for colorbar
+        gridlines : bool, optional
+            Whether to show gridlines
         xtick_spacing : int, optional
             Show every nth x-tick label (default: 1)
+        figsize : tuple, optional
+            Figure size (width, height) in inches
+        save_path : str, optional
+            Path to save the figure
+        dpi : int, optional
+            DPI for saved figure (default: 200)
+        file_format : str, optional
+            Format for saved figure (default: 'png')
         """
         if threshold is not None:
             temp = theta_lclc.flatten()
@@ -183,7 +198,10 @@ class Identifier:
                             'color':'gray'}
 
         # Create figure
-        fig, ax = plt.subplots(figsize=[10,5])
+        if figsize is not None:
+            fig, ax = plt.subplots(figsize=figsize)
+        else:
+            fig, ax = plt.subplots()
 
         # Get matrix dimensions
         L = theta_lclc.shape[0]
@@ -318,15 +336,15 @@ class Identifier:
 
         plt.tight_layout()
         
-        if save_path is not None:
-            plt.savefig(f"{save_path}/{cbar_title.lower()}_matrix.png", 
-                    facecolor='w', dpi=600)
+        if save_path:
+            plt.savefig(f"{save_path}/{cbar_title.lower()}_matrix.{file_format}", 
+                    facecolor='w', dpi=dpi, bbox_inches='tight')
             plt.close()
             
         return fig, ax
 
     def plot_msm_covariance_triangular(self, view_window=None, xtick_spacing=5, show_clusters=False,
-                                       save_path=None, dpi=200):
+                                       figsize=None, save_path=None, dpi=200, file_format='png'):
         """
         Plot the covariance matrix.
         
@@ -334,12 +352,18 @@ class Identifier:
         ----------
         view_window : tuple, optional
             (start, end) positions to view
-        save_path : str, optional
-            Directory to save the plot
         xtick_spacing : int, optional
             Show every nth x-tick label (default: 5)
         show_clusters : bool, optional
             Whether to show TFBS cluster rectangles (default: False)
+        figsize : tuple, optional
+            Figure size (width, height) in inches
+        save_path : str, optional
+            Directory to save the plot
+        dpi : int, optional
+            DPI for saved figure (default: 200)
+        file_format : str, optional
+            Format for saved figure (default: 'png')
         """
         matrix = self.cov_matrix.to_numpy()
         
@@ -354,8 +378,9 @@ class Identifier:
             view_window=view_window, 
             cbar_title='Covariance',
             gridlines=False,
-            save_path=None, # default to None
-            xtick_spacing=xtick_spacing
+            save_path=None,
+            xtick_spacing=xtick_spacing,
+            figsize=figsize
         )
         
         if show_clusters and hasattr(self, 'tfbs_clusters'):
@@ -386,7 +411,7 @@ class Identifier:
                 ax.add_patch(rect)
 
         if save_path:
-            plt.savefig(save_path + '/msm_covariance_triangular.png', facecolor='w', dpi=dpi, bbox_inches='tight')
+            plt.savefig(save_path + f'/msm_covariance_triangular.{file_format}', facecolor='w', dpi=dpi, bbox_inches='tight')
             plt.close()
         else:
             plt.show()
@@ -394,7 +419,7 @@ class Identifier:
         return fig, ax
     
     def plot_msm_covariance_dendrogram(self, figsize=(15, 10), leaf_rotation=90, leaf_font_size=8,
-                        save_path=None, dpi=200):
+                        save_path=None, dpi=200, file_format='png'):
         """
         Plot the dendrogram from hierarchical clustering.
         
@@ -410,6 +435,8 @@ class Identifier:
             Path to save figure (if None, displays plot)
         dpi : int, optional
             DPI for saved figure (default: 200)
+        file_format : str, optional
+            Format for saved figure (default: 'png')
         """
         if not hasattr(self, 'linkage'):
             raise ValueError("Must run cluster_covariance() before plotting dendrogram")
@@ -448,7 +475,7 @@ class Identifier:
         ret_fig, ret_ax = fig, ax
         
         if save_path:
-            fig.savefig(save_path + '/msm_covariance_dendrogram.png', facecolor='w', dpi=dpi, bbox_inches='tight')
+            fig.savefig(save_path + f'/msm_covariance_dendrogram.{file_format}', facecolor='w', dpi=dpi, bbox_inches='tight')
             plt.close(fig)
         else:
             plt.show()
@@ -457,7 +484,7 @@ class Identifier:
         return ret_fig, ret_ax
     
     def plot_msm_covariance_square(self, view_window=None, show_clusters=True, view_linkage_space=False, 
-                                   save_path=None, dpi=200):
+                                   figsize=None, save_path=None, dpi=200, file_format='png'):
         """
         Plot covariance matrix in square format using seaborn heatmap.
         
@@ -472,6 +499,14 @@ class Identifier:
             If True, shows matrix reordered by hierarchical clustering linkage.
             If False (default), shows matrix in original nucleotide position space.
             Note: cluster visualization and view_window are disabled in linkage space.
+        figsize : tuple, optional
+            Figure size (width, height) in inches
+        save_path : str, optional
+            Path to save figure
+        dpi : int, optional
+            DPI for saved figure (default: 200)
+        file_format : str, optional
+            Format for saved figure (default: 'png')
         """
         # Choose matrix based on space parameter
         matrix = self.reordered_cov_matrix if view_linkage_space else self.cov_matrix
@@ -484,7 +519,11 @@ class Identifier:
         elif view_window and view_linkage_space:
             print("Note: view_window is disabled in linkage space")
         
-        fig, ax = plt.subplots(figsize=(10, 8))
+        if figsize is not None:
+            fig, ax = plt.subplots(figsize=figsize)
+        else:
+            fig, ax = plt.subplots()
+
         sns.heatmap(matrix, cmap='seismic', center=0, 
                     cbar_kws={'label': 'Covariance'}, ax=ax)
         
@@ -552,7 +591,7 @@ class Identifier:
         ret_fig, ret_ax = fig, ax
         
         if save_path:
-            fig.savefig(save_path + '/msm_covariance_square.png', facecolor='w', dpi=dpi, bbox_inches='tight')
+            fig.savefig(save_path + f'/msm_covariance_square.{file_format}', facecolor='w', dpi=dpi, bbox_inches='tight')
             plt.close(fig)
         else:
             plt.show()
@@ -715,7 +754,7 @@ class Identifier:
         return state_matrix
     
     def plot_state_matrix(self, active_clusters, mode='binary', orientation='vertical',
-                          save_path=None, dpi=200):
+                          figsize=None, save_path=None, dpi=200, file_format='png'):
         """Plot state matrix showing TFBS activity in each cluster.
         
         Parameters
@@ -728,8 +767,14 @@ class Identifier:
         orientation : str
             'vertical': Clusters on y-axis, TFBS on x-axis (default)
             'horizontal': TFBS on y-axis, Clusters on x-axis
+        figsize : tuple, optional
+            Figure size (width, height) in inches
         save_path : str, optional
             Path to save the figure. If None, displays plot.
+        dpi : int, optional
+            DPI for saved figure (default: 200)
+        file_format : str, optional
+            Format for saved figure (default: 'png')
         """
         def _add_colorbar_border(cbar_ax):
             """Add black border to all sides of colorbar."""
@@ -758,7 +803,10 @@ class Identifier:
         if orientation == 'horizontal':
             state_matrix = state_matrix.T
         
-        fig = plt.figure(figsize=(10, 10))
+        if figsize is not None:
+            fig = plt.figure(figsize=figsize)
+        else:
+            fig = plt.figure()
         ax = fig.add_subplot(111)
         
         # Plot heatmap
@@ -820,7 +868,7 @@ class Identifier:
         
         # Handle layout and display
         if save_path:
-            plt.savefig(save_path + '/state_matrix_%s.png' % mode, 
+            plt.savefig(save_path + f'/state_matrix_{mode}.{file_format}', 
                        facecolor='w', dpi=dpi, bbox_inches='tight')
             plt.close(fig)
         else:
