@@ -180,7 +180,7 @@ class Attributer:
     def _smoothgrad_cpu(self, X, num_samples=50, mean=0.0, stddev=0.1):
         """CPU implementation of SmoothGrad."""
         scores = []
-        for x in X:
+        for x in tqdm(X, desc="Computing SmoothGrad"):
             x = np.expand_dims(x, axis=0)  # (1, L, A)
             x = tf.cast(x, dtype=tf.float32)
             x_noisy = tf.tile(x, (num_samples,1,1)) + tf.random.normal((num_samples,x.shape[1],x.shape[2]), mean, stddev)
@@ -267,7 +267,7 @@ class Attributer:
     def _intgrad_cpu(self, X, baseline_type='zeros', num_steps=25, multiply_by_inputs=False, seed=None):
         """CPU-optimized implementation using loop-based computation."""
         scores = []
-        for i, x in enumerate(X):
+        for i, x in enumerate(tqdm(X, desc="Computing IntGrad")):
             x = np.expand_dims(x, axis=0)  # Add batch dimension: (1, L, A)
             
             # Explicitly handle each baseline type
@@ -355,6 +355,7 @@ class Attributer:
         except:
             print("GPU implementation failed, falling back to CPU")
         return self._ism_cpu(X, log2fc)
+    
 
     def _ism_cpu(self, X, log2fc=False):
         """CPU implementation of ISM."""
@@ -364,12 +365,16 @@ class Attributer:
         # Pre-allocate mutation array for reuse
         mut_seq = np.zeros_like(X[0:1], dtype=np.float32)
         
-        for x in X:
+        # Add tqdm progress bar for sequences
+        for x in tqdm(X, desc="Computing ISM"):
             x = x[np.newaxis]  # Faster than expand_dims
             score_matrix = np.zeros_like(x[0], dtype=np.float32)
             
             # Get wild-type prediction
-            wt_pred = self.func(self.model(tf.constant(x, dtype=tf.float32)))
+            wt_output = self.model(tf.constant(x, dtype=tf.float32))
+            if self.task_index is not None:
+                wt_output = wt_output[self.task_index]
+            wt_pred = float(self.func(wt_output))
             
             # Store all mutation predictions first
             mut_preds = np.empty((x.shape[1] * (x.shape[2]-1)), dtype=np.float32)
@@ -384,16 +389,20 @@ class Attributer:
                     mut_seq[0, pos] = np.roll(x[0, pos], b)
                     new_base = np.where(mut_seq[0, pos] == 1)[0][0]
                     
-                    mut_preds[idx] = float(self.func(self.model(tf.constant(mut_seq))))
+                    mut_output = self.model(tf.constant(mut_seq))
+                    if self.task_index is not None:
+                        mut_output = mut_output[self.task_index]
+                    mut_preds[idx] = float(self.func(mut_output))
+                    
                     mut_locs.append((pos, new_base))
                     idx += 1
-                
-                # Restore original sequence for next position
-                mut_seq[0, pos] = x[0, pos]
+                    
+                    # Restore original sequence for next position
+                    mut_seq[0, pos] = x[0, pos]
             
             # Apply log2fc calculation after collecting all predictions
             if log2fc:
-                pred_min = min(min(mut_preds), float(wt_pred))
+                pred_min = min(min(mut_preds), wt_pred)
                 offset = abs(pred_min) + 1
                 wt_pred_adj = wt_pred + offset
                 
@@ -408,128 +417,134 @@ class Attributer:
                         
             scores.append(score_matrix)
         return np.stack(scores, axis=0)
-
-    @tf.function(jit_compile=True)
+    
     def _ism_gpu(self, X, log2fc=False):
-        """GPU-optimized implementation of ISM using vectorized operations."""
-        X = tf.cast(X, tf.float32)
-        batch_size, L, A = tf.shape(X)[0], tf.shape(X)[1], tf.shape(X)[2]
+        """GPU-accelerated implementation of In-Silico Mutagenesis.
         
-        # Get wild-type predictions
-        wt_preds = self.func(self.model(X))
+        This implementation achieves significant speedup over the CPU version by:
+        1. Generating all possible mutations for each input sequence in parallel
+        2. Identifying and processing only unique mutations to avoid redundant predictions
+        3. Using batched inference on GPU
+        4. Efficiently restoring the full mutation set using index mapping
         
-        # Initialize output tensor
-        scores = tf.zeros((batch_size, L, A), dtype=tf.float32)
+        Args:
+            X: Input sequences of shape (N, L, A) where:
+               N = number of sequences
+               L = sequence length
+               A = alphabet size (typically 4 for DNA/RNA)
+            log2fc: If True, compute log2 fold change instead of simple difference
+                   (not yet implemented for GPU version)
         
-        if log2fc:
-            # Store all mutation predictions to find global minimum
-            all_preds = [wt_preds]
+        Returns:
+            numpy.ndarray: Attribution maps of shape (N, L, A) containing the effect
+            of each possible mutation at each position.
+        """
+        # Convert input to tensor if needed
+        if not isinstance(X, tf.Tensor):
+            X = tf.convert_to_tensor(X, dtype=tf.float32)
         
-        # For each position
-        for pos in tf.range(L, dtype=tf.int64):
-            # Get reference bases for this position
-            ref_bases = tf.cast(tf.argmax(X[:, pos], axis=-1), tf.int64)
-            
-            # For each base (using full range and masking instead of range(1,A))
-            for alt_base in tf.range(A, dtype=tf.int64):
-                # Only proceed if this is not the reference base
-                should_mutate = tf.not_equal(ref_bases, alt_base)
-                
-                if tf.reduce_any(should_mutate):
-                    # Create mutated sequences
-                    X_mut = tf.identity(X)
-                    
-                    # Create mutation mask
-                    mut_mask = tf.one_hot(alt_base, A, dtype=tf.float32)
-                    mut_mask = tf.tile(mut_mask[None, None, :], [batch_size, 1, 1])
-                    
-                    # Apply mutations where needed
-                    X_mut = tf.tensor_scatter_nd_update(
-                        X_mut,
-                        tf.stack([
-                            tf.cast(tf.range(batch_size), tf.int64),
-                            tf.fill([batch_size], pos)
-                        ], axis=1),
-                        tf.where(
-                            should_mutate[:, None],
-                            tf.tile(mut_mask[:, 0, :], [1, 1]),
-                            X[:, pos]
-                        )
+        N, L, A = X.shape
+        mutations_per_seq = L * A
+        total_mutations = N * mutations_per_seq
+
+        # Generate all possible single-nucleotide mutations for each sequence
+        all_mutations = tf.zeros((total_mutations, L, A), dtype=X.dtype)
+        
+        # Fixed order of bases (e.g., A,C,G,T)
+        bases_order = tf.range(A, dtype=tf.int32)
+        
+        # Use Python range instead of tf.range for tqdm
+        for i in tqdm(range(N), desc="Generating mutations"):
+            x_i = X[i]
+            for pos in range(L):  # Use Python range
+                for base in range(A):  # Use Python range
+                    mut_idx = tf.cast(i * (L * A) + pos * A + base, tf.int32)  # Cast to int32
+                    all_mutations = tf.tensor_scatter_nd_update(
+                        all_mutations,
+                        [[mut_idx]],
+                        [x_i]
                     )
-                    
-                    # Get predictions
-                    mut_preds = self.func(self.model(X_mut))
-                    
-                    if log2fc:
-                        # Store predictions for finding global minimum
-                        all_preds.append(mut_preds)
-                        
-                        # Store mutation locations and predictions for later
-                        scores = tf.tensor_scatter_nd_update(
-                            scores,
-                            tf.stack([
-                                tf.cast(tf.range(batch_size), tf.int64),
-                                tf.fill([batch_size], pos),
-                                tf.fill([batch_size], alt_base)
-                            ], axis=1),
-                            tf.where(
-                                should_mutate,
-                                mut_preds,  # Store raw predictions temporarily
-                                tf.zeros_like(mut_preds)
-                            )
-                        )
-                    else:
-                        # For non-log2fc, just compute differences directly
-                        scores = tf.tensor_scatter_nd_update(
-                            scores,
-                            tf.stack([
-                                tf.cast(tf.range(batch_size), tf.int64),
-                                tf.fill([batch_size], pos),
-                                tf.fill([batch_size], alt_base)
-                            ], axis=1),
-                            tf.where(
-                                should_mutate,
-                                mut_preds - wt_preds,
-                                tf.zeros_like(mut_preds)
-                            )
-                        )
+                    all_mutations = tf.tensor_scatter_nd_update(
+                        all_mutations,
+                        [[mut_idx, pos]],
+                        [tf.one_hot(base, A)]
+                    )
+
+        # Get wild-type predictions for original sequences
+        wt_preds = self.model(X)
+        if self.task_index is not None:
+            wt_preds = wt_preds[self.task_index]
+        wt_preds = tf.map_fn(self.func, wt_preds)  # Shape: (N,)
+
+        # Find unique mutations to avoid redundant predictions
+        flattened_mutations = tf.reshape(all_mutations, [-1, L * A])
+        string_mutations = tf.strings.reduce_join(tf.strings.as_string(flattened_mutations), axis=1)
+        unique_mutations, restore_indices = tf.unique(string_mutations)[0:2]
+        num_unique = tf.shape(unique_mutations)[0]
+
+        # Get indices of first occurrences of each unique sequence
+        indices_tensor = tf.TensorArray(tf.int64, size=num_unique)
+        for i in tf.range(num_unique):
+            matches = tf.where(tf.equal(restore_indices, i))
+            indices_tensor = indices_tensor.write(i, matches[0][0])
+
+        unique_indices = indices_tensor.stack()
+        unique_mutations = tf.gather(all_mutations, unique_indices)  # Shape: (num_unique, L, A)
+
+        # Run inference in batches on unique mutations
+        mut_preds = []
+        num_batches = (num_unique + self.batch_size - 1) // self.batch_size
         
+        # Use range instead of tf.range for batch processing
+        for i in tqdm(range(0, num_unique, self.batch_size), desc="Computing mutation effects"):
+            batch = unique_mutations[i:i + self.batch_size]
+            batch_preds = self.model(batch)
+            if self.task_index is not None:
+                batch_preds = batch_preds[self.task_index]
+            batch_preds = tf.map_fn(self.func, batch_preds)
+            mut_preds.append(batch_preds)
+
+        # Stack predictions and map back to full mutation set
+        mut_preds = tf.concat(mut_preds, axis=0)  # Shape: (num_unique,)
+        
+        # Create mapping from mutations back to their original sequences
+        sequence_indices = tf.repeat(tf.range(N), L * A)  # Shape: (N * L * A,)
+        
+        # Restore predictions to full mutation set and get corresponding wild-types
+        full_mut_preds = tf.gather(mut_preds, restore_indices)  # Shape: (N * L * A,)
+        wt_preds_for_mutations = tf.gather(wt_preds, sequence_indices)  # Shape: (N * L * A,)
+
         if log2fc:
-            # Find global minimum across all predictions
-            all_preds = tf.stack(all_preds, axis=1)  # [batch_size, num_preds]
-            pred_min = tf.reduce_min(all_preds, axis=1)  # [batch_size]
-            offset = tf.abs(pred_min) + 1
+            # Reshape predictions to group by input sequence
+            mut_preds_per_seq = tf.reshape(full_mut_preds, [N, L * A])  # Shape: (N, L*A)
+            wt_preds_expanded = tf.repeat(wt_preds, L * A)  # Shape: (N * L * A,)
+            wt_preds_per_seq = tf.reshape(wt_preds_expanded, [N, L * A])  # Shape: (N, L*A)
             
-            # Add offset to wild-type predictions
-            wt_preds_adj = wt_preds + offset[:, tf.newaxis]
+            # Calculate offset per sequence
+            all_preds_per_seq = tf.concat([mut_preds_per_seq, wt_preds_per_seq[:, :1]], axis=1)  # Shape: (N, L*A + 1)
+            pred_mins = tf.reduce_min(all_preds_per_seq, axis=1, keepdims=True)  # Shape: (N, 1)
+            offsets = tf.abs(pred_mins) + 1.0  # Shape: (N, 1)
             
-            # Process each position and base
-            for pos in tf.range(L, dtype=tf.int64):
-                for alt_base in tf.range(A, dtype=tf.int64):
-                    mut_preds = scores[:, pos, alt_base]  # Get stored raw predictions
-                    should_mutate = tf.not_equal(mut_preds, 0.0)  # Where we stored predictions
-                    
-                    if tf.reduce_any(should_mutate):
-                        # Add offset and compute log2fc
-                        mut_preds_adj = mut_preds + offset[:, tf.newaxis]
-                        delta = tf.where(
-                            should_mutate,
-                            tf.math.log(mut_preds_adj) - tf.math.log(wt_preds_adj),
-                            tf.zeros_like(mut_preds)
-                        )
-                        
-                        # Update scores with log2fc values
-                        scores = tf.tensor_scatter_nd_update(
-                            scores,
-                            tf.stack([
-                                tf.cast(tf.range(batch_size), tf.int64),
-                                tf.fill([batch_size], pos),
-                                tf.fill([batch_size], alt_base)
-                            ], axis=1),
-                            delta
-                        )
+            # Apply log2fc calculation per sequence
+            log2_mut = tf.math.log(mut_preds_per_seq + offsets) / tf.math.log(2.0)
+            log2_wt = tf.math.log(wt_preds_per_seq + offsets) / tf.math.log(2.0)
+            differences = tf.reshape(log2_mut - log2_wt, [-1])  # Back to shape: (N * L * A,)
+        else:
+            differences = full_mut_preds - wt_preds_for_mutations
+
+        attribution_maps = tf.reshape(differences, [N, L, A])
+
+        # Create mask for wild-type positions
+        X_expanded = tf.repeat(X, L * A, axis=0)
+        X_expanded = tf.reshape(X_expanded, [N, L * A, L, A])
+        wt_mask = tf.reduce_all(tf.equal(tf.reshape(all_mutations, [N, L * A, L, A]), X_expanded), axis=[2, 3])
+        wt_mask = tf.reshape(wt_mask, [N, L, A])
+
+        # Zero out positions where mutation matches wild-type
+        attribution_maps = tf.where(wt_mask, tf.zeros_like(attribution_maps), attribution_maps)
         
-        return scores
+        return attribution_maps.numpy()
+    
 
     def _function_batch(self, X, func, batch_size, **kwargs):
         """Run computation in batches."""

@@ -23,6 +23,9 @@ TODO:
         - DeepSTARR 3-way mutation figure reproduced --> test with crop mode
             - AP1-m0-seq13748
             - play GIF showing a chain of k-means clusters
+            - compare to SQUID pairwise 
+            - repeat all slides from first SCQB presentation
+                - splitting modes in function histogram
         - REVO? BEAM?
         - ChromBPNet?
         - PIK3R3?
@@ -33,6 +36,9 @@ TODO:
         - REVO
         - DeepSHAP with PyTorch? (Captum)
         - Try global using genomic locus with dinuc shuffle?
+        - ResidualBind example for global? (see old slide)
+            - TEAD vs AP-1: check ENCODE profiles for each TF?
+        - Global analyis on procapnet examples (recall figure with profiles)
     - local:
         - example using TF1 --> TF2 workflow
         - Hnf4a UMAP example
@@ -40,11 +46,13 @@ TODO:
         - for all local, use DeepSHAP?
         - folder name specification: e.g., "kmeans_k200" for 200 clusters
     - colab:
+        - redo local Zfp187 with _ism_gpu (check new _ism_cpu too, and compare log2FC on/off)
         - for all colab, use IntGrad?
         - interactive MSM viewer
         - interactive embedding viewer
         - add note to all about use of IntGrad vs DeepSHAP (in paper)
         - Colab instructions to use GUI, and to download inputs
+        - SpliceAI example
 
 
 - plotting:
@@ -55,6 +63,17 @@ TODO:
 - SQUID:
     - Mutation window for CombinatorialMutagenesis()?
     - add copies of all colab tutorials (with import versions) to GitHub folder
+    - plot_y_hist() in impress.py needs option to set new axvline ref_idx or None
+    - handle larger pairwise matrices
+    - check why global seed is the only reason x_mut can be preserved
+        - add option to input pre-generated x_mut
+        - add option to skip inference (y_mut = None) -> is this already in place?
+
+- CLIPNET:
+    - Run on PIK3CA: 
+        - most commonly mutated proto-oncogene (mutated in 13% of cancers)
+        - TERT
+
 
 
 Readthedocs:
@@ -73,14 +92,15 @@ Readthedocs:
         - pytorch version?
     - DeepSHAP:
         - no longer need sequence_utils.py?
+        - dinuc shuffling vs training set
     - option to use PyTorch instead of TensorFlow and Captum (ProCapNet example)
-    - embed Hessian and attribution map?
+    - embed Hessian and concat with attribution map?
     - Global tests (CPU/GPU):
-        - ism: YES (PBM) / NO  --> CHECK ON LOCAL?
+        - ism: YES / YES
             - check fastism code: https://github.com/kundajelab/fastISM/blob/master/fastISM/ism_base.py
             - gpu with/without log2fc: _ / _
         - saliency: yes / yes
-        - smoothgrad: yes / NO --> check latest revision (in place, untested)
+        - smoothgrad: yes / yes --> check latest revision (in place, untested)
         - intgrad: yes / yes
             - zeros: yes
             - random: NO --> worked for local in examples folder maybe? maybe a gpu problem?
@@ -110,6 +130,8 @@ Readthedocs:
     - add diffusion maps code
     - higher-dimensional PCA into k-means?
     - reuse DM distance matrix for clustering?
+    - add Louvain (or Leiden) clustering
+    - PCA: return eigenvalue spectrum
 
 
 - MetaExplainer:
@@ -194,7 +216,13 @@ Readthedocs:
 
 
 - Other:
-    - Discussion: augment libraries with all SNVs, pairwise, (higher order?), or a collection of known population variants
+    - Discussion: 
+        - augment libraries with:
+            - all SNVs, pairwise, (higher order?)
+            - a collection of known population variants
+            - indels
+            - sliding
+        - impute missing values from experimental datasets
     - backup SEAM Colabs on github
     - backup SQUID Colabs on github
     - SQUID replicates update
@@ -214,6 +242,12 @@ Readthedocs:
             - compare to Enformer (e.g., cl.36 vs cl.186)
                 - compare backgrounds
         - compare backgrounds across different attribution methods
+        - Fig. 1 schematic example
+            - compare to SQUID pairwise
+            - compare to average of all maps in library (and smoothgrad)
+        - intra-cluster variability logo for highest occupancy cluster
+    - Figure revisions:
+        - Illustrator attribution y-axes in Myriad: change to Arial, and add middle notch
 
 
 
@@ -236,6 +270,7 @@ Readthedocs:
 	- protein compartments (PLM dataset)
     - Zoopedia evolutionary data
     - Other Stark lab DNN with more output heads
+        - show different backgrounds for each task?
 
 
 - Zenodo
