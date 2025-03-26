@@ -6,7 +6,9 @@ TODO:
     - Bg analysis in task 0 vs task 1 across entire test set
         - Compare BG to other attribution methods (SQUID, etc.) --> show pairwise?
     - Kmer spectra on backgrounds - yagi?
-    - Redo Fig.2 RHS with SNV and pairwise; then we can say later that pairwise for PIK3R3 was too much
+    - Redo Fig.2 RHS with SNV and pairwise
+        - 278,632 maps... poses problem for memory --> need to implement mutation window for CombinatorialMutagenesis
+        - then we can say later that pairwise for PIK3R3 was too much
         - Sup fig for covariance matrices (take out of Figure 2)
     - New sup fig from combined Fig. 5 leftovers
 
@@ -17,7 +19,7 @@ TODO:
         - global on TTK? aAGGA(T/C)AAt
         - global AP-1 needs code for finding all instances of motif from test/train
         - Why is Umap cpu working without pipping
-        - for any example with IntGrad, show baseline_type is an option
+        - for any example with IntGrad, show baseline_type is an option (introduce attribution map kwargs?)
         - DeepSTARR mismatch figure reproduced (index 22612; Dev)
             - color logos by reference sequence
             - try IntGrad
@@ -40,7 +42,6 @@ TODO:
             - TEAD vs AP-1: check ENCODE profiles for each TF?
         - Global analyis on procapnet examples (recall figure with profiles)
         - Hnf4a UMAP example
-
     - local:
         - example using TF1 --> TF2 workflow
         - once global colabs are finished, replicate locally
@@ -69,6 +70,7 @@ TODO:
         - add option to input pre-generated x_mut
         - add option to skip inference (y_mut = None) -> is this already in place?
 
+
 - CLIPNET:
     - Run on PIK3CA: 
         - most commonly mutated proto-oncogene (mutated in 13% of cancers)
@@ -79,6 +81,7 @@ Readthedocs:
     - API figure (use squid as template)
     - Check all readthedocs pages for accuracy
     - https://pypi.org/project/seam-nn/ pictures not loading correctly? also check all text
+    - pypi icon showing older seam version?
 
 
 - Attributer:
