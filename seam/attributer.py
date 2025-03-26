@@ -374,7 +374,12 @@ class Attributer:
             wt_output = self.model(tf.constant(x, dtype=tf.float32))
             if self.task_index is not None:
                 wt_output = wt_output[self.task_index]
-            wt_pred = float(self.func(wt_output))
+            
+            # Skip reduction if output is already scalar
+            if wt_output.shape.ndims == 1:
+                wt_pred = float(wt_output)
+            else:
+                wt_pred = float(self.func(wt_output))
             
             # Store all mutation predictions first
             mut_preds = np.empty((x.shape[1] * (x.shape[2]-1)), dtype=np.float32)
@@ -392,7 +397,11 @@ class Attributer:
                     mut_output = self.model(tf.constant(mut_seq))
                     if self.task_index is not None:
                         mut_output = mut_output[self.task_index]
-                    mut_preds[idx] = float(self.func(mut_output))
+                    # Skip reduction if output is already scalar
+                    if mut_output.shape.ndims == 1:
+                        mut_preds[idx] = float(mut_output)
+                    else:
+                        mut_preds[idx] = float(self.func(mut_output))
                     
                     mut_locs.append((pos, new_base))
                     idx += 1
@@ -439,6 +448,7 @@ class Attributer:
             numpy.ndarray: Attribution maps of shape (N, L, A) containing the effect
             of each possible mutation at each position.
         """
+
         # Convert input to tensor if needed
         if not isinstance(X, tf.Tensor):
             X = tf.convert_to_tensor(X, dtype=tf.float32)
@@ -448,62 +458,83 @@ class Attributer:
         total_mutations = N * mutations_per_seq
 
         # Generate all possible single-nucleotide mutations for each sequence
-        all_mutations = tf.zeros((total_mutations, L, A), dtype=X.dtype)
-        
-        # Fixed order of bases (e.g., A,C,G,T)
-        bases_order = tf.range(A, dtype=tf.int32)
-        
-        # Use Python range instead of tf.range for tqdm
-        for i in tqdm(range(N), desc="Generating mutations"):
-            x_i = X[i]
-            for pos in range(L):  # Use Python range
-                for base in range(A):  # Use Python range
-                    mut_idx = tf.cast(i * (L * A) + pos * A + base, tf.int32)  # Cast to int32
-                    all_mutations = tf.tensor_scatter_nd_update(
-                        all_mutations,
-                        [[mut_idx]],
-                        [x_i]
-                    )
-                    all_mutations = tf.tensor_scatter_nd_update(
-                        all_mutations,
-                        [[mut_idx, pos]],
-                        [tf.one_hot(base, A)]
-                    )
+        # First, tile each input sequence
+        X_tiled = tf.repeat(X, L * A, axis=0)  # Shape: (N*L*A, L, A)
 
-        # Get wild-type predictions for original sequences
+        # Create position indices for mutations
+        pos_indices = tf.repeat(tf.range(L), A)  # Shape: (L*A,)
+        pos_indices = tf.tile(pos_indices, [N])  # Shape: (N*L*A,)
+
+        # Create base indices for mutations
+        base_indices = tf.tile(tf.range(A), [L])  # Shape: (L*A,)
+        base_indices = tf.tile(base_indices, [N])  # Shape: (N*L*A,)
+
+        # Create update indices for scatter_nd
+        update_indices = tf.stack([tf.range(N * L * A), pos_indices], axis=1)
+
+        # Create one-hot vectors for mutations
+        mutation_vectors = tf.one_hot(base_indices, A)  # Shape: (N*L*A, A)
+
+        # Apply mutations using single scatter_nd operation
+        all_mutations = tf.tensor_scatter_nd_update(
+            X_tiled,
+            update_indices,
+            mutation_vectors
+        )
+
+        # Get wild-type predictions
         wt_preds = self.model(X)
         if self.task_index is not None:
             wt_preds = wt_preds[self.task_index]
-        wt_preds = tf.map_fn(self.func, wt_preds)  # Shape: (N,)
-
-        # Find unique mutations to avoid redundant predictions
+        
+        # Skip map_fn if output is already scalar per sequence
+        if wt_preds.shape.ndims == 1:
+            wt_preds = wt_preds
+        else:
+            wt_preds = self.func(wt_preds)
+            
+        # Find unique mutations
         flattened_mutations = tf.reshape(all_mutations, [-1, L * A])
         string_mutations = tf.strings.reduce_join(tf.strings.as_string(flattened_mutations), axis=1)
         unique_mutations, restore_indices = tf.unique(string_mutations)[0:2]
         num_unique = tf.shape(unique_mutations)[0]
 
-        # Get indices of first occurrences of each unique sequence
-        indices_tensor = tf.TensorArray(tf.int64, size=num_unique)
-        for i in tf.range(num_unique):
-            matches = tf.where(tf.equal(restore_indices, i))
-            indices_tensor = indices_tensor.write(i, matches[0][0])
-
-        unique_indices = indices_tensor.stack()
-        unique_mutations = tf.gather(all_mutations, unique_indices)  # Shape: (num_unique, L, A)
+        # Get indices of first occurrences
+        # Create a boolean mask for each unique value
+        matches = tf.equal(restore_indices[:, tf.newaxis], tf.range(num_unique))
+        # Find the first True value for each unique mutation, with explicit int64 casting
+        matches = tf.cast(matches, tf.int64)  # Cast to int64 before argmax
+        unique_indices = tf.argmax(matches, axis=0)
+        unique_mutations = tf.gather(all_mutations, unique_indices)
 
         # Run inference in batches on unique mutations
-        mut_preds = []
-        num_batches = (num_unique + self.batch_size - 1) // self.batch_size
+        # Pre-allocate a tensor for all predictions
+        mut_preds = tf.zeros((num_unique,), dtype=tf.float32)
         
-        # Use range instead of tf.range for batch processing
-        for i in tqdm(range(0, num_unique, self.batch_size), desc="Computing mutation effects"):
-            batch = unique_mutations[i:i + self.batch_size]
+        # Use range instead of tqdm to avoid cleanup issues
+        for i in range(0, num_unique, self.batch_size):
+            end_idx = min(i + self.batch_size, num_unique)
+            batch = unique_mutations[i:end_idx]
             batch_preds = self.model(batch)
             if self.task_index is not None:
                 batch_preds = batch_preds[self.task_index]
-            batch_preds = tf.map_fn(self.func, batch_preds)
-            mut_preds.append(batch_preds)
-
+            
+            # If the output is already scalar per sequence, skip map_fn
+            if batch_preds.shape.ndims == 1:
+                reduced_preds = batch_preds
+            else:
+                reduced_preds = self.func(batch_preds)
+            
+            # Ensure reduced_preds is a 1D tensor
+            reduced_preds = tf.reshape(reduced_preds, [-1])
+            
+            # Update the pre-allocated tensor directly
+            mut_preds = tf.tensor_scatter_nd_update(
+                mut_preds,
+                tf.reshape(tf.range(i, end_idx), [-1, 1]),  # Shape: [batch_size, 1]
+                reduced_preds  # Shape: [batch_size]
+            )
+        
         # Stack predictions and map back to full mutation set
         mut_preds = tf.concat(mut_preds, axis=0)  # Shape: (num_unique,)
         
@@ -534,7 +565,7 @@ class Attributer:
 
         attribution_maps = tf.reshape(differences, [N, L, A])
 
-        # Create mask for wild-type positions
+        # Create and apply wild-type mask
         X_expanded = tf.repeat(X, L * A, axis=0)
         X_expanded = tf.reshape(X_expanded, [N, L * A, L, A])
         wt_mask = tf.reduce_all(tf.equal(tf.reshape(all_mutations, [N, L * A, L, A]), X_expanded), axis=[2, 3])
@@ -542,7 +573,7 @@ class Attributer:
 
         # Zero out positions where mutation matches wild-type
         attribution_maps = tf.where(wt_mask, tf.zeros_like(attribution_maps), attribution_maps)
-        
+
         return attribution_maps.numpy()
     
 

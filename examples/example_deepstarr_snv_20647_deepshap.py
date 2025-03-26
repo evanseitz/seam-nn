@@ -25,7 +25,7 @@ from urllib.request import urlretrieve
 import pandas as pd
 from tqdm import tqdm
 if 1: # Use this for local install (must 'pip uninstall seam' first)
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) # TODO: turn this off
 from seam import Compiler, Attributer, Clusterer, MetaExplainer, Identifier
 from seam.logomaker_batch.batch_logo import BatchLogo
 

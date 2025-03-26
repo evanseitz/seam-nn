@@ -24,7 +24,7 @@ from tqdm import tqdm
 import gdown
 from itertools import product
 if 1: # Use this for local install (must 'pip uninstall seam' first)
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) # TODO: turn this off
 from seam import Compiler, Attributer, Clusterer, MetaExplainer
 
 '''
@@ -90,9 +90,11 @@ alphabet = ['A','C','G','T']
 
 if load_previous_library is False:
     if protein == 'zfp187': # e-score replicates in columns 3 and 6
+        # Data accessed (2024): http://the_brain.bwh.harvard.edu/uniprobe/details2.php?id=82
         file_id = '1dPJEHggnPLVhi9kpHSha5PXZKSO2tMxZ'
         output = 'Zfp187_2626_contig8mers.txt'
     elif protein == 'hnf4a': # e-score replicates in columns 3 and 6
+        # Data accessed (2024): http://the_brain.bwh.harvard.edu/uniprobe/details2.php?id=66
         file_id = '1shZPti6-YACz3BvvDJ_FsRjx4IazQROF'
         output = 'Hnf4a_2640_contig8mers.txt'
     gdown.download(id=file_id, output=output, quiet=True)
@@ -172,31 +174,29 @@ if load_previous_attributions is False:
             self.Y = Y
             # Create lookup dictionary for fast sequence matching
             self.lookup = {}
-            for i, seq in enumerate(X):
-                key = self._seq_to_key(seq)
-                self.lookup[key] = Y[i][0]
-        
-        def _seq_to_key(self, seq):
-            """Convert sequence array to hashable tuple."""
-            return tuple(map(tuple, seq.astype(int)))
-        
+            # Convert sequences to hashable tuples efficiently
+            keys = [tuple(map(tuple, seq)) for seq in X.astype(int)]
+            # Create lookup dictionary in one go
+            self.lookup = dict(zip(keys, Y.ravel()))
+
         def __call__(self, x):
             """Find the experimental measurement for input sequence(s)."""
             # Convert TensorFlow tensor to numpy if needed
             if tf.is_tensor(x):
                 x = x.numpy()
-            
+
             if len(x.shape) == 2:  # Single sequence
                 x = x[np.newaxis, ...]
-            
-            results = []
-            for seq in x:
-                key = self._seq_to_key(seq)
-                try:
-                    results.append(self.lookup[key])
-                except KeyError:
-                    raise ValueError("The input sequence does not exist in X.")
-            
+
+            # Convert sequences to hashable tuples
+            keys = [tuple(map(tuple, seq)) for seq in x.astype(int)]
+
+            # Use list comprehension for lookup
+            try:
+                results = [self.lookup[key] for key in keys]
+            except KeyError:
+                raise ValueError("The input sequence does not exist in X.")
+
             return tf.convert_to_tensor(results, dtype=tf.float32)
 
     oracle = OracleWrapper(x_mut, y_mut)
@@ -217,8 +217,9 @@ if load_previous_attributions is False:
     t1 = time.time()
     attributions = attributer.compute(
         x=x_mut,
-        gpu=False, # currently custom OracleWrapper not supported on GPU
-        log2fc=True
+        gpu=gpu,
+        log2fc=True,
+        batch_size=1024
     )
     t2 = time.time() - t1
     print('Attribution time:', t2)

@@ -79,6 +79,7 @@ TODO:
 Readthedocs:
     - API figure (use squid as template)
     - Check all readthedocs pages for accuracy
+    - https://pypi.org/project/seam-nn/ pictures not loading correctly? also check all text
 
 
 - Attributer:
@@ -108,6 +109,7 @@ Readthedocs:
         - deepshap: NO / NO
         - empirical that works on GPU?
     - Plot each map within a given int grad trajectory
+    - compute(), process_batch(), and compute_attributions() actually necessary?
 
 
 - Compiler:

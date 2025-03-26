@@ -63,7 +63,9 @@ API figure: To be done.
 
 - [Figure 2. Local library with hierarchical clustering | DeepSTARR](https://colab.research.google.com/drive/1HOM_ysa4HIh_ZoYzLwa4jZu4evyRntF7?usp=sharing)
 
-Expected run time for the "Figure 2. Local library with hierarchical clustering | DeepSTARR" demo (above) is **~3.6 minutes** using Google Colab T4 GPU.
+- [Figure TODO. Combinatorial-complete library with empirical mutagenesis maps | Zfp187 PBM](https://colab.research.google.com/drive/1IWzjJtKzZCCvN1vndHalThLhPL6AsPEa?usp=sharing)
+
+Expected run time for the "Figure 2. Local library with hierarchical clustering | DeepSTARR" demo (above) is **~3.2 minutes** using Google Colab A100 GPU.
 
 **Python script examples** are provided in the `examples/` folder for locally running SEAM and exporting outputs to file. Additional dependencies for these examples may be required and outlined at the top of each script. Examples include:
 
