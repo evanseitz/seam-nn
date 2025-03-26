@@ -60,13 +60,19 @@ SEAM provides a simple interface that takes as input a sequence-based oracle (e.
 **Google Colab examples** for applying SEAM on previously-published deep learning models are available at the following links:
 
 - [Figure 2. Local library with hierarchical clustering | DeepSTARR enhancer 20647](https://colab.research.google.com/drive/1HOM_ysa4HIh_ZoYzLwa4jZu4evyRntF7?usp=sharing)
+	- Local library with 30,000 sequences and 10% mutation rate | integrated gradients, hierarchical clustering
     - Expected run time: **~3.2 minutes** on Colab A100 GPU
+- [Figure TODO. Background separation to reveal low-affinity motifs | DeepSTARR enhancer 4071](https://colab.research.google.com/drive/1lkcLYMyVMYPh3ARzYjI-gJjh69PK9COt?usp=sharing)
+	- Local library with 60,000 sequences and 10% mutation rate | integrated gradients, hierarchical clustering
+    - Expected run time: **~9.3 minutes** on Colab A100 GPU
 - [Figure TODO. Combinatorial-complete library with empirical mutagenesis maps | Zfp187 PBM](https://colab.research.google.com/drive/1IWzjJtKzZCCvN1vndHalThLhPL6AsPEa?usp=sharing)
+	- Combinatorial-complete library with 65,536 sequences | ISM, hierarchical clustering
 	- Expected run time: **~12 minutes** on Colab A100 GPU
 
 **Python script examples** are provided in the `examples/` folder for locally running SEAM and exporting outputs to file. Additional dependencies for these examples may be required and outlined at the top of each script. Examples include:
 
 - [Figure 2. Local library with hierarchical clustering | DeepSTARR enhancer 20647](https://github.com/evanseitz/seam-nn/blob/main/examples/example_deepstarr_local_20647_intgrad.py)
+- Figure TODO. Background separation to reveal low-affinity motifs | DeepSTARR enhancer 4071 (see above)
 - [Figure TODO. Combinatorial-complete library with empirical mutagenesis maps | Zfp187 PBM](https://github.com/evanseitz/seam-nn/blob/main/examples/example_pbm_combinatorial_zfp187.py)
 
 <!-- As well, the [seam-manuscript](https://github.com/evanseitz/seam-manuscript) repository contains examples to reproduce results in the manuscript, including the application of SQUID on other DNNs such as TODO -->
