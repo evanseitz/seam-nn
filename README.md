@@ -62,6 +62,7 @@ SEAM provides a simple interface that takes as input a sequence-based oracle (e.
 - [Figure 2. Local library with hierarchical clustering | DeepSTARR enhancer 20647](https://colab.research.google.com/drive/1HOM_ysa4HIh_ZoYzLwa4jZu4evyRntF7?usp=sharing)
     - Expected run time: **~3.2 minutes** on Colab A100 GPU
 - [Figure TODO. Combinatorial-complete library with empirical mutagenesis maps | Zfp187 PBM](https://colab.research.google.com/drive/1IWzjJtKzZCCvN1vndHalThLhPL6AsPEa?usp=sharing)
+	- Expected run time: **~12 minutes** on Colab A100 GPU
 
 **Python script examples** are provided in the `examples/` folder for locally running SEAM and exporting outputs to file. Additional dependencies for these examples may be required and outlined at the top of each script. Examples include:
 
