@@ -6,10 +6,10 @@ SEAM: systematic explanation of attribution-based mechanisms for regulatory geno
 <!-- [![DOI](https://zenodo.org/badge/711703377.svg)](https://zenodo.org/doi/10.5281/zenodo.11060671) -->
 
 <p align="center">
-	<img src="./docs/_static/seam_logo_light.png#gh-light-mode-only" width="250" height="250">
+	<img src="https://raw.githubusercontent.com/evanseitz/seam-nn/main/docs/_static/seam_logo_light.png#gh-light-mode-only" width="250" height="250">
 </p>
 <p align="center">
-	<img src="./docs/_static/seam_logo_dark.png#gh-dark-mode-only" width="250" height="250">
+	<img src="https://raw.githubusercontent.com/evanseitz/seam-nn/main/docs/_static/seam_logo_dark.png#gh-dark-mode-only" width="250" height="250">
 </p>
 
 **SEAM** (**S**ystematic **E**xplanation of **A**ttribution-based for **M**echanisms) is a Python suite to use meta-explanations to interpret sequence-based deep learning models for regulatory genomics data. For installation instructions, tutorials, and documentation, please refer to the SEAM website, https://seam-nn.readthedocs.io/. For an extended discussion of this approach and its applications, please refer to our paper:
@@ -61,7 +61,7 @@ API figure: To be done.
 
 **Google Colab examples** for applying SEAM on previously-published deep learning models are available at the following links:
 
-- [Figure 2. Local library with hierarchical clustering | DeepSTARR](https://colab.research.google.com/drive/1HOM_ysa4HIh_ZoYzLwa4jZu4evyRntF7?usp=sharing)
+- [Figure 2. Local library with hierarchical clustering | DeepSTARR enhancer](https://colab.research.google.com/drive/1HOM_ysa4HIh_ZoYzLwa4jZu4evyRntF7?usp=sharing)
 
 - [Figure TODO. Combinatorial-complete library with empirical mutagenesis maps | Zfp187 PBM](https://colab.research.google.com/drive/1IWzjJtKzZCCvN1vndHalThLhPL6AsPEa?usp=sharing)
 

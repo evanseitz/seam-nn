@@ -32,13 +32,11 @@ Core Dependencies:
 Optional Dependencies:
 ~~~~~~~~~~~~~~~~~~~~
 
-For embedding methods:
 * umap-learn (for UMAP)
 * phate (for PHATE)
 * openTSNE (for t-SNE)
 * scikit-learn (for PCA, K-means, DBSCAN)
-
-For attribution methods:
+* cuml (for GPU-accelerated clustering)
 * shap (for DeepSHAP)
 
 Development
@@ -58,4 +56,4 @@ Notes
 * SEAM has been tested on Mac and Linux operating systems
 * Installation typically takes less than 1 minute
 * For issues with SQUID installation, see: https://squid-nn.readthedocs.io/
-* Older DNNs may require separate environments for TF1.x and TF2.x 
+* DNNs trained with TF1.x may require separate environments for TF1.x and TF2.x 
