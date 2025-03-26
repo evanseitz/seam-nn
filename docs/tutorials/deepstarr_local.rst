@@ -4,7 +4,7 @@ DeepSTARR Local Analysis Tutorial
 This tutorial demonstrates how to use SEAM to analyze local regulatory mechanisms in the DeepSTARR model, reproducing Figure 2 from our paper.
 
 .. note::
-   Expected runtime: ~3.2 minutes using Google Colab T4 GPU
+   Expected runtime: ~3.2 minutes using Google Colab A100 GPU
 
 Setup
 -----
