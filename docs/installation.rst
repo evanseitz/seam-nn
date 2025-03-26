@@ -29,16 +29,6 @@ Core Dependencies:
 * squid-nn
 * seaborn
 
-Optional Dependencies:
-~~~~~~~~~~~~~~~~~~~~
-
-* umap-learn (for UMAP)
-* phate (for PHATE)
-* openTSNE (for t-SNE)
-* scikit-learn (for PCA, K-means, DBSCAN)
-* cuml (for GPU-accelerated clustering)
-* shap (for DeepSHAP)
-
 Development
 ----------
 
