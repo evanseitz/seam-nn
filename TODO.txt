@@ -12,7 +12,7 @@ TODO:
 
 
 - examples
-    - update deepstarr_local.rst to mirror most recent Colab (currently out of date)
+    - update deepstarr_local.rst to mirror most recent Colab
     - both:
         - global on TTK? aAGGA(T/C)AAt
         - global AP-1 needs code for finding all instances of motif from test/train
