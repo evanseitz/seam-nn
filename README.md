@@ -51,7 +51,7 @@ Older DNNs may require inference via Tensorflow 1.x or related packages in confl
 2. Tensorflow 2.x environment for applying SEAM to explain *in silico* sequence-function-mechanism dataset
 
 ## Usage:
-SEAM provides a simple interface that takes as input a sequence-based deep-learning model (e.g., a DNN), which is used as an oracle to generate an *in silico* sequence-function-mechanism dataset representing a localized region of sequence space. SEAM uses a meta-explanation framework to interpret the *in silico* sequence-function-mechanism dataset, deciphering the determinants of mechanistic variation in regulatory sequences.
+SEAM provides a simple interface that takes as input a sequence-based oracle (e.g., a genomic DNN), which is used to generate an *in silico* sequence-function-mechanism dataset representing a localized region of sequence space. SEAM uses a meta-explanation framework to interpret the *in silico* sequence-function-mechanism dataset, deciphering the determinants of mechanistic variation in regulatory sequences.
 
 <!-- <img src="./docs/_static/framework.png" alt="fig" width="1000"/> -->
 
@@ -61,17 +61,17 @@ API figure: To be done.
 
 **Google Colab examples** for applying SEAM on previously-published deep learning models are available at the following links:
 
-- [Figure 2. Local library with hierarchical clustering | DeepSTARR enhancer](https://colab.research.google.com/drive/1HOM_ysa4HIh_ZoYzLwa4jZu4evyRntF7?usp=sharing)
-
+- [Figure 2. Local library with hierarchical clustering | DeepSTARR enhancer 20647](https://colab.research.google.com/drive/1HOM_ysa4HIh_ZoYzLwa4jZu4evyRntF7?usp=sharing)
 - [Figure TODO. Combinatorial-complete library with empirical mutagenesis maps | Zfp187 PBM](https://colab.research.google.com/drive/1IWzjJtKzZCCvN1vndHalThLhPL6AsPEa?usp=sharing)
 
 Expected run time for the "Figure 2. Local library with hierarchical clustering | DeepSTARR" demo (above) is **~3.2 minutes** using Google Colab A100 GPU.
 
 **Python script examples** are provided in the `examples/` folder for locally running SEAM and exporting outputs to file. Additional dependencies for these examples may be required and outlined at the top of each script. Examples include:
 
-- To be done.
+- [Figure 2. Local library with hierarchical clustering | DeepSTARR enhancer 20647](https://github.com/evanseitz/seam-nn/blob/main/examples/example_deepstarr_local_20647_intgrad.py)
+- [Figure TODO. Combinatorial-complete library with empirical mutagenesis maps | Zfp187 PBM](https://github.com/evanseitz/seam-nn/blob/main/examples/example_pbm_combinatorial_zfp187.py)
 
-<!-- As well, the [seam-manuscript](https://github.com/evanseitz/seam-manuscript) repository contains examples to reproduce results in the manuscript, including the application of SQUID on other DNNs such as ChromBPNet and directly to experimental datasets -->
+<!-- As well, the [seam-manuscript](https://github.com/evanseitz/seam-manuscript) repository contains examples to reproduce results in the manuscript, including the application of SQUID on other DNNs such as TODO -->
 
 ## Citation:
 If this code is useful in your work, please cite our paper.
