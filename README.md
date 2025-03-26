@@ -53,17 +53,14 @@ Older DNNs may require inference via Tensorflow 1.x or related packages in confl
 ## Usage:
 SEAM provides a simple interface that takes as input a sequence-based oracle (e.g., a genomic DNN), which is used to generate an *in silico* sequence-function-mechanism dataset representing a localized region of sequence space. SEAM uses a meta-explanation framework to interpret the *in silico* sequence-function-mechanism dataset, deciphering the determinants of mechanistic variation in regulatory sequences.
 
-<!-- <img src="./docs/_static/framework.png" alt="fig" width="1000"/> -->
-<p align="center">
-	<img src="https://raw.githubusercontent.com/evanseitz/seam-nn/main/docs/_static/framework.png.png" width="250" height="250">
-</p>
+<img src="./docs/_static/framework.png" alt="fig" width="1000"/>
 
 ### Examples
 
 **Google Colab examples** for applying SEAM on previously-published deep learning models are available at the following links:
 
 - [Figure 2. Local library with hierarchical clustering | DeepSTARR enhancer 20647](https://colab.research.google.com/drive/1HOM_ysa4HIh_ZoYzLwa4jZu4evyRntF7?usp=sharing)
-    - Expected run time: **~3.2 minutes** (A100 GPU)
+    - Expected run time: **~3.2 minutes** on Colab A100 GPU
 - [Figure TODO. Combinatorial-complete library with empirical mutagenesis maps | Zfp187 PBM](https://colab.research.google.com/drive/1IWzjJtKzZCCvN1vndHalThLhPL6AsPEa?usp=sharing)
 
 **Python script examples** are provided in the `examples/` folder for locally running SEAM and exporting outputs to file. Additional dependencies for these examples may be required and outlined at the top of each script. Examples include:
