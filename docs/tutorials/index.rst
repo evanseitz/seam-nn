@@ -21,9 +21,7 @@ A complete walkthrough of SEAM using the DeepSTARR model to analyze local regula
 The full tutorial is available in multiple formats:
 
 * `Interactive Google Colab <https://colab.research.google.com/drive/1HOM_ysa4HIh_ZoYzLwa4jZu4evyRntF7?usp=sharing>`_
-* :doc:`Local Python version <https://github.com/evanseitz/seam-nn/blob/main/examples/example_deepstarr_local_20647_intgrad.py>`
-
-
+* `Local Python version <https://github.com/evanseitz/seam-nn/blob/main/examples/example_deepstarr_local_20647_intgrad.py>`_
 
 Additional Resources
 ------------------

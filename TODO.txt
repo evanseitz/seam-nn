@@ -3,7 +3,8 @@ TODO:
 - paper:
     - Variability logo metric and make box plot (CLIPNET)
     - Background amplitude vs foreground; stratify by prediction
-    - Bg analysis in task 0 vs task 1
+    - Bg analysis in task 0 vs task 1 across entire test set
+        - Compare BG to other attribution methods (SQUID, etc.) --> show pairwise?
     - Kmer spectra on backgrounds - yagi?
     - Redo Fig.2 RHS with SNV and pairwise; then we can say later that pairwise for PIK3R3 was too much
         - Sup fig for covariance matrices (take out of Figure 2)
@@ -31,7 +32,6 @@ TODO:
         - PIK3R3?
         - DeepSTARR global analysis with interactive plots --> send to Yagi
             - GIA scores in Compiler
-        - direct link to github scripts for examples in README
         - one global example using GIA coloring
         - DeepSHAP with PyTorch? (Captum)
         - Try global using genomic locus with dinuc shuffle?
