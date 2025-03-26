@@ -68,12 +68,15 @@ SEAM provides a simple interface that takes as input a sequence-based oracle (e.
 - [Figure TODO. Combinatorial-complete library with empirical mutagenesis maps | Zfp187 PBM](https://colab.research.google.com/drive/1IWzjJtKzZCCvN1vndHalThLhPL6AsPEa?usp=sharing)
 	- Combinatorial-complete library with 65,536 sequences | ISM, hierarchical clustering
 	- Expected run time: **~12 minutes** on Colab A100 GPU
+- [Figure TODO. Combinatorial-complete library with interactive mechanism space viewer | Hnf4a PBM](https://colab.research.google.com/drive/1E8_30yW_2i-1y6OFwGOg4jDrhwZLAhMj?usp=sharing)
+	- Combinatorial-complete library with 65,536 sequences | ISM, UMAP with K-Means clustering
+	- Expected run time: **~4.9 minutes** on Colab A100 GPU
 
 **Python script examples** are provided in the `examples/` folder for locally running SEAM and exporting outputs to file. Additional dependencies for these examples may be required and outlined at the top of each script. Examples include:
 
 - [Figure 2. Local library with hierarchical clustering | DeepSTARR enhancer 20647](https://github.com/evanseitz/seam-nn/blob/main/examples/example_deepstarr_local_20647_intgrad.py)
-- Figure TODO. Background separation to reveal low-affinity motifs | DeepSTARR enhancer 4071 (see above)
-- [Figure TODO. Combinatorial-complete library with empirical mutagenesis maps | Zfp187 PBM](https://github.com/evanseitz/seam-nn/blob/main/examples/example_pbm_combinatorial_zfp187.py)
+- Figure TODO. Background separation to reveal low-affinity motifs | DeepSTARR enhancer 4071
+- [Figure TODO. Combinatorial-complete library with empirical mutagenesis maps | Zfp187, Hnf4a PBM](https://github.com/evanseitz/seam-nn/blob/main/examples/example_pbm_combinatorial_zfp187.py)
 
 <!-- As well, the [seam-manuscript](https://github.com/evanseitz/seam-manuscript) repository contains examples to reproduce results in the manuscript, including the application of SQUID on other DNNs such as TODO -->
 

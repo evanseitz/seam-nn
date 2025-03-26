@@ -37,7 +37,7 @@ print(seam.__version__) # 0.4.3
 # =============================================================================
 # Overhead user settings
 # =============================================================================
-protein = 'zfp187' # {'zfp187', 'hnf4a'}
+protein = 'hnf4a' # {'zfp187', 'hnf4a'}
 attribution_method = 'ism' # analogous to empirical attribution
 
 gpu = len(tf.config.list_physical_devices('GPU')) > 0 # Whether to use GPU (Boolean)

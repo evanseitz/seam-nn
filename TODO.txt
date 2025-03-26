@@ -1,5 +1,7 @@
 TODO:
 
+- add ICLR link to README when available
+
 - paper:
     - Variability logo metric and make box plot (CLIPNET)
     - Background amplitude vs foreground; stratify by prediction

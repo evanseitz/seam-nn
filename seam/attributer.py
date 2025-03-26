@@ -180,7 +180,8 @@ class Attributer:
     def _smoothgrad_cpu(self, X, num_samples=50, mean=0.0, stddev=0.1):
         """CPU implementation of SmoothGrad."""
         scores = []
-        for x in tqdm(X, desc="Computing SmoothGrad"):
+        #for x in tqdm(X, desc="Computing SmoothGrad"):
+        for x in X:
             x = np.expand_dims(x, axis=0)  # (1, L, A)
             x = tf.cast(x, dtype=tf.float32)
             x_noisy = tf.tile(x, (num_samples,1,1)) + tf.random.normal((num_samples,x.shape[1],x.shape[2]), mean, stddev)
@@ -267,7 +268,8 @@ class Attributer:
     def _intgrad_cpu(self, X, baseline_type='zeros', num_steps=25, multiply_by_inputs=False, seed=None):
         """CPU-optimized implementation using loop-based computation."""
         scores = []
-        for i, x in enumerate(tqdm(X, desc="Computing IntGrad")):
+        #for i, x in enumerate(tqdm(X, desc="Computing IntGrad")):
+        for i, x in enumerate(X):
             x = np.expand_dims(x, axis=0)  # Add batch dimension: (1, L, A)
             
             # Explicitly handle each baseline type
@@ -366,7 +368,8 @@ class Attributer:
         mut_seq = np.zeros_like(X[0:1], dtype=np.float32)
         
         # Add tqdm progress bar for sequences
-        for x in tqdm(X, desc="Computing ISM"):
+        #for x in tqdm(X, desc="Computing ISM"):
+        for x in X:
             x = x[np.newaxis]  # Faster than expand_dims
             score_matrix = np.zeros_like(x[0], dtype=np.float32)
             
