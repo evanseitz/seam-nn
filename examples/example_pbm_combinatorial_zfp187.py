@@ -1,17 +1,19 @@
 """
-SEAM analysis of combinatorial-complete sequence library using ZFP187
-Protein Binding Microarray (PBM) data as shown in SEAM Figure X # TODO double check this
+SEAM analysis of combinatorial-complete sequence library using PBM data (Fig.TBD) # TODO double check this
+
+Model:
+    - PBM oracle (no deep learning model)
+
+Parameters:
+    - 4^8 = 65,536 sequences
+    - Empirical attribution maps via ISM
+    - Hierarchical clustering (ward)
 
 Tested using:
     - Python 3.11.8
     - TensorFlow 2.16.1
     - NumPy 1.26.1
     - SEAM 0.4.3
-
-Parameters:
-    - 4^8 = 65,536 sequences
-    - Empirical attribution maps via ISM
-    - Hierarchical clustering (ward)
 """
 
 import os, sys, time

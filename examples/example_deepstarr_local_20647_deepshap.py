@@ -1,18 +1,20 @@
 """
-SEAM example of local sequence-mechanism relationships with DeepSTARR
-as shown in SEAM Figure 2 # TODO double check this
+# SEAM example of local library using DeepSTARR enhancer to annotate all TFBSs and biophysical states (Fig.2a)
 
-Tested using:
-    - Python 3.11.8
-    - TensorFlow 2.16.1
-    - NumPy 1.26.1
-    - SEAM 0.4.3
+Model:
+    - DeepSTARR
 
 Parameters:
     - 30,000 sequences
     - 10% mutation rate
     - Integrated gradients # TODO deepshap?
     - Hierarchical clustering (ward)
+
+Tested using:
+    - Python 3.11.8
+    - TensorFlow 2.16.1
+    - NumPy 1.26.1
+    - SEAM 0.4.3
 """
 
 import os, sys, time
