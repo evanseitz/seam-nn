@@ -60,31 +60,31 @@ SEAM provides a simple interface that takes as input a sequence-based oracle (e.
 **Google Colab examples** for applying SEAM on previously-published deep learning models are available at the following links:
 
 - [Figure 2. Local library to annotate all TFBSs and biophysical states](https://colab.research.google.com/drive/1HOM_ysa4HIh_ZoYzLwa4jZu4evyRntF7?usp=sharing)
-	- DeepSTARR enhancer 20647
+	- DeepSTARR: enhancer 20647
 	- Local library with 30k sequences and 10% mutation rate | integrated gradients, hierarchical clustering
     - Expected run time: **~3.2 minutes** on Colab A100 GPU
 - [Figure TBD. Local library to reveal low-affinity motifs using background separation](https://colab.research.google.com/drive/1lkcLYMyVMYPh3ARzYjI-gJjh69PK9COt?usp=sharing)
-	- DeepSTARR enhancer 4071
+	- DeepSTARR: enhancer 4071
 	- Local library with 60k sequences and 10% mutation rate | integrated gradients, hierarchical clustering
     - Expected run time: **~9.3 minutes** on Colab A100 GPU
 - [Figure TBD. Combinatorial-complete library with empirical mutagenesis maps](https://colab.research.google.com/drive/1IWzjJtKzZCCvN1vndHalThLhPL6AsPEa?usp=sharing)
-	- Zfp187 PBM
+	- PBM: Zfp187
 	- Combinatorial-complete library with 65,536 sequences | ISM, hierarchical clustering
 	- Expected run time: **~12 minutes** on Colab A100 GPU
 - [Figure TBD. Combinatorial-complete library with interactive mechanism space viewer](https://colab.research.google.com/drive/1E8_30yW_2i-1y6OFwGOg4jDrhwZLAhMj?usp=sharing)
-	- Hnf4a PBM
+	- PBM: Hnf4a
 	- Combinatorial-complete library with 65,536 sequences | ISM, UMAP with K-Means clustering
 	- Expected run time: **~4.9 minutes** on Colab A100 GPU
 - [Figure TBD. Global library to compare mechanistic heterogeneity of an enhancer TFBS](https://colab.research.google.com/drive/17EvfEa8LGtSjb6JkvVSPs6X0m7Rwb8_l?usp=sharing)
-	- DeepSTARR CREB/ATF TFBS
+	- DeepSTARR: CREB/ATF
 	- Global library with 100k sequences | saliency maps, UMAP with K-Means clustering
 	- Expected run time: **~3.4 minutes** on Colab A100 GPU
 - [Figure TBD. Global library to compare mechanisms across different developmental programs](https://colab.research.google.com/drive/1uCZ_HpuTiLyL8nmsbZ8lExFrbLWpZ5nG?usp=sharing)
-	- DeepSTARR DRE TFBS
+	- DeepSTARR: DRE
 	- Global library with 100k sequences | saliency maps, UMAP with K-Means clustering
 	- Expected run time: **~2.7 minutes** on Colab A100 GPU
 - [Figure TBD. Global library to compare mechanisms associated with genomic and synthetic TFBSs](TODO)
-	- DeepSTARR AP-1 TFBS
+	- DeepSTARR: AP-1
 	- Global library with 100k sequences | integrated gradients, UMAP with K-Means clustering
 	- Expected run time: **~TODO minutes** on Colab A100 GPU
 
