@@ -46,7 +46,7 @@ For issues installing SQUID, the package used for sequence generation and infere
 - https://squid-nn.readthedocs.io/en/latest/installation.html
 - https://github.com/evanseitz/squid-nn/issues
 
-Older DNNs may require inference via Tensorflow 1.x or related packages in conflict with SEAM defaults. Users will need to run SEAM piecewise within separate environments:
+Older DNNs that require inference via Tensorflow 1.x or related packages may be in conflict with SEAM defaults. Users will need to run SEAM piecewise within separate environments:
 1. Tensorflow 1.x environment for generating *in silico* sequence-function-mechanism dataset
 2. Tensorflow 2.x environment for applying SEAM to explain *in silico* sequence-function-mechanism dataset
 
@@ -83,20 +83,18 @@ SEAM provides a simple interface that takes as input a sequence-based oracle (e.
 	- DeepSTARR: DRE
 	- Global library with 100k sequences | saliency maps, UMAP with K-Means clustering
 	- Expected run time: **~2.7 minutes** on Colab A100 GPU
-- [Figure TBD. Global library to compare mechanisms associated with genomic and synthetic TFBSs](TODO)
+- [Figure TBD. Global library to compare mechanisms associated with genomic and synthetic TFBSs](https://colab.research.google.com/drive/1stdhABAF5Eehg7-n-XfLxoqBYahJ5LX_?usp=sharing)
 	- DeepSTARR: AP-1
 	- Global library with 100k sequences | integrated gradients, UMAP with K-Means clustering
-	- Expected run time: **~TODO minutes** on Colab A100 GPU
+	- Expected run time: **~3.9 minutes** on Colab A100 GPU
 
 
 **Python script examples** are provided in the `examples/` folder for locally running SEAM and exporting outputs to file. Additional dependencies for these examples may be required and outlined at the top of each script.
 
-<!-- As well, the [seam-manuscript](https://github.com/evanseitz/seam-manuscript) repository contains examples to reproduce results in the manuscript, including the application of SQUID on other DNNs such as TODO -->
-
 ## Citation:
 If this code is useful in your work, please cite our paper.
 
-bibtex TBD
+bibtex TODO
 
 ## License:
 Copyright (C) 2023–2025 Evan Seitz, David McCandlish, Justin Kinney, Peter Koo

@@ -153,7 +153,8 @@ print(f"\nWild-type prediction: {pred[0][0]}")
 # =============================================================================
 if load_previous_library is False:
     # Set up predictor class for in silico MAVE
-    pred_generator = squid.predictor.ScalarPredictor(pred_fun=model.predict_on_batch,
+    pred_generator = squid.predictor.ScalarPredictor(
+        pred_fun=model.predict_on_batch,
         task_idx=task_index,
         batch_size=512
     )
