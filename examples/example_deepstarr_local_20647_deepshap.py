@@ -88,7 +88,7 @@ if load_previous_attributions: # save_data must be True
 if load_previous_linkage: # save_data must be True
     link_method = 'ward'
     linkage = np.load(os.path.join(save_path, f'hierarchical_linkage_{link_method}_{attribution_method}.npy'))
-    clusterer_hier = Clusterer(
+    clusterer = Clusterer(
         attributions,
         gpu=gpu
     )
@@ -258,14 +258,14 @@ if render_logos is True:
 # Cluster attribution maps directly using Hierarchical Clustering
 # =============================================================================
 if load_previous_linkage is False:
-    clusterer_hier = Clusterer(
+    clusterer = Clusterer(
         attributions,
         gpu=gpu
     )
 
     # Perform hierarchical clustering directly on attribution maps
     link_method = 'ward'
-    linkage = clusterer_hier.cluster(
+    linkage = clusterer.cluster(
         method='hierarchical',
         link_method=link_method
     )
@@ -276,14 +276,14 @@ if load_previous_linkage is False:
 # Cut tree to get a specific number of clusters
 n_clusters = 30
 
-labels_n, cut_level = clusterer_hier.get_cluster_labels(
+labels_n, cut_level = clusterer.get_cluster_labels(
     linkage,
     criterion='maxclust',
     n_clusters=n_clusters
 )
 
 # Plot dendrogram to visualize hierarchy
-clusterer_hier.plot_dendrogram(
+clusterer.plot_dendrogram(
     linkage,
     cut_level=cut_level,
     figsize=(15, 10),
@@ -301,7 +301,7 @@ sort_method = 'median' # sort clusters by median DNN prediction (default)
 
 # Initialize MetaExplainer
 meta = MetaExplainer(
-    clusterer=clusterer_hier,
+    clusterer=clusterer,
     mave_df=mave_df,
     attributions=attributions,
     sort_method=sort_method,
@@ -330,11 +330,13 @@ pred_boxplots = meta.plot_cluster_stats(
 )
 
 # Show sequences from a given cluster
-seqs_cluster = meta.show_sequences(0) # e.g., cluster index 0
-seqs_cluster.head()
+explore_cluster = 0
+print('Sequences from cluster: %s' % explore_cluster)
+seqs_cluster = meta.show_sequences(explore_cluster) # e.g., cluster index 0
+print(seqs_cluster)
 
 # Retrieve attribution maps assigned to a given cluster
-maps_cluster = meta.get_cluster_maps(0)  # e.g., cluster index 0
+maps_cluster = meta.get_cluster_maps(explore_cluster)
 print("%s attribution maps in cluster" % maps_cluster.shape[0])
 
 # Generate Mechanism Summary Matrix (MSM)

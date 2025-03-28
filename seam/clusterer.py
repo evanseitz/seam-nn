@@ -197,11 +197,80 @@ class Clusterer:
         tsne = TSNE(**kwargs)
         return tsne.fit_transform(self.maps)
     
-    def _embed_pca(self, **kwargs):
-        """Compute PCA embedding."""
+    def _embed_pca(self, plot_eigenvalues=False, view_dims=None, xtick_spacing=5, figsize=None, save_path=None, dpi=200, file_format='png', **kwargs):
+        """Compute PCA embedding.
+        
+        Args:
+            plot_eigenvalues: If True, plot the eigenvalue spectrum (default: False)
+            view_dims: Number of dimensions to show in eigenvalue plot (default: None, shows all)
+            xtick_spacing: int, default=5
+                Show x-axis labels every nth position. Set to 1 to show all positions.
+            figsize: Figure size (width, height) in inches (default: None, uses matplotlib default)
+            save_path: Path to save figure (if None, displays plot)
+            dpi: DPI for saved figure (default: 200)
+            file_format: Format for saved figure (default: 'png'). Common formats: 'png', 'pdf', 'svg', 'eps'
+            **kwargs: Additional arguments passed to sklearn.decomposition.PCA
+        
+        Returns:
+            numpy.ndarray: PCA embedding
+        """
         _, _, PCA = _check_sklearn_available()
         pca = PCA(**kwargs)
-        return pca.fit_transform(self.maps)
+        embedding = pca.fit_transform(self.maps)
+        
+        if plot_eigenvalues:
+            if figsize is not None:
+                plt.figure(figsize=figsize)
+            else:
+                plt.figure(figsize=(10, 4))
+            
+            # Get number of dimensions to plot
+            n_dims = view_dims if view_dims is not None else len(pca.explained_variance_ratio_)
+            
+            # Create x-axis values (1-based indexing for PCs)
+            x = np.arange(1, n_dims + 1)
+            
+            # Plot individual explained variance ratios
+            plt.plot(x, pca.explained_variance_ratio_[:n_dims], 'o-', label='Individual')
+            
+            # Add cumulative variance line
+            cumulative = np.cumsum(pca.explained_variance_ratio_)
+            plt.plot(x, cumulative[:n_dims], 'o-', label='Cumulative')
+            
+            # Simple elbow detection using cumulative variance thresholds
+            dim_80 = np.where(cumulative >= 0.8)[0][0] + 1
+            dim_90 = np.where(cumulative >= 0.9)[0][0] + 1
+            
+            print(f"Suggested dimensions:")
+            print(f"- {dim_80} PCs explain 80% of variance")
+            print(f"- {dim_90} PCs explain 90% of variance")
+            
+            plt.xlabel('Principal Component')
+            plt.ylabel('Explained Variance Ratio')
+            plt.title('PCA Eigenvalue Spectrum')
+            plt.grid(True)
+            plt.legend()
+            
+            # Set x-axis ticks with specified spacing
+            tick_positions = np.arange(1, n_dims + 1, xtick_spacing)
+            plt.xticks(tick_positions)
+            
+            # Force integer ticks and set limits
+            plt.gca().xaxis.set_major_locator(plt.MaxNLocator(integer=True))
+            plt.xlim(1, n_dims)
+            
+            plt.gca().spines['top'].set_visible(False)
+            plt.gca().spines['right'].set_visible(False)
+            plt.tight_layout()
+            
+            if save_path:
+                plt.savefig(save_path + f'/pca_eigenvalues.{file_format}', 
+                           facecolor='w', dpi=dpi, bbox_inches='tight')
+                plt.close()
+            else:
+                plt.show()
+        
+        return embedding
     
     def _embed_diffusion_maps(self, epsilon=None, batch_size=10000, dist_fname='distances.dat', **kwargs):
         """Compute Diffusion Maps embedding."""

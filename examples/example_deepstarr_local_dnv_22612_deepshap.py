@@ -59,8 +59,8 @@ save_data = True # Whether to save output data (Boolean)
 delete_downloads = False # Whether to delete downloaded models/data after use (Boolean)
 # TODO: view_dendrogram for even faster debugging
 
-load_previous_library = False # Whether to load previously-generated x_mut and y_mut (Boolean)
-load_previous_attributions = False # Whether to load previously-generated attribution maps (Boolean)
+load_previous_library = True # Whether to load previously-generated x_mut and y_mut (Boolean)
+load_previous_attributions = True # Whether to load previously-generated attribution maps (Boolean)
 load_previous_linkage = False # Whether to load previously-generated linkage matrix (Boolean)
 
 # =============================================================================
@@ -68,7 +68,7 @@ load_previous_linkage = False # Whether to load previously-generated linkage mat
 # =============================================================================
 if save_data:
     py_dir = os.path.dirname(os.path.abspath(__file__))
-    save_path = os.path.join(py_dir, f'outputs_deepstarr_snv_dnv_{seq_index}_{attribution_method}')
+    save_path = os.path.join(py_dir, f'outputs_deepstarr_local_dnv_{seq_index}_{attribution_method}')
     if not os.path.exists(save_path):
         os.makedirs(save_path)
     if save_figs:
@@ -88,7 +88,7 @@ if load_previous_attributions: # save_data must be True
 if load_previous_linkage: # save_data must be True
     link_method = 'ward'
     linkage = np.load(os.path.join(save_path, f'hierarchical_linkage_{link_method}_{attribution_method}.npy'))
-    clusterer_hier = Clusterer(
+    clusterer = Clusterer(
         attributions,
         gpu=gpu
     )
@@ -140,7 +140,7 @@ x_ref = np.expand_dims(x_ref,0)
 
 # Define mutagenesis window for sequence
 seq_length = x_ref.shape[1]
-mut_window = [0, seq_length]  # [start_position, stop_position]
+mut_window = [0, seq_length] # [start_position, stop_position]; default: 
 
 # Forward pass to get output for the specific head
 output = model(x_ref)
@@ -151,6 +151,8 @@ print(f"\nWild-type prediction: {pred[0][0]}")
 # SQUID API
 # Create in silico mutagenesis library
 # =============================================================================
+view_window = [80,210] # sequence view window for SEAM analysis
+
 if load_previous_library is False:
     # Set up predictor class for in silico MAVE
     pred_generator = squid.predictor.ScalarPredictor(
@@ -161,7 +163,8 @@ if load_previous_library is False:
 
     # Set up mutagenizer class for in silico MAVE
     mut_generator = squid.mutagenizer.CombinatorialMutagenesis(
-        max_order=2
+        max_order=2, # all orders up to and including 2 (SNVs and DNVs)
+        mut_window=view_window # need to delimit range of mutations on sequence for computational tractability
     )
 
     # Generate in silico MAVE
@@ -183,6 +186,8 @@ fig = squid.impress.plot_y_hist(
     y_mut,
     save_dir=save_path_figs
 )
+
+print(x_mut.shape)
 
 # =============================================================================
 # SEAM API
@@ -259,17 +264,32 @@ if render_logos is True:
 # Cluster attribution maps directly using Hierarchical Clustering
 # =============================================================================
 if load_previous_linkage is False:
-    clusterer_hier = Clusterer(
+    clusterer = Clusterer(
         attributions,
+        method='pca',
         gpu=gpu
     )
 
-    # Perform hierarchical clustering directly on attribution maps
-    link_method = 'ward'
-    linkage = clusterer_hier.cluster(
-        method='hierarchical',
-        link_method=link_method
+    # Compute embedding
+    embedding = clusterer.embed(
+    kwargs={
+        'plot_eigenvalues': True,
+        'view_dims': 20,
+        'xtick_spacing': 1,
+        'save_path': save_path_figs,
+        'dpi': dpi,
+        'file_format': 'png'
+    }
     )
+
+    print(ZZZ)
+
+    # Perform hierarchical clustering directly on attribution maps
+    #link_method = 'ward'
+    #linkage = clusterer.cluster(
+    #    method='hierarchical',
+    #    link_method=link_method
+    #)
 
     if save_data:
         np.save(os.path.join(save_path, f'hierarchical_linkage_{link_method}_{attribution_method}.npy'), linkage)
@@ -277,14 +297,14 @@ if load_previous_linkage is False:
 # Cut tree to get a specific number of clusters
 n_clusters = 30
 
-labels_n, cut_level = clusterer_hier.get_cluster_labels(
+labels_n, cut_level = clusterer.get_cluster_labels(
     linkage,
     criterion='maxclust',
     n_clusters=n_clusters
 )
 
 # Plot dendrogram to visualize hierarchy
-clusterer_hier.plot_dendrogram(
+'''clusterer.plot_dendrogram(
     linkage,
     cut_level=cut_level,
     figsize=(15, 10),
@@ -292,7 +312,7 @@ clusterer_hier.plot_dendrogram(
     leaf_font_size=8,
     save_path=save_path_figs,
     dpi=dpi
-)
+)'''
 
 # =============================================================================
 # SEAM API
@@ -302,7 +322,7 @@ sort_method = 'median' # sort clusters by median DNN prediction (default)
 
 # Initialize MetaExplainer
 meta = MetaExplainer(
-    clusterer=clusterer_hier,
+    clusterer=clusterer,
     mave_df=mave_df,
     attributions=attributions,
     sort_method=sort_method,
@@ -330,13 +350,21 @@ pred_boxplots = meta.plot_cluster_stats(
     dpi=dpi
 )
 
-# Show sequences from a given cluster
-seqs_cluster = meta.show_sequences(0) # e.g., cluster index 0
-seqs_cluster.head()
+if 0: # Show sequences from a given cluster
+    explore_cluster = 0
+    print('Sequences from cluster: %s' % explore_cluster)
+    seqs_cluster = meta.show_sequences(explore_cluster) # e.g., cluster index 0
+    print(seqs_cluster)
 
-# Retrieve attribution maps assigned to a given cluster
-maps_cluster = meta.get_cluster_maps(0)  # e.g., cluster index 0
-print("%s attribution maps in cluster" % maps_cluster.shape[0])
+    clusters_no_high_idx = [i for i in range(n_clusters) if meta.show_sequences(i).index.max() <= 100000]
+    print(f"Clusters with no sequences with index > 100,000: {clusters_no_high_idx}")
+
+    clusters_no_high_idx = [i for i in range(n_clusters) if meta.show_sequences(i).index.max() >= 100000]
+    print(f"Clusters with no sequences with index < 100,000: {clusters_no_high_idx}")
+
+    # Retrieve attribution maps assigned to a given cluster
+    maps_cluster = meta.get_cluster_maps(explore_cluster)
+    print("%s attribution maps in cluster" % maps_cluster.shape[0])
 
 # Generate Mechanism Summary Matrix (MSM)
 msm = meta.generate_msm(
@@ -344,8 +372,6 @@ msm = meta.generate_msm(
 )
 
 # Plot MSM with different options
-view_window = [50,170]
-
 meta.plot_msm(column='Entropy',
     square_cells=True,
     view_window=view_window,

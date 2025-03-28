@@ -1,60 +1,53 @@
 TODO:
 
-- add ICLR link to README when available
 
 - paper:
     - Variability logo metric and make box plot (CLIPNET)
-    - Background amplitude vs foreground; stratify by prediction
     - Bg analysis in task 0 vs task 1 across entire test set
         - Compare BG to other attribution methods (SQUID, etc.) --> show pairwise?
-    - Kmer spectra on backgrounds - yagi?
-    - Redo Fig.2 RHS with SNV and pairwise
+        - Background amplitude vs foreground (SNR?)
+        - stratify by prediction (50 for each quartile)
+        - Bg height vs avg TF max height across clusters
+        - Kmer spectra on backgrounds - yagi?
+    - Redo Fig.2 RHS with SNV and pairwise (cropped mutagenesis)
         - 278,632 maps... poses problem for memory --> need to implement mutation window for CombinatorialMutagenesis
-        - then we can say later that pairwise for PIK3R3 was too much
+            - cropped mutagenesis (mut_window=[80,210]) brings number down to 77,029
+            - then we can say later that pairwise for PIK3R3 was too much
         - Sup fig for covariance matrices (take out of Figure 2)
-    - New sup fig from combined Fig. 5 leftovers
+    - New sup fig from combined Fig. 5 leftovers (AP-1 global, etc.)
+    - Table of computation times
 
 
 - examples
+    - note that DeepSHAP takes about an hour for 100,000 sequences (DeepSTARR), so other methods used in examples
     - update deepstarr_local.rst to mirror most recent Colab
+    - one global example using GIA coloring
     - both:
-        - global on TTK? aAGGA(T/C)AAt
-        - global AP-1 needs code for finding all instances of motif from test/train
-        - Why is Umap cpu working without pipping
-        - for any example with IntGrad, show baseline_type is an option (introduce attribution map kwargs?)
-        - DeepSTARR mismatch figure reproduced (index 22612; Dev)
+        - DeepSTARR mismatch figure reproduced (index 22612; Dev) with SNVs,DNVs
             - color logos by reference sequence
             - try IntGrad
-        - DeepSTARR background separation figure reproduced (test set index 4071; Hk) --> possibly not best locus?
         - DeepSTARR 3-way mutation figure reproduced --> test with crop mode
             - AP1-m0-seq13748
             - play GIF showing a chain of k-means clusters
             - compare to SQUID pairwise 
             - repeat all slides from first SCQB presentation
                 - splitting modes in function histogram
+                - all_maps_average_y_adaptive.png / all_maps_average_y_fixed.png
+
         - REVO? BEAM?
-        - ChromBPNet?
-        - PIK3R3?
-        - DeepSTARR global analysis with interactive plots --> send to Yagi
-            - GIA scores in Compiler
-        - one global example using GIA coloring
-        - DeepSHAP with PyTorch? (Captum)
-        - Try global using genomic locus with dinuc shuffle?
-        - ResidualBind example for global? (see old slide)
-            - TEAD vs AP-1: check ENCODE profiles for each TF?
-        - Global analyis on procapnet examples (recall figure with profiles)
-        - Hnf4a UMAP example
+        - ChromBPNet
+            - Promoter
+            - Enhancer with umap?
+        - CLIPNET
+            - PIK3R3?
+        - ProCapNet (Captum?)
+            - profiles
+            - background
     - local:
-        - example using TF1 --> TF2 workflow
-        - once global colabs are finished, replicate locally
-        - for all local, use DeepSHAP?
+        - Replicate global Colabs into Python scripts
         - folder name specification: e.g., "kmeans_k200" for 200 clusters
     - colab:
-        - for all colab, use IntGrad?
         - interactive MSM viewer
-        - interactive embedding viewer
-        - add note to all about use of IntGrad (in colab) vs DeepSHAP (in local/paper)
-        - Colab instructions to use GUI, and to download inputs
         - SpliceAI example
 
 
@@ -64,7 +57,6 @@ TODO:
 
 
 - SQUID:
-    - Mutation window for CombinatorialMutagenesis()?
     - add copies of all colab tutorials (with import versions) to GitHub folder
     - plot_y_hist() in impress.py needs option to set new axvline ref_idx or None
     - handle larger pairwise matrices
@@ -79,32 +71,38 @@ TODO:
         - TERT
 
 
-Readthedocs:
+Documentation:
     - API figure (use squid as template)
     - Check all readthedocs pages for accuracy
     - https://pypi.org/project/seam-nn/ pictures not loading correctly? also check all text
     - pypi icon showing older seam version?
+    - add note to all about use of DeepSHAP in paper vs others for examples
+    - screenshot of GUI at bottom of Colab, run Colabs/scripts to save outputs first
+    - add ICLR link to README when available
 
 
 - Attributer:
+    - ISM: 
+        - method to apply ISM only on region of interest
+        - error running 100,000 sequences with 16 batch size in global
+            - Attribution:   0%|          | 0/6250 [00:00<?, ?it/s]GPU implementation failed with error: {{function_node __wrapped__TensorScatterUpdate_device_/job:localhost/replica:0/task:0/device:GPU:0}} Outer dimensions of indices and update must match. Indices shape: [32,1], updates shape:[1] [Op:TensorScatterUpdate] name: 
+        - check if the sequence has been used anywhere else (in any other batch)
+        - Batch_size check against memory?
+        - once everything is fixed up, check UMAP of global AP1 library
     - Refactor DeepSHAP code for newer TF versions
         - DeepSHAP for TF2: dinuc_shuffle, etc. in batch mode with GPUs
         - pytorch version?
         - no longer need sequence_utils.py?
         - dinuc shuffling vs training set
-    - option to use PyTorch instead of TensorFlow and Captum (ProCapNet example)
-    - embed Hessian and concat with attribution map?
+    - option to use PyTorch / import Captum
     - Global tests (CPU/GPU):
-        - ism: yes / yes
-        - saliency: yes / yes
-        - smoothgrad: yes / yes
         - intgrad: yes / yes
             - zeros: yes
             - random: NO --> worked for local in examples folder maybe? maybe a gpu problem?
             - dinuc: NO --> see above
         - deepshap: NO / NO
     - Plot each map within a given int grad trajectory
-    - compute(), process_batch(), and compute_attributions() actually necessary?
+    - Are compute(), process_batch(), and compute_attributions() actually necessary?
 
 
 - Compiler:
@@ -117,6 +115,7 @@ Readthedocs:
     - mave.to_csv('mave.csv', index=False)
     - remove redundant sequences (in general) and after concat with SNV/DNV; or check if it’s already in the code (or put it there in compile)
     - ensembler() to combine model folds?
+    - GIA scores in Compiler
 
 
 - Clusterer:
@@ -125,10 +124,8 @@ Readthedocs:
         - pca GPU
     - phate GPU?
     - add diffusion maps code
-    - higher-dimensional PCA into k-means?
     - reuse DM distance matrix for clustering?
     - add Louvain (or Leiden) clustering
-    - PCA: return eigenvalue spectrum
 
 
 - MetaExplainer:
@@ -139,11 +136,12 @@ Readthedocs:
         - check profile plotting functionality (lines 741-753 from meta_explainer_orig.py)
             - plot individual profiles for each cluster
             - handle alpha blending for overlays
-    - check PWMs and enrichment logos
-        - PWM bits should be max 2 (not 4)
+    - test enrichment logos
     - line up the MSM with the logos below them, and with the bar plot to their right (see below)
     - use marginal bar plots on the right side of the MSM figure
     - background_entropy currently only defined for 4 nucleotides; see latex equation
+        - currently: background_entropy = entropy([null_rate, (1-null_rate)/3, (1-null_rate)/3, (1-null_rate)/3], base=2)
+
 
 
 - Identifier:
@@ -208,10 +206,6 @@ Readthedocs:
         - Visualize state vs. TFBS presence graph
 
 
-- Biophysical modeling:
-    - DRE-m0-seq601
-
-
 - Other:
     - Discussion: 
         - augment libraries with:
@@ -222,8 +216,6 @@ Readthedocs:
         - impute missing values from experimental datasets
     - backup SEAM Colabs on github
     - backup SQUID Colabs on github
-    - SQUID replicates update
-    - Yagi's data workflow and GUI
     - SEAM remaining figures
     - 'ward' vs other linkages
     - use all_maps_average to prove a point?
@@ -232,7 +224,7 @@ Readthedocs:
     - PCA with more dims
     - Hessian or PW vs purely additive
         - or pairwise directly using PBM
-    - need to say CREB is 15 flanks; DRE is 10 flanks?
+    - need to say CREB is 15 flanks; DRE is 10 flanks; AP1 is 10 flanks
     - Other figures:
         - PPIF enhancer (cropped)
             - cropped and hierarchical
@@ -247,16 +239,6 @@ Readthedocs:
         - Illustrator attribution y-axes in Myriad: change to Arial, and add middle notch
 
 
-
-- Motif finding:
-    - best attribution method?
-    - best num_seqs, mut_rate? (1000 seems sufficient)
-    - best cut_level?
-        - attribution clusters
-        - TFBS clusters
-    - poised?
-
-
 - Sharing:
     - Danko Lab
     - Carlos (work on protein dataset)
@@ -268,6 +250,21 @@ Readthedocs:
     - Zoopedia evolutionary data
     - Other Stark lab DNN with more output heads
         - show different backgrounds for each task?
+    - Try global using genomic locus with dinuc shuffle?
+    - ResidualBind example for global? (see old slide)
+        - TEAD vs AP-1: check ENCODE profiles for each TF?
+    - Global analyis on procapnet examples (recall figure with profiles)
+    - embed Hessian and concat with attribution map?
+    - Biophysical modeling:
+        - DRE-m0-seq601
+    - Yagi's data workflow and GUI
+    - Motif finding:
+        - best attribution method?
+        - best num_seqs, mut_rate? (1000 seems sufficient)
+        - best cut_level?
+            - attribution clusters
+            - TFBS clusters
+        - poised?
 
 
 - Zenodo
@@ -275,3 +272,5 @@ Readthedocs:
     - add all downloaded files:
         - Zfp187_2626_contig8mers.txt
         - Hnf4...
+        - x_mut and y_mut for PBMs
+        - AP1 genomic loci
