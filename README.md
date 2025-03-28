@@ -63,7 +63,7 @@ SEAM provides a simple interface that takes as input a sequence-based oracle (e.
 	- DeepSTARR: Enhancer 20647 (Fig.2a)
 	- Local library with 30k sequences and 10% mutation rate | Integrated gradients; hierarchical clustering
     - Expected run time: **~3.2 minutes** on Colab A100 GPU
-- [Local library augmented with SNV and DNV libraries to map evolvability of mechanisms](TODO)
+- TODO: Local library augmented with SNV and DNV libraries to map evolvability of mechanisms
 	- DeepSTARR: Enhancer 22612 (Fig.2b)
 	- Local library with 30,000 sequences and 10% mutation rate
 	- SNV and DNV library with 77,029 sequences
