@@ -1,5 +1,6 @@
 TODO:
 
+- where's the API
 
 - paper:
     - Variability logo metric and make box plot (CLIPNET)
@@ -49,6 +50,7 @@ TODO:
     - colab:
         - interactive MSM viewer
         - SpliceAI example
+        - change one of the examples to use PCA instead of hierarchical?
 
 
 - plotting:
@@ -79,6 +81,7 @@ Documentation:
     - add note to all about use of DeepSHAP in paper vs others for examples
     - screenshot of GUI at bottom of Colab, run Colabs/scripts to save outputs first
     - add ICLR link to README when available
+    - show example kwargs for each attribution method in ReadTheDocs: PCA with plot_eigenvalues, etc.
 
 
 - Attributer:
@@ -126,6 +129,8 @@ Documentation:
     - add diffusion maps code
     - reuse DM distance matrix for clustering?
     - add Louvain (or Leiden) clustering
+    - hierarchical vs embedding discrepancy:
+        - hieararhical doesn't take method as hyperparam: clusterer = Clusterer(attributions,gpu=gpu) 
 
 
 - MetaExplainer:
@@ -235,6 +240,7 @@ Documentation:
             - compare to SQUID pairwise
             - compare to average of all maps in library (and smoothgrad)
         - intra-cluster variability logo for highest occupancy cluster
+        - SEAM denoised cluster (on saliency) vs all other methods
     - Figure revisions:
         - Illustrator attribution y-axes in Myriad: change to Arial, and add middle notch
 
@@ -265,12 +271,19 @@ Documentation:
             - attribution clusters
             - TFBS clusters
         - poised?
+    - evolutionary graph
 
 
-- Zenodo
+- Zenodo:
     - update colab downloads
     - add all downloaded files:
         - Zfp187_2626_contig8mers.txt
         - Hnf4...
         - x_mut and y_mut for PBMs
         - AP1 genomic loci
+
+
+- Commands:
+    - upload to pypi:
+        python -m build
+        twine upload --skip-existing dist/*

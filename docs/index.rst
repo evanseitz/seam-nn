@@ -7,6 +7,7 @@ SEAM Documentation
 
    installation
    tutorials/index
+   api
 
 SEAM (Systematic Explanation of Attribution-based Mechanisms) is a Python suite for using meta-explanations to interpret sequence-based deep learning models for regulatory genomics data.
 
