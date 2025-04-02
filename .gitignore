@@ -117,7 +117,7 @@ examples/outputs_deepstarr_local_20647_intgrad
 
 examples/Zfp187_2626_contig8mers.txt
 examples/outputs_pbm_combinatorial_zfp187
-examples/Hnf4a_2640_contig8mers
+examples/Hnf4a_2640_contig8mers.txt
 examples/outputs_pbm_combinatorial_hnf4a
 
 examples/test_attributions
