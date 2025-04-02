@@ -9,31 +9,15 @@ class Compiler:
     
     This implementation processes sequence data and associated metrics into a 
     pandas DataFrame containing:
-    - DNN predictions
-    - Hamming distances (if reference sequence provided in x_ref)
-    - Global Importance Analysis (GIA) scores (if background predictions provided in y_bg)
-    - Sequence strings
+        - DNN predictions
+        - Hamming distances (if reference sequence provided in x_ref)
+        - Global Importance Analysis (GIA) scores (if background predictions provided in y_bg)
+        - Sequence strings
     
     Requirements:
-    - numpy
-    - pandas
-    - scipy
-    
-    Example usage:
-        # Initialize compiler
-        compiler = Compiler(
-            x=sequences,          # One-hot sequences (N, L, A)
-            y=predictions,        # DNN predictions (N, 1)
-            x_ref=ref_sequence,   # Optional reference sequence (1, L, A)
-            y_bg=bg_predictions,  # Optional background predictions (N, 1)
-            alphabet=['A','C','G','T']
-        )
-        
-        # Compile data
-        mave = compiler.compile()
-        
-        # Save to CSV
-        mave.to_csv('mave.csv', index=False)
+        - numpy
+        - pandas
+        - scipy
     """
     
     def __init__(self, x, y, x_ref=None, y_bg=None, alphabet=None, gpu=False):
@@ -44,7 +28,7 @@ class Compiler:
             y: DNN predictions of shape (N, 1)
             x_ref: Optional reference sequence of shape (1, L, A)
             y_bg: Optional background predictions of shape (N, 1)
-            alphabet: List of characters for sequence conversion (e.g., ['A','C','G','T'])
+            alphabet: List of characters for sequence conversion (e.g., ['A', 'C', 'G', 'T'])
             gpu: Whether to use GPU-accelerated sequence conversion (default: False)
         """
         self.x = x

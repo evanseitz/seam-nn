@@ -271,14 +271,14 @@ class Attributer:
         #for i, x in enumerate(tqdm(X, desc="Computing IntGrad")):
         for i, x in enumerate(X):
             x = np.expand_dims(x, axis=0)  # Add batch dimension: (1, L, A)
+
+            if seed is not None:
+                np.random.seed(seed)
             
             # Explicitly handle each baseline type
             if baseline_type == 'zeros':
                 baseline = np.zeros_like(x)
             elif baseline_type == 'random_shuffle':
-                # Set random seed for reproducibility if provided
-                if seed is not None:
-                    np.random.seed(seed)
                 baseline = self._random_shuffle(x)
             elif baseline_type == 'dinuc_shuffle':
                 if i == 0:  # Only compute all shuffles once at the start
@@ -291,23 +291,25 @@ class Attributer:
             scores.append(score[0])  # Remove batch dimension before appending
         return np.stack(scores, axis=0)  # Stack to get (N, L, A)
 
-    @tf.function(jit_compile=True)
+    @tf.function
     def _intgrad_gpu(self, X, baseline_type='zeros', num_steps=25, multiply_by_inputs=False, seed=None):
         """GPU-optimized implementation using vectorized computation."""
         # Ensure input is float32
         X = tf.cast(X, tf.float32)
         
+        if seed is not None:
+            tf.random.set_seed(seed)
+        
         # Explicitly handle each baseline type
         if baseline_type == 'zeros':
             baseline = tf.zeros_like(X, dtype=tf.float32)
         elif baseline_type == 'random_shuffle':
-            # Set random seed for reproducibility if provided
-            if seed is not None:
-                tf.random.set_seed(seed)
-            baseline = tf.cast(tf.vectorized_map(self._random_shuffle, X), tf.float32)
+            baseline = tf.map_fn(self._random_shuffle, X)
         elif baseline_type == 'dinuc_shuffle':
-            # Pre-compute all shuffles at once for efficiency
-            baseline = tf.cast(self._batch_dinuc_shuffle(X, num_shuffles=1, seed=seed), tf.float32)
+            baseline = tf.convert_to_tensor(
+                self._batch_dinuc_shuffle(X.numpy(), num_shuffles=1, seed=seed),
+                dtype=tf.float32
+            )
         else:
             raise ValueError("baseline_type must be one of: 'zeros', 'random_shuffle', 'dinuc_shuffle'")
         
@@ -587,37 +589,7 @@ class Attributer:
         for x in dataset.batch(batch_size):
             outputs.append(func(x, **kwargs))
         return np.concatenate(outputs, axis=0)
-    
-    def _set_baseline(self, x, baseline_type, seed=None):
-        """Set baseline for Integrated Gradients.
-        
-        Parameters
-        ----------
-        x : array-like
-            Input sequence to generate baseline for
-        baseline_type : str
-            Type of baseline to use:
-            - 'zeros': Zero baseline
-            - 'random_shuffle': Random shuffle of input sequence
-            - 'dinuc_shuffle': Dinucleotide-preserved shuffle of input sequence (default)
-        num_backgrounds : int
-            Number of background sequences to generate for shuffling methods
-        seed : int, optional
-            Random seed for reproducibility in shuffling methods
-        
-        Returns
-        -------
-        array-like
-            Baseline sequence(s)
-        """
-        if baseline_type == 'zeros':
-            return np.zeros_like(x)
-        elif baseline_type == 'random_shuffle':
-            return self._random_shuffle(x, seed=seed)
-        elif baseline_type == 'dinuc_shuffle':
-            return self._batch_dinuc_shuffle(x, num_shuffles=1, seed=seed)[0]
-        else:
-            raise ValueError("baseline_type must be one of: 'dinuc_shuffle', 'random_shuffle', 'zeros'")
+
 
     @staticmethod
     def _one_hot_to_tokens(one_hot):
@@ -712,15 +684,15 @@ class Attributer:
 
     @staticmethod
     def _batch_dinuc_shuffle(
-        sequence: Union[np.ndarray, tf.Tensor],
+        sequence: np.ndarray,
         num_shuffles: int = 1,
         seed: Optional[int] = None
-    ) -> Union[np.ndarray, tf.Tensor]:
+    ) -> np.ndarray:
         """Generate multiple dinucleotide-preserved shuffles efficiently.
         
         Parameters
         ----------
-        sequence : Union[np.ndarray, tf.Tensor]
+        sequence : np.ndarray
             One-hot encoded sequence(s) with shape (length, 4), (1, length, 4),
             or (batch_size, length, 4)
         num_shuffles : int
@@ -730,17 +702,10 @@ class Attributer:
             
         Returns
         -------
-        Union[np.ndarray, tf.Tensor]
-            Batch of shuffled sequences. If input is batched, shape will be
-            (batch_size, length, 4). If num_shuffles > 1, shape will be
-            (num_shuffles, length, 4) for single input or 
-            (batch_size, num_shuffles, length, 4) for batched input.
+        np.ndarray
+            Batch of shuffled sequences with shape (batch_size, length, 4)
+            or (num_shuffles, length, 4) for single input
         """
-        # Convert to numpy if needed
-        was_tensor = isinstance(sequence, tf.Tensor)
-        if was_tensor:
-            sequence = sequence.numpy()
-        
         # Handle different input shapes
         if len(sequence.shape) == 2:  # (length, 4)
             sequence = sequence[np.newaxis, ...]  # Add batch dimension
@@ -761,34 +726,27 @@ class Attributer:
             ]
             shuffled = np.stack(shuffled_sequences, axis=0)
         else:
-            # Generate one shuffle per sequence in batch
-            if num_shuffles > 1:
-                # Generate multiple shuffles per sequence
-                shuffled_sequences = [[
-                    Attributer._dinuc_shuffle(seq, rng=rng)
-                    for _ in range(num_shuffles)
-                ] for seq in sequence]
-                shuffled = np.stack([np.stack(seq_shuffles, axis=0) 
-                                   for seq_shuffles in shuffled_sequences], axis=0)
-            else:
-                # Generate one shuffle per sequence
-                shuffled_sequences = [
-                    Attributer._dinuc_shuffle(seq, rng=rng)
-                    for seq in sequence
-                ]
-                shuffled = np.stack(shuffled_sequences, axis=0)
-        
-        # Convert back to tensor if input was tensor
-        if was_tensor:
-            shuffled = tf.convert_to_tensor(shuffled, dtype=tf.float32)
+            # Generate one shuffle per sequence
+            shuffled_sequences = [
+                Attributer._dinuc_shuffle(seq, rng=rng)
+                for seq in sequence
+            ]
+            shuffled = np.stack(shuffled_sequences, axis=0)
             
         return shuffled
 
     @staticmethod
     def _random_shuffle(x):
-        """Randomly shuffle sequence."""
-        shuffle = np.random.permutation(x.shape[1])
-        return x[:, shuffle, :]
+        """Randomly shuffle sequence using appropriate backend."""
+        if isinstance(x, tf.Tensor):
+            # GPU case - use TensorFlow ops
+            seq_len = tf.shape(x)[1]
+            shuffle = tf.random.shuffle(tf.range(seq_len))
+            return tf.gather(x, shuffle, axis=1)
+        else:
+            # CPU case - use NumPy ops
+            shuffle = np.random.permutation(x.shape[1])
+            return x[:, shuffle, :]
 
     @staticmethod
     def _generate_background_data(x, num_shuffles):
@@ -799,7 +757,7 @@ class Attributer:
             for _ in range(num_shuffles)
         ])
         return [shuffled]
-
+    
     def compute(self, x, x_ref=None, batch_size=128, save_window=None, **kwargs):
         """Compute attribution maps in batch mode.
         
@@ -938,6 +896,7 @@ class Attributer:
         )
         return np.concatenate([x_ref_start, x_batch, x_ref_stop], axis=1)
 
+
     def show_params(self, method=None):
         """Show available parameters for attribution methods.
         
@@ -1025,18 +984,97 @@ class Attributer:
                     print(f"{param}: {desc}")
                 print("\n" + "-"*50)
 
+    @staticmethod
+    @tf.function(jit_compile=True)
+    def _batch_dinuc_shuffle_gpu(sequence: tf.Tensor, num_shuffles: int = 1, seed: Optional[int] = None) -> tf.Tensor:
+        """Generate multiple dinucleotide-preserved shuffles using TensorFlow ops.
+        
+        Parameters
+        ----------
+        sequence : tf.Tensor
+            One-hot encoded sequence(s) with shape (batch_size, length, 4)
+        num_shuffles : int
+            Number of shuffled sequences to generate per input sequence
+        seed : int, optional
+            Random seed for reproducibility
+            
+        Returns
+        -------
+        tf.Tensor
+            Batch of shuffled sequences with shape (batch_size, length, 4)
+            or (num_shuffles, length, 4) for single input
+        """
+        if seed is not None:
+            tf.random.set_seed(seed)
+        
+        # Handle single sequence case
+        if len(tf.shape(sequence)) == 2:  # (length, 4)
+            sequence = tf.expand_dims(sequence, 0)  # Add batch dimension
+            single_sequence = True
+        else:
+            single_sequence = tf.shape(sequence)[0] == 1
+        
+        # Convert one-hot to indices
+        tokens = tf.argmax(sequence, axis=-1)  # (batch_size, length)
+        
+        # Get unique tokens and their counts for each sequence
+        def shuffle_sequence(seq_tokens):
+            # Get dinucleotide transitions
+            prev_tokens = seq_tokens[:-1]  # (length-1,)
+            next_tokens = seq_tokens[1:]   # (length-1,)
+            
+            # Create transition matrix (4x4) counting occurrences
+            transitions = tf.zeros((4, 4), dtype=tf.int32)
+            transitions = tf.tensor_scatter_nd_add(
+                transitions,
+                tf.stack([prev_tokens, next_tokens], axis=1),
+                tf.ones_like(prev_tokens, dtype=tf.int32)
+            )
+            
+            # Initialize result with first token
+            result = tf.TensorArray(tf.int32, size=tf.shape(seq_tokens)[0])
+            result = result.write(0, seq_tokens[0])
+            
+            # For each position after first
+            for i in tf.range(1, tf.shape(seq_tokens)[0]):
+                prev_token = result.read(i-1)
+                
+                # Get possible next tokens and their counts
+                possible_next = transitions[prev_token]
+                
+                # Sample next token based on transition probabilities
+                probs = tf.cast(possible_next, tf.float32)
+                probs = probs / (tf.reduce_sum(probs) + 1e-10)
+                next_token = tf.random.categorical(tf.expand_dims(tf.math.log(probs + 1e-10), 0), 1)[0, 0]
+                
+                # Update transition matrix
+                transitions = tf.tensor_scatter_nd_sub(
+                    transitions,
+                    [[prev_token, next_token]],
+                    [1]
+                )
+                
+                result = result.write(i, next_token)
+            
+            # Convert back to sequence
+            shuffled_tokens = result.stack()
+            return tf.one_hot(shuffled_tokens, depth=4)
+        
+        # Apply shuffling to each sequence
+        if single_sequence and num_shuffles > 1:
+            # Generate multiple shuffles for single sequence
+            shuffled = tf.map_fn(
+                lambda _: shuffle_sequence(tokens[0]),
+                tf.zeros(num_shuffles),
+                fn_output_signature=tf.float32
+            )
+        else:
+            # Generate one shuffle per sequence
+            shuffled = tf.map_fn(
+                shuffle_sequence,
+                tokens,
+                fn_output_signature=tf.float32
+            )
+        
+        return shuffled
 
-# Convenience function
-def compute_attributions(model, x, x_ref=None, method='saliency', func=tf.math.reduce_mean, **kwargs):
-    """Compute attribution maps for a given model and input.
-    
-    Args:
-        model: TensorFlow model to explain
-        x: Input sequences to compute attributions for
-        x_ref: Reference sequence for windowed analysis (optional)
-        method: Attribution method (default: 'saliency')
-        func: Function to reduce model output to scalar (default: tf.math.reduce_mean)
-        **kwargs: Additional method-specific arguments
-    """
-    attributer = Attributer(model, method=method, func=func)
-    return attributer.compute(x, x_ref=x_ref, **kwargs)

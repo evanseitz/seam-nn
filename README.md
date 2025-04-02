@@ -57,7 +57,9 @@ SEAM provides a simple interface that takes as input a sequence-based oracle (e.
 
 ### Examples
 
-**Google Colab examples** for applying SEAM on previously-published deep learning models are available at the following links:
+**Google Colab examples** for applying SEAM on previously-published deep learning models are available at the links below.
+
+*Note: Due to memory requirements for calculating distance matrices, Colab Pro may be required for examples using hierarchical clustering at their current settings.*
 
 - [Local library to annotate all TFBSs and biophysical states](https://colab.research.google.com/drive/1HOM_ysa4HIh_ZoYzLwa4jZu4evyRntF7?usp=sharing)
 	- DeepSTARR: Enhancer 20647 (Fig.2a)

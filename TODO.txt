@@ -1,7 +1,5 @@
 TODO:
 
-- where's the API
-
 - paper:
     - Variability logo metric and make box plot (CLIPNET)
     - Bg analysis in task 0 vs task 1 across entire test set
@@ -26,7 +24,8 @@ TODO:
     - both:
         - DeepSTARR mismatch figure reproduced (index 22612; Dev) with SNVs,DNVs
             - color logos by reference sequence
-            - try IntGrad
+            - try SmoothGrad?
+            - try coarse-grain clustering via thresholding maps?
         - DeepSTARR 3-way mutation figure reproduced --> test with crop mode
             - AP1-m0-seq13748
             - play GIF showing a chain of k-means clusters
@@ -34,7 +33,6 @@ TODO:
             - repeat all slides from first SCQB presentation
                 - splitting modes in function histogram
                 - all_maps_average_y_adaptive.png / all_maps_average_y_fixed.png
-
         - REVO? BEAM?
         - ChromBPNet
             - Promoter
@@ -82,30 +80,7 @@ Documentation:
     - screenshot of GUI at bottom of Colab, run Colabs/scripts to save outputs first
     - add ICLR link to README when available
     - show example kwargs for each attribution method in ReadTheDocs: PCA with plot_eigenvalues, etc.
-
-
-- Attributer:
-    - ISM: 
-        - method to apply ISM only on region of interest
-        - error running 100,000 sequences with 16 batch size in global
-            - Attribution:   0%|          | 0/6250 [00:00<?, ?it/s]GPU implementation failed with error: {{function_node __wrapped__TensorScatterUpdate_device_/job:localhost/replica:0/task:0/device:GPU:0}} Outer dimensions of indices and update must match. Indices shape: [32,1], updates shape:[1] [Op:TensorScatterUpdate] name: 
-        - check if the sequence has been used anywhere else (in any other batch)
-        - Batch_size check against memory?
-        - once everything is fixed up, check UMAP of global AP1 library
-    - Refactor DeepSHAP code for newer TF versions
-        - DeepSHAP for TF2: dinuc_shuffle, etc. in batch mode with GPUs
-        - pytorch version?
-        - no longer need sequence_utils.py?
-        - dinuc shuffling vs training set
-    - option to use PyTorch / import Captum
-    - Global tests (CPU/GPU):
-        - intgrad: yes / yes
-            - zeros: yes
-            - random: NO --> worked for local in examples folder maybe? maybe a gpu problem?
-            - dinuc: NO --> see above
-        - deepshap: NO / NO
-    - Plot each map within a given int grad trajectory
-    - Are compute(), process_batch(), and compute_attributions() actually necessary?
+    - read through and verify API in ReadTheDocs
 
 
 - Compiler:
@@ -119,6 +94,27 @@ Documentation:
     - remove redundant sequences (in general) and after concat with SNV/DNV; or check if it’s already in the code (or put it there in compile)
     - ensembler() to combine model folds?
     - GIA scores in Compiler
+
+
+- Attributer:
+    - ISM: 
+        - method to apply ISM only on region of interest
+        - error running 100,000 sequences with 16 batch size in global
+            - Attribution:   0%|          | 0/6250 [00:00<?, ?it/s]GPU implementation failed with error: {{function_node __wrapped__TensorScatterUpdate_device_/job:localhost/replica:0/task:0/device:GPU:0}} Outer dimensions of indices and update must match. Indices shape: [32,1], updates shape:[1] [Op:TensorScatterUpdate] name: 
+        - check if the sequence has been used anywhere else (in any other batch)
+        - Batch_size check against memory?
+        - once everything is fixed up, check UMAP of global AP1 library
+    - DeepSHAP
+        - Refactor DeepSHAP code for newer TF versions
+        - DeepSHAP for TF2: dinuc_shuffle, etc. in batch mode with GPUs
+        - pytorch version?
+        - no longer need sequence_utils.py?
+        - dinuc shuffling vs training set option
+    - option to use PyTorch / import Captum
+    - IntGrad
+        - Plot each map within a given int grad trajectory
+        - Test that dinuc_shuffle is able to call the numpy version of batch_dinuc_shuffle
+        - baseline_type=None for pre-generated baseline? (e.g., training set)
 
 
 - Clusterer:
@@ -148,7 +144,6 @@ Documentation:
         - currently: background_entropy = entropy([null_rate, (1-null_rate)/3, (1-null_rate)/3, (1-null_rate)/3], base=2)
 
 
-
 - Identifier:
     - code to combine TFBS states based on squares in covariance matrix
         - use more complicated locus: Ohler6-m0-seq171
@@ -164,7 +159,7 @@ Documentation:
     - move all plotting code to impress.py?
         - plot_dendrogram
         - minimize other redundancies between functions in identifier.py and clusterer.py
-        - etc.
+    - add Bokeh plots for colab
 
 
 - GUI Class:
