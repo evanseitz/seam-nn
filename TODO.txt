@@ -21,6 +21,7 @@ TODO:
     - note that DeepSHAP takes about an hour for 100,000 sequences (DeepSTARR), so other methods used in examples
     - update deepstarr_local.rst to mirror most recent Colab
     - one global example using GIA coloring
+    - PCA/K-means version of 'Local library to annotate all TFBSs and biophysical states'
     - both:
         - DeepSTARR mismatch figure reproduced (index 22612; Dev) with SNVs,DNVs
             - color logos by reference sequence
@@ -75,9 +76,7 @@ Documentation:
     - API figure (use squid as template)
     - Check all readthedocs pages for accuracy
     - https://pypi.org/project/seam-nn/ pictures not loading correctly? also check all text
-    - pypi icon showing older seam version?
     - add note to all about use of DeepSHAP in paper vs others for examples
-    - screenshot of GUI at bottom of Colab, run Colabs/scripts to save outputs first
     - add ICLR link to README when available
     - show example kwargs for each attribution method in ReadTheDocs: PCA with plot_eigenvalues, etc.
     - read through and verify API in ReadTheDocs

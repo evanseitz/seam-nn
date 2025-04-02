@@ -65,12 +65,6 @@ SEAM provides a simple interface that takes as input a sequence-based oracle (e.
 	- DeepSTARR: Enhancer 20647 (Fig.2a)
 	- Local library with 30k sequences and 10% mutation rate | Integrated gradients; hierarchical clustering
     - Expected run time: **~3.2 minutes** on Colab A100 GPU
-- TODO: Local library augmented with SNV and DNV libraries to map evolvability of mechanisms
-	- DeepSTARR: Enhancer 22612 (Fig.2b)
-	- Local library with 30,000 sequences and 10% mutation rate
-	- SNV and DNV library with 77,029 sequences
-	- Integrated gradients; PCA with K-Means clustering
-	- Expected run time: **~TODO** minutes
 - [Local library to reveal low-affinity motifs using background separation](https://colab.research.google.com/drive/1lkcLYMyVMYPh3ARzYjI-gJjh69PK9COt?usp=sharing)
 	- DeepSTARR: Enhancer 4071 (Fig.TBD)
 	- Local library with 60k sequences and 10% mutation rate | Integrated gradients; hierarchical clustering
@@ -96,7 +90,7 @@ SEAM provides a simple interface that takes as input a sequence-based oracle (e.
 	- Global library with 100k sequences | Integrated gradients; UMAP with K-Means clustering
 	- Expected run time: **~3.9 minutes** on Colab A100 GPU
 
-**Python script examples** are provided in the `examples/` folder for locally running SEAM and exporting outputs to file. Additional dependencies for these examples may be required and outlined at the top of each script.
+**Python script examples** are provided in the `examples` folder for locally running SEAM and exporting outputs to file. Additional dependencies for these examples may be required and outlined at the top of each script.
 
 ## GUI:
 A graphic user interface (GUI) is available for dynamically interpretting SEAM results. The GUI can be run using the command line interface from the `seam` folder via `python seam_gui.py`. The SEAM GUI requires pre-computed inputs that can be saved using the example scripts above.
