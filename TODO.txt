@@ -23,17 +23,12 @@ TODO:
     - one global example using GIA coloring
     - PCA/K-means version of 'Local library to annotate all TFBSs and biophysical states'
     - both:
-        - DeepSTARR mismatch figure reproduced (index 22612; Dev) with SNVs,DNVs
-            - color logos by reference sequence
-            - try SmoothGrad?
-            - try coarse-grain clustering via thresholding maps?
-        - DeepSTARR 3-way mutation figure reproduced --> test with crop mode
-            - AP1-m0-seq13748
-            - play GIF showing a chain of k-means clusters
-            - compare to SQUID pairwise 
+        - put random seeds on all mut_generators and UMAPs
+        - DeepSTARR 3-way mutation figure reproduced
+            - compare to SQUID pairwise
             - repeat all slides from first SCQB presentation
-                - splitting modes in function histogram
                 - all_maps_average_y_adaptive.png / all_maps_average_y_fixed.png
+            - need section at end to dynamically understand MSM for a given cluster
         - REVO? BEAM?
         - ChromBPNet
             - Promoter
@@ -46,6 +41,10 @@ TODO:
     - local:
         - Replicate global Colabs into Python scripts
         - folder name specification: e.g., "kmeans_k200" for 200 clusters
+        - DeepSTARR mismatch figure reproduced (index 22612; Dev) with SNVs,DNVs
+            - color logos by reference sequence
+            - try SmoothGrad?
+            - try coarse-grain clustering via thresholding maps?
     - colab:
         - interactive MSM viewer
         - SpliceAI example
@@ -141,7 +140,8 @@ Documentation:
     - use marginal bar plots on the right side of the MSM figure
     - background_entropy currently only defined for 4 nucleotides; see latex equation
         - currently: background_entropy = entropy([null_rate, (1-null_rate)/3, (1-null_rate)/3, (1-null_rate)/3], base=2)
-
+    - plot_msm() needs xtick_spacing
+    - ability to plot a single row (cluster) of MSM, and given a position, view the nucleotide frequencies
 
 - Identifier:
     - code to combine TFBS states based on squares in covariance matrix

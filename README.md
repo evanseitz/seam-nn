@@ -59,12 +59,16 @@ SEAM provides a simple interface that takes as input a sequence-based oracle (e.
 
 **Google Colab examples** for applying SEAM on previously-published deep learning models are available at the links below.
 
-*Note: Due to memory requirements for calculating distance matrices, Colab Pro may be required for examples using hierarchical clustering at their current settings.*
+*Note: Due to memory requirements for calculating distance matrices, Colab Pro may be required for examples using hierarchical clustering with their current settings.*
 
 - [Local library to annotate all TFBSs and biophysical states](https://colab.research.google.com/drive/1HOM_ysa4HIh_ZoYzLwa4jZu4evyRntF7?usp=sharing)
 	- DeepSTARR: Enhancer 20647 (Fig.2a)
 	- Local library with 30k sequences and 10% mutation rate | Integrated gradients; hierarchical clustering
     - Expected run time: **~3.2 minutes** on Colab A100 GPU
+- [Local library to explore mechanism space of an enhancer TFBS](https://colab.research.google.com/drive/1JSDAJNdSNhLOVd2L8hcZXLocWz2iwycq?usp=sharing)
+	- DeepSTARR: Enhancer 13748 (Fig.1)
+	- Local library with 100k sequence and 10% mutation rate | Saliency maps; UMAP with K-Means clustering
+	- Expected run time: **~ minutes** on Colab T4 GPU
 - [Local library to reveal low-affinity motifs using background separation](https://colab.research.google.com/drive/1lkcLYMyVMYPh3ARzYjI-gJjh69PK9COt?usp=sharing)
 	- DeepSTARR: Enhancer 4071 (Fig.TBD)
 	- Local library with 60k sequences and 10% mutation rate | Integrated gradients; hierarchical clustering
