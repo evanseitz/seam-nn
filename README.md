@@ -96,8 +96,12 @@ SEAM provides a simple interface that takes as input a sequence-based oracle (e.
 	- Global library with 100k sequences | Integrated gradients; UMAP with K-Means clustering
 	- Expected run time: **~3.9 minutes** on Colab A100 GPU
 
-
 **Python script examples** are provided in the `examples/` folder for locally running SEAM and exporting outputs to file. Additional dependencies for these examples may be required and outlined at the top of each script.
+
+## GUI:
+A graphic user interface (GUI) is available for dynamically interpretting SEAM results. The GUI can be run using the command line interface from the \seam folder via `python seam_gui.py`. The SEAM GUI requires inputs that can be pre-computed using the example scripts above.
+
+<img src="https://raw.githubusercontent.com/evanseitz/seam-nn/main/docs/_static/seam_gui.png" alt="fig" width="800"/>
 
 ## Citation:
 If this code is useful in your work, please cite our paper.
