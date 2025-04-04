@@ -442,7 +442,7 @@ if render_logos is True:
     else:
         ref_cluster = ref_index
 
-    # Compare reference map with and without noise reduction andbackground separation
+    # Compare reference map with and without noise reduction and background separation
     # Reference logo
     fig, ax = reference_logo.draw_single(
         0,

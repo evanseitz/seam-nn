@@ -706,37 +706,51 @@ class MetaExplainer:
             'label': 'Percent mismatch' if column == 'Reference' else 'Percent match'
         }
 
-    def generate_logos(self, logo_type='average', background_separation=False, 
-                      mut_rate=0.01, entropy_multiplier=0.5,
-                      figsize=(20, 2.5), batch_size=50, font_name='sans',
-                      stack_order='big_on_top', center_values=True, 
-                      color_scheme='classic'):
+    def generate_logos(self, logo_type='average', background_separation=False,
+                       mut_rate=0.01, entropy_multiplier=0.5, adaptive_background_scaling=False, 
+                       figsize=(20, 2.5), batch_size=50, font_name='sans', stack_order='big_on_top',
+                       center_values=True, color_scheme='classic'):
         """Generate sequence or attribution logos for each cluster.
+        
+        This method creates visualization logos that represent either the average attribution
+        patterns or sequence patterns within each cluster. It can optionally remove background
+        signal to highlight cluster-specific patterns.
         
         Parameters
         ----------
-        logo_type : {'average', 'pwm', 'enrichment'} to specify type of logo to generate.
-            - 'average': average attribution maps
-            - 'pwm': position frequency matrix (based on sequence statistics)
-            - 'enrichment': enrichment relative to background frequencies (based on sequence statistics)
+        logo_type : {'average', 'pwm', 'enrichment'}, default='average'
+            Type of logo to generate:
+            - 'average': Shows average attribution values (based on attribution maps)
+            - 'pwm': Shows position weight matrix of nucleotide frequencies (based on sequence statistics)
+            - 'enrichment': Shows nucleotide enrichment relative to background (based on sequence statistics)
         background_separation : bool, default=False
-            Whether to separate background signal from logos.
-            Uses entropy-based background computation focused on highly variable positions.
+            Whether to remove background signal from logos. Only applies to 'average' logos.
+            When True, subtracts the background pattern computed by compute_background(),
+            forcused on highly variable positions.
         mut_rate : float, default=0.01
-            Mutation rate for background entropy calculation when background_separation=True.
+            Mutation rate for background entropy calculation. Only used if 
+            background_separation=True.
         entropy_multiplier : float, default=0.5
-            Factor to multiply background entropy by for threshold when background_separation=True.
+            Controls stringency of background position identification via a multiplier on the background entropy.
+            Only used if background_separation=True.
+        adaptive_background_scaling : bool, default=False
+            If True and background_separation=True, uniformly scales the background pattern
+            differently for each cluster based on the magnitude of its background signal.
+            This is useful when clusters have similar background patterns but at
+            different scales.
         figsize : tuple, default=(20, 2.5)
-            Figure size in inches.
+            Figure size in inches (width, height).
         batch_size : int, default=50
             Number of logos to process in each batch.
         font_name : str, default='sans'
             Font name for logo text.
         stack_order : {'big_on_top', 'small_on_top', 'fixed'}, default='big_on_top'
-            Order to stack characters in each position.
+            How to order nucleotides in each stack:
+            - 'big_on_top': Largest values on top
+            - 'small_on_top': Smallest values on top
+            - 'fixed': Fixed order (A, C, G, T)
         center_values : bool, default=True
-            Whether to center values in each position. Only applies to 'average' logo type.
-            Automatically set to False for 'pwm' and 'enrichment' logos.
+            Whether to center values in each position. Only applies to 'average' logos.
         color_scheme : str or dict, default='classic'
             Color scheme for logo characters.
         """
@@ -746,7 +760,7 @@ class MetaExplainer:
         # Compute background if needed
         if background_separation and logo_type == 'average':
             if not hasattr(self, 'background'):
-                self.compute_background(mut_rate, entropy_multiplier)
+                self.compute_background(mut_rate, entropy_multiplier, adaptive_background_scaling)
         
         # For enrichment logos, compute background PFM if not already done
         if logo_type == 'enrichment' and not hasattr(self, 'background_pfm'):
@@ -757,14 +771,15 @@ class MetaExplainer:
         
         # Get cluster matrices
         cluster_matrices = []
-        for k in tqdm(cluster_order, desc='Generating matrices'):
+        for i, k in enumerate(tqdm(cluster_order, desc='Generating matrices')):
             k_idxs = self.mave['Cluster'] == k
             seqs_k = self.mave.loc[k_idxs, 'Sequence']
             
             if logo_type == 'average':
                 maps_avg = np.mean(self.attributions[k_idxs], axis=0)
                 if background_separation:
-                    maps_avg -= self.background
+                    # Always use background_scaling (will be 1s if adaptive scaling is disabled)
+                    maps_avg -= self.background_scaling[i] * self.background
                 cluster_matrices.append(maps_avg)
                 
             elif logo_type in ['pwm', 'enrichment']:
@@ -904,15 +919,35 @@ class MetaExplainer:
             else:
                 plt.show()
 
-    def compute_background(self, mut_rate=0.01, entropy_multiplier=0.5):
+    def compute_background(self, mut_rate=0.01, entropy_multiplier=0.5, adaptive_background_scaling=False):
         """Compute background signal based on entropic positions.
+        
+        This method identifies and computes background signal patterns for each cluster
+        based on positions with high entropy (high variability). The background can be
+        computed either uniformly across all clusters or with cluster-specific scaling.
         
         Parameters
         ----------
         mut_rate : float, default=0.01
-            Mutation rate used to calculate background entropy threshold
+            Mutation rate used to calculate background entropy threshold. Higher values
+            will identify more positions as entropic.
         entropy_multiplier : float, default=0.5
-            Factor to multiply background entropy by for threshold
+            Factor to multiply background entropy by for threshold. Lower values make
+            the threshold more stringent (fewer positions identified as entropic).
+        adaptive_background_scaling : bool, default=False
+            If True, computes a scaling factor for each cluster that best matches the
+            magnitude of that cluster's background signal. This is useful when different
+            clusters have similar background patterns but at different scales. If False,
+            uses the same background scale for all clusters.
+            
+        Notes
+        -----
+        The background computation process:
+        1. Identifies entropic (highly variable) positions in each cluster
+        2. Computes the average attribution pattern at these positions
+        3. If adaptive_background_scaling is True, computes a scaling factor for each
+           cluster based on positions that are entropic in both that cluster and the
+           global background
         """
         # Calculate background entropy threshold
         null_rate = 1 - mut_rate
@@ -945,9 +980,28 @@ class MetaExplainer:
                     cluster_background[idx, ep, :] += child[ep, :]
             cluster_background[idx] /= len(child_maps)
         
-        # Store both cluster backgrounds and their average
+        # Store cluster backgrounds and compute global background
         self.cluster_backgrounds = cluster_background
         self.background = np.mean(cluster_background, axis=0)
+        
+        # Initialize background scaling factors
+        background_scaling = np.ones(len(self.cluster_backgrounds))
+        
+        # Compute cluster-specific scaling factors if requested
+        if adaptive_background_scaling:
+            for i in range(len(self.cluster_backgrounds)):
+                cluster_bg = self.cluster_backgrounds[i]
+                # Get positions that have signal in both cluster and global background
+                entropic_mask = np.any(cluster_bg != 0, axis=1)  # True for positions that were entropic in this cluster
+                global_mask = np.any(self.background != 0, axis=1)  # True for positions that were entropic in any cluster
+                valid_positions = entropic_mask & global_mask  # Only use positions that were entropic in both
+                
+                # Compute scaling using only valid positions
+                if np.any(valid_positions):
+                    alpha = np.sum(np.abs(cluster_bg[valid_positions])) / np.sum(np.abs(self.background[valid_positions]))
+                    background_scaling[i] = alpha
+        
+        self.background_scaling = background_scaling
         
         # Create BatchLogo instance for backgrounds
         self.background_logos = BatchLogo(

@@ -306,7 +306,13 @@ class Clusterer:
                 D = (D + D.T) / 2  # matrix may be antisymmetric due to precision errors
                 if return_flat:
                     D = squareform(D)
-                os.remove(dist_fname)  # Clean up temporary file
+                
+                # Clean up temporary file
+                try:
+                    os.remove(dist_fname)  
+                except FileNotFoundError:
+                    pass
+                
             except ImportError:
                 print("TensorFlow not available. Falling back to CPU implementation.")
                 D_flat = self._compute_distances_cpu()

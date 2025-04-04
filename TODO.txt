@@ -1,13 +1,26 @@
 TODO:
 
 - paper:
+    - Background analysis (DeepSTARR):
+        - compute backgrounds and related data for subset (or all) of test set
+            - subset: stratify by prediction (50 for each quartile)
+        - for a given attribution method:
+            - find backgrounds that are maximally different across sequences
+            - find sequences with the max difference between their cluster avg and background separated cluster avg across test set
+            - cluster backgrounds into embedded space from task=0 and 1
+                - possibly crop and align backgrounds before embedding
+                - if that doesn't work, perform k-mer spectra analysis (Yagi's code)
+        - calculate SNR: WT cluster map - WT map (could try L2 norm) for saliency --> how different are they
+            - re-compute this metric to compare to other attribution methods (each also compared to saliency)
+                - e.g., L2(SmoothGrad - Saliency) for Signal - Noise
+                - or L2(SmoothGrad) / L2(SmoothGrad - Saliency)
+                - try SmoothGrad, IntGrad, DeepSHAP, SQUID (?)
+            - compare across different number of clusters: 1, 10, 25, 50, 100
+        - calculate SBR (signal-to-background ratio) via (WT cluster map - BG) vs. BG
+            - could also quantify average background amplitude vs foreground amplitude across clusters
+        - do sequences with the same TFBSs have similar backgrounds?
+
     - Variability logo metric and make box plot (CLIPNET)
-    - Bg analysis in task 0 vs task 1 across entire test set
-        - Compare BG to other attribution methods (SQUID, etc.) --> show pairwise?
-        - Background amplitude vs foreground (SNR?)
-        - stratify by prediction (50 for each quartile)
-        - Bg height vs avg TF max height across clusters
-        - Kmer spectra on backgrounds - yagi?
     - Redo Fig.2 RHS with SNV and pairwise (cropped mutagenesis)
         - 278,632 maps... poses problem for memory --> need to implement mutation window for CombinatorialMutagenesis
             - cropped mutagenesis (mut_window=[80,210]) brings number down to 77,029
@@ -21,14 +34,16 @@ TODO:
     - note that DeepSHAP takes about an hour for 100,000 sequences (DeepSTARR), so other methods used in examples
     - update deepstarr_local.rst to mirror most recent Colab
     - one global example using GIA coloring
-    - PCA/K-means version of 'Local library to annotate all TFBSs and biophysical states'
+    - PCA/K-means version of 'Local library to annotate all TFBSs and biophysical states
+    - UMAP n_components=3 and view for last deepstarr Colab
     - both:
-        - put random seeds on all mut_generators and UMAPs
+        - put random seeds on all mut_generators and rerun
         - DeepSTARR 3-way mutation figure reproduced
             - compare to SQUID pairwise
             - repeat all slides from first SCQB presentation
                 - all_maps_average_y_adaptive.png / all_maps_average_y_fixed.png
             - need section at end to dynamically understand MSM for a given cluster
+            - fix UMAP random_state, or use PHATE?
         - REVO? BEAM?
         - ChromBPNet
             - Promoter
@@ -42,6 +57,7 @@ TODO:
         - Replicate global Colabs into Python scripts
         - folder name specification: e.g., "kmeans_k200" for 200 clusters
         - DeepSTARR mismatch figure reproduced (index 22612; Dev) with SNVs,DNVs
+            - do local first to find background, then run SNV/DNV and remove background?
             - color logos by reference sequence
             - try SmoothGrad?
             - try coarse-grain clustering via thresholding maps?
@@ -124,7 +140,8 @@ Documentation:
     - reuse DM distance matrix for clustering?
     - add Louvain (or Leiden) clustering
     - hierarchical vs embedding discrepancy:
-        - hieararhical doesn't take method as hyperparam: clusterer = Clusterer(attributions,gpu=gpu) 
+        - hieararhical doesn't take method as hyperparam: clusterer = Clusterer(attributions,gpu=gpu)
+    - Does hierarchical cpu not run out of memory when gpu does? Is the memmap problematic? 
 
 
 - MetaExplainer:
@@ -152,6 +169,11 @@ Documentation:
     - background_entropy currently only defined for 4 nucleotides
     - calculate expected effect for each cluster? (change in y-value from WT cluster)
     - fix state matrix bug (multiplier > 1?)
+
+- Logos:
+    - inconsistency between figsize and fig_size
+        - meta.generate_logos((20, 2.5), ...)
+        - BatchLogo(fig_size=[20, 2.5], ...)
 
 
 - Impress:
@@ -237,6 +259,9 @@ Documentation:
         - SEAM denoised cluster (on saliency) vs all other methods
     - Figure revisions:
         - Illustrator attribution y-axes in Myriad: change to Arial, and add middle notch
+    - Run local library just to get out background, then remove from DNVs
+    - Choose number of clusters based on the average IQR of median predictions per cluster?
+    - Example to show local library finds soft syntax ruled like pairwise + wildcard 
 
 
 - Sharing:
