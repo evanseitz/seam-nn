@@ -28,6 +28,7 @@ TODO:
         - Sup fig for covariance matrices (take out of Figure 2)
     - New sup fig from combined Fig. 5 leftovers (AP-1 global, etc.)
     - Table of computation times
+    - Library composition schematics
 
 
 - examples
@@ -173,7 +174,7 @@ Documentation:
 - Logos:
     - inconsistency between figsize and fig_size
         - meta.generate_logos((20, 2.5), ...)
-        - BatchLogo(fig_size=[20, 2.5], ...)
+        - BatchLogo(fig_size=[20, 2.5], ...) --> change to figsize, which is the SEAM way.
 
 
 - Impress:
@@ -261,7 +262,8 @@ Documentation:
         - Illustrator attribution y-axes in Myriad: change to Arial, and add middle notch
     - Run local library just to get out background, then remove from DNVs
     - Choose number of clusters based on the average IQR of median predictions per cluster?
-    - Example to show local library finds soft syntax ruled like pairwise + wildcard 
+    - Example to show local library finds soft syntax ruled like pairwise + wildcard
+    - cite the DREAM paper (same BG over different architectures)
 
 
 - Sharing:
