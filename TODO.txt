@@ -19,6 +19,10 @@ TODO:
         - calculate SBR (signal-to-background ratio) via (WT cluster map - BG) vs. BG
             - could also quantify average background amplitude vs foreground amplitude across clusters
         - do sequences with the same TFBSs have similar backgrounds?
+        - do lower-prediction sequences have lower-prediction overall BG amplitudes?
+        - non-uniform scaling of BG for exotic cases:
+            - 5870_0: Background amplitude colocalizes around motif hubs. Compare clusters 24-25 with 26-27.
+                - Regions of the fixed background become more important depending on the position of motifs
 
     - Variability logo metric and make box plot (CLIPNET)
     - Redo Fig.2 RHS with SNV and pairwise (cropped mutagenesis)
@@ -32,11 +36,12 @@ TODO:
 
 
 - examples
+    - example for figure 1 should also mention all supplementary figures associated with it (Covariance, etc.)
+    - add batch_size=5000 to all linkage=cluster.cluster()
     - note that DeepSHAP takes about an hour for 100,000 sequences (DeepSTARR), so other methods used in examples
     - update deepstarr_local.rst to mirror most recent Colab
     - one global example using GIA coloring
     - PCA/K-means version of 'Local library to annotate all TFBSs and biophysical states
-    - UMAP n_components=3 and view for last deepstarr Colab
     - both:
         - put random seeds on all mut_generators and rerun
         - DeepSTARR 3-way mutation figure reproduced
@@ -44,7 +49,6 @@ TODO:
             - repeat all slides from first SCQB presentation
                 - all_maps_average_y_adaptive.png / all_maps_average_y_fixed.png
             - need section at end to dynamically understand MSM for a given cluster
-            - fix UMAP random_state, or use PHATE?
         - REVO? BEAM?
         - ChromBPNet
             - Promoter
@@ -56,6 +60,7 @@ TODO:
             - background
     - local:
         - Replicate global Colabs into Python scripts
+        - add adaptive_background_scaling to examples
         - folder name specification: e.g., "kmeans_k200" for 200 clusters
         - DeepSTARR mismatch figure reproduced (index 22612; Dev) with SNVs,DNVs
             - do local first to find background, then run SNV/DNV and remove background?
@@ -112,24 +117,27 @@ Documentation:
 
 
 - Attributer:
-    - ISM: 
-        - method to apply ISM only on region of interest
-        - error running 100,000 sequences with 16 batch size in global
-            - Attribution:   0%|          | 0/6250 [00:00<?, ?it/s]GPU implementation failed with error: {{function_node __wrapped__TensorScatterUpdate_device_/job:localhost/replica:0/task:0/device:GPU:0}} Outer dimensions of indices and update must match. Indices shape: [32,1], updates shape:[1] [Op:TensorScatterUpdate] name: 
-        - check if the sequence has been used anywhere else (in any other batch)
-        - Batch_size check against memory?
-        - once everything is fixed up, check UMAP of global AP1 library
-    - DeepSHAP
-        - Refactor DeepSHAP code for newer TF versions
-        - DeepSHAP for TF2: dinuc_shuffle, etc. in batch mode with GPUs
-        - pytorch version?
-        - no longer need sequence_utils.py?
-        - dinuc shuffling vs training set option
     - option to use PyTorch / import Captum
-    - IntGrad
-        - Plot each map within a given int grad trajectory
-        - Test that dinuc_shuffle is able to call the numpy version of batch_dinuc_shuffle
-        - baseline_type=None for pre-generated baseline? (e.g., training set)
+    - Methods:
+        - ISM: 
+            - method to apply ISM only on region of interest
+            - error running 100,000 sequences with 16 batch size in global
+                - Attribution:   0%|          | 0/6250 [00:00<?, ?it/s]GPU implementation failed with error: {{function_node __wrapped__TensorScatterUpdate_device_/job:localhost/replica:0/task:0/device:GPU:0}} Outer dimensions of indices and update must match. Indices shape: [32,1], updates shape:[1] [Op:TensorScatterUpdate] name: 
+            - check if the sequence has been used anywhere else (in any other batch)
+            - Batch_size check against memory?
+            - once everything is fixed up, check UMAP of global AP1 library
+            - tf.experimental.autotune for batches?
+        - DeepSHAP
+            - add old TF1 version
+            - Refactor DeepSHAP code for newer TF versions
+            - DeepSHAP for TF2: dinuc_shuffle, etc. in batch mode with GPUs
+            - pytorch version?
+            - no longer need sequence_utils.py?
+            - dinuc shuffling vs training set option
+        - IntGrad
+            - Plot each map within a given int grad trajectory
+            - Test that dinuc_shuffle is able to call the numpy version of batch_dinuc_shuffle
+            - baseline_type=None for pre-generated baseline? (e.g., training set)
 
 
 - Clusterer:
@@ -264,6 +272,10 @@ Documentation:
     - Choose number of clusters based on the average IQR of median predictions per cluster?
     - Example to show local library finds soft syntax ruled like pairwise + wildcard
     - cite the DREAM paper (same BG over different architectures)
+    - reminder that SEAM is on simplex
+    - Methods: cpu and gpu optimized
+    - Methods: add activity calculation from state matrix (continuous)
+
 
 
 - Sharing:
@@ -293,6 +305,8 @@ Documentation:
             - TFBS clusters
         - poised?
     - evolutionary graph
+    - automating across genome:
+        - increase cut level until no zero-entropy rows in MSM
 
 
 - Zenodo:

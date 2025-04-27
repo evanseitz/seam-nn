@@ -68,7 +68,7 @@ SEAM provides a simple interface that takes as input a sequence-based oracle (e.
 - [Local library to explore mechanism space of an enhancer TFBS](https://colab.research.google.com/drive/1JSDAJNdSNhLOVd2L8hcZXLocWz2iwycq?usp=sharing)
 	- DeepSTARR: Enhancer 13748 (Fig.1)
 	- Local library with 100k sequence and 10% mutation rate | Saliency maps; UMAP with K-Means clustering
-	- Expected run time: **~ minutes** on Colab T4 GPU
+	- Expected run time: **~3.9minutes** on Colab A100 GPU
 - [Local library to reveal low-affinity motifs using background separation](https://colab.research.google.com/drive/1lkcLYMyVMYPh3ARzYjI-gJjh69PK9COt?usp=sharing)
 	- DeepSTARR: Enhancer 4071 (Fig.TBD)
 	- Local library with 60k sequences and 10% mutation rate | Integrated gradients; hierarchical clustering

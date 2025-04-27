@@ -21,7 +21,7 @@ setup(
     python_requires=">=3.7.2",
     install_requires=[
         'numpy',
-        'matplotlib>=3.2.0',
+        'matplotlib==3.6.0',
         'pandas',
         'tqdm',
         'psutil',
