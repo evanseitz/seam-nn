@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="seam-nn",
-    version="0.5.2",
+    version="0.5.4",
     author="Evan Seitz",
     author_email="evan.e.seitz@gmail.com",
     description="SEAM: Meta-explanations for interpreting sequence-based deep learning models",
@@ -21,7 +21,7 @@ setup(
     python_requires=">=3.7.2",
     install_requires=[
         'numpy',
-        'matplotlib==3.6.0',
+        'matplotlib>=3.6.0',
         'pandas',
         'tqdm',
         'psutil',

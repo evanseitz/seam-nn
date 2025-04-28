@@ -19,7 +19,7 @@ Core Dependencies:
 ~~~~~~~~~~~~~~~~
 
 * numpy
-* matplotlib >= 3.2.0
+* matplotlib >= 3.6.0
 * pandas
 * tqdm
 * psutil

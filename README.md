@@ -65,14 +65,14 @@ SEAM provides a simple interface that takes as input a sequence-based oracle (e.
 	- DeepSTARR: Enhancer 20647 (Fig.2a)
 	- Local library with 30k sequences and 10% mutation rate | Integrated gradients; hierarchical clustering
     - Expected run time: **~3.2 minutes** on Colab A100 GPU
+- [Local library to reveal low-affinity motifs using background separation](https://colab.research.google.com/drive/1lkcLYMyVMYPh3ARzYjI-gJjh69PK9COt?usp=sharing)
+	- DeepSTARR: Enhancer 5353 (Fig.TBD)
+	- Local library with 60k sequences and 10% mutation rate | Integrated gradients; hierarchical clustering
+    - Expected run time: **~8.5 minutes** on Colab A100 GPU
 - [Local library to explore mechanism space of an enhancer TFBS](https://colab.research.google.com/drive/1JSDAJNdSNhLOVd2L8hcZXLocWz2iwycq?usp=sharing)
 	- DeepSTARR: Enhancer 13748 (Fig.1)
 	- Local library with 100k sequence and 10% mutation rate | Saliency maps; UMAP with K-Means clustering
 	- Expected run time: **~3.9 minutes** on Colab A100 GPU
-- [Local library to reveal low-affinity motifs using background separation](https://colab.research.google.com/drive/1lkcLYMyVMYPh3ARzYjI-gJjh69PK9COt?usp=sharing)
-	- DeepSTARR: Enhancer 4071 (Fig.TBD)
-	- Local library with 60k sequences and 10% mutation rate | Integrated gradients; hierarchical clustering
-    - Expected run time: **~9.3 minutes** on Colab A100 GPU
 - [Combinatorial-complete library with empirical mutagenesis maps](https://colab.research.google.com/drive/1IWzjJtKzZCCvN1vndHalThLhPL6AsPEa?usp=sharing)
 	- PBM: Zfp187 (Fig.TBD)
 	- Combinatorial-complete library with 65,536 sequences | ISM; Hierarchical clustering

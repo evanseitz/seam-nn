@@ -101,6 +101,7 @@ Documentation:
     - add ICLR link to README when available
     - show example kwargs for each attribution method in ReadTheDocs: PCA with plot_eigenvalues, etc.
     - read through and verify API in ReadTheDocs
+    - make sure requirements and installation are consistent with setup.py 
 
 
 - Compiler:
@@ -193,6 +194,7 @@ Documentation:
 
 
 - GUI Class:
+    - GUI requires 'matplotlib==3.6.0', which is in conflict with scipy dendrogram plot
     - update for latest repository
         - new logomaker (remove old logo versions)
     - if adaptive logos not pre-generated, automatically show fixed
