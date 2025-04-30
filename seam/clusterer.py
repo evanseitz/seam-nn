@@ -47,15 +47,34 @@ def _check_phate_available():
         )
     return phate
 
-def _check_tsne_available():
-    try:
-        from openTSNE import TSNE
-    except ImportError:
-        raise ImportError(
-            "t-SNE requires the 'openTSNE' package. "
-            "Install it with: pip install openTSNE"
-        )
-    return TSNE
+def _check_tsne_available(gpu=False):
+    """Check if t-SNE is available, optionally checking for GPU support.
+    
+    Args:
+        gpu: Whether to check for GPU-accelerated t-SNE (default: False)
+    
+    Returns:
+        TSNE class from either cuml.manifold (if gpu=True) or openTSNE.sklearn
+    """
+    if gpu:
+        try:
+            from cuml.manifold import TSNE
+            return TSNE
+        except ImportError:
+            print("cuml not available. Falling back to CPU implementation.")
+            print("For GPU acceleration, install cuml via conda:")
+            print("conda install -c rapidsai -c conda-forge -c nvidia cuml cuda-version=11.8")
+            gpu = False
+    
+    if not gpu:
+        try:
+            from openTSNE.sklearn import TSNE
+            return TSNE
+        except ImportError:
+            raise ImportError(
+                "t-SNE is required for this functionality. "
+                "Install it with: pip install openTSNE"
+            )
 
 def _check_sklearn_available():
     try:
@@ -192,9 +211,61 @@ class Clusterer:
         return phate_op.fit_transform(self.maps)
     
     def _embed_tsne(self, **kwargs):
-        """Compute t-SNE embedding."""
-        TSNE = _check_tsne_available()
-        tsne = TSNE(**kwargs)
+        """Compute t-SNE embedding with optional GPU acceleration.
+        
+        Args:
+            **kwargs: Additional parameters for t-SNE
+                For GPU (cuML) version:
+                    method: str, 'fft', 'barnes_hut', or 'exact' (default: 'fft')
+                    learning_rate_method: str, 'adaptive', 'none', or None (default: 'adaptive')
+                    n_neighbors: int (default: 90)
+                    perplexity_max_iter: int (default: 100)
+                    exaggeration_iter: int (default: 250)
+                    pre_momentum: float (default: 0.5)
+                    post_momentum: float (default: 0.8)
+                    square_distances: bool (default: True)
+                For CPU (openTSNE) version:
+                    perplexity: float (default: 30)
+                    learning_rate: float (default: 'auto')
+                    early_exaggeration: float (default: 'auto')
+                    n_iter: int (default: 500)
+        """
+        TSNE = _check_tsne_available(self.gpu)
+        print(f"Using {'GPU' if self.gpu else 'CPU'} t-SNE")
+        
+        # Set default parameters based on GPU/CPU version
+        if self.gpu:
+            # cuML defaults
+            default_params = {
+                'n_components': 2,
+                'perplexity': 30.0,
+                'early_exaggeration': 12.0,
+                'late_exaggeration': 1.0,
+                'learning_rate': 200.0,
+                'n_iter': 1000,
+                'method': 'fft',
+                'learning_rate_method': 'adaptive',
+                'n_neighbors': 90,
+                'perplexity_max_iter': 100,
+                'exaggeration_iter': 250,
+                'pre_momentum': 0.5,
+                'post_momentum': 0.8,
+                'square_distances': True
+            }
+        else:
+            # openTSNE defaults
+            default_params = {
+                'n_components': 2,
+                'perplexity': 30,
+                'learning_rate': 'auto',
+                'early_exaggeration': 'auto',
+                'n_iter': 500
+            }
+        
+        # Update defaults with user-provided parameters
+        params = {**default_params, **kwargs}
+        
+        tsne = TSNE(**params)
         return tsne.fit_transform(self.maps)
     
     def _embed_pca(self, plot_eigenvalues=False, view_dims=None, xtick_spacing=5, figsize=None, save_path=None, dpi=200, file_format='png', **kwargs):

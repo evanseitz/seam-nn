@@ -37,7 +37,6 @@ TODO:
 
 - examples
     - example for figure 1 should also mention all supplementary figures associated with it (Covariance, etc.)
-    - add batch_size=5000 to all linkage=cluster.cluster()
     - note that DeepSHAP takes about an hour for 100,000 sequences (DeepSTARR), so other methods used in examples
     - update deepstarr_local.rst to mirror most recent Colab
     - one global example using GIA coloring
@@ -143,7 +142,7 @@ Documentation:
 
 - Clusterer:
     - implement other methods from cuml.manifold?
-        - tsne GPU
+        - tsne CPU, GPU
         - pca GPU
     - phate GPU?
     - add diffusion maps code
