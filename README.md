@@ -12,7 +12,9 @@ SEAM: systematic explanation of attribution-based mechanisms for regulatory geno
 	<img src="https://raw.githubusercontent.com/evanseitz/seam-nn/main/docs/_static/seam_logo_dark.png#gh-dark-mode-only" width="250" height="250">
 </p>
 
-**SEAM** (**S**ystematic **E**xplanation of **A**ttribution-based for **M**echanisms) is a Python suite to use meta-explanations to interpret sequence-based deep learning models for regulatory genomics data. For installation instructions, tutorials, and documentation, please refer to the SEAM website, https://seam-nn.readthedocs.io/. For an extended discussion of this approach and its applications, please refer to our manuscript which we presented at the [ICLR 2025](https://iclr.cc/) [GEM Workshop](https://www.gembio.ai/):
+**SEAM** (**S**ystematic **E**xplanation of **A**ttribution-based for **M**echanisms) is a Python suite to use meta-explanations to interpret sequence-based deep learning models for regulatory genomics data. For installation instructions, tutorials, and documentation, please refer to the SEAM website, https://seam-nn.readthedocs.io/.
+
+For an extended discussion of this approach and its applications, please refer to our manuscript, which we presented at the [ICLR 2025](https://iclr.cc/) [GEM Workshop](https://www.gembio.ai/):
 
 * Seitz, E.E., McCandlish, D.M., Kinney, J.B., and Koo P.K. Decoding the Mechanistic Impact of Genetic Variation on Regulatory Sequences with Deep Learning. *Workshop on Generative and Experimental Perspectives for Biomolecular Design*, *International Conference on Learning Representations*, April 15, 2025. https://openreview.net/forum?id=PtjMeyHcTt
 
