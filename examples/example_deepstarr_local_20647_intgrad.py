@@ -31,6 +31,12 @@ if 1: # Use this for local install (must 'pip uninstall seam' first)
 from seam import Compiler, Attributer, Clusterer, MetaExplainer, Identifier
 from seam.logomaker_batch.batch_logo import BatchLogo
 
+# Create assets_deepstarr folder if it doesn't exist
+py_dir = os.path.dirname(os.path.abspath(__file__))
+assets_dir = os.path.join(py_dir, 'assets_deepstarr')
+if not os.path.exists(assets_dir):
+    os.makedirs(assets_dir)
+
 '''
 print(sys.version) # 3.10.12
 print(tf.__version__) # 2.16.1
@@ -68,7 +74,6 @@ load_previous_linkage = False # Whether to load previously-generated linkage mat
 # Initial setup based on user settings
 # =============================================================================
 if save_data:# or load_previous_library or load_previous_attributions or load_previous_linkage:
-    py_dir = os.path.dirname(os.path.abspath(__file__))
     save_path = os.path.join(py_dir, f'outputs_deepstarr_local_{seq_index}_{attribution_method}')
     if not os.path.exists(save_path):
         os.makedirs(save_path)
@@ -114,14 +119,15 @@ files = {
     'deepstarr_data.h5': 'https://www.dropbox.com/scl/fi/cya4ntqk2o8yftxql52lu/deepstarr_data.h5?rlkey=5ly363vqjb3vaw2euw2dhsjo3&st=6eod6fg8&dl=1'
 }
 
-# Download files
+# Download files to assets_deepstarr folder
 for filename, url in files.items():
-    download_if_not_exists(url, filename)
+    filepath = os.path.join(assets_dir, filename)
+    download_if_not_exists(url, filepath)
 
-keras_model_weights = 'deepstarr.model.h5'
-keras_model_json = 'deepstarr.model.json'
+keras_model_weights = os.path.join(assets_dir, 'deepstarr.model.h5')
+keras_model_json = os.path.join(assets_dir, 'deepstarr.model.json')
 
-with h5py.File('deepstarr_data.h5', 'r') as dataset:
+with h5py.File(os.path.join(assets_dir, 'deepstarr_data.h5'), 'r') as dataset:
     X_test = np.array(dataset['x_test']).astype(np.float32)
 
 # TODO: replace above with zenodo wget
@@ -239,7 +245,11 @@ if load_previous_attributions is False:
 if render_logos is True:
     reference_logo = BatchLogo(attributions[ref_index:ref_index+1],
         alphabet=alphabet,
-        fig_size=[20,2.5],
+        font_name='Arial Rounded MT Bold',
+        fade_below=0.5,
+        shade_below=0.5,
+        width=0.9,
+        figsize=[20,2.5],
         center_values=True,
         batch_size=1
     )
@@ -374,7 +384,10 @@ if render_logos is True:
 
     meta_logos = meta.generate_logos(logo_type=logo_type,
         background_separation=False,
-        font_name='sans',
+        font_name='Arial Rounded MT Bold',
+        fade_below=0.5,
+        shade_below=0.5,
+        width=0.9,
         center_values=True
     )
 
@@ -390,7 +403,7 @@ if render_logos is True:
         fig, ax = meta_logos.draw_single(
             cluster_index,
             fixed_ylim=True, # fixed y-axis limits as defined over all cluster-averaged logos
-            fig_size=(10, 2.5),
+            figsize=(10, 2.5),
             border=False,
             view_window=view_window
         )
@@ -402,7 +415,7 @@ if render_logos is True:
 
     # Generate variability logo, representing the overlap of all averaged cluster logos
     fig, ax = meta_logos.draw_variability_logo(
-        fig_size=(10,2.5),
+        figsize=(10,2.5),
         view_window=view_window
     )
     if save_logos:
@@ -431,6 +444,10 @@ background_multiplier = 0.5  # default threshold factor for background separatio
 meta_logos_no_bg = meta.generate_logos(
     logo_type='average',
     background_separation=True,
+    font_name='Arial Rounded MT Bold',
+    fade_below=0.5,
+    shade_below=0.5,
+    width=0.9,
     mut_rate=mut_rate,
     entropy_multiplier=background_multiplier,
     figsize=(20, 2.5)
@@ -447,7 +464,7 @@ if render_logos is True:
     fig, ax = reference_logo.draw_single(
         0,
         fixed_ylim=False,
-        fig_size=(10,2.5),
+        figsize=(10, 2.5),
         border=False,
         view_window=view_window
         )
@@ -461,7 +478,7 @@ if render_logos is True:
     fig, ax = meta_logos.draw_single(
         ref_cluster,
         fixed_ylim=False,
-        fig_size=(10,2.5),
+        figsize=(10,2.5),
         border=False,
         view_window=view_window
         )
@@ -475,7 +492,7 @@ if render_logos is True:
     fig, ax = meta_logos_no_bg.draw_single(
         ref_cluster,
         fixed_ylim=False,
-        fig_size=(10,2.5),
+        figsize=(10,2.5),
         border=False,
         view_window=view_window
         )
@@ -599,7 +616,7 @@ if render_logos is True:
         fig, ax = meta_logos_no_bg.draw_single(
             cluster_index,
             fixed_ylim=True,
-            fig_size=(10, 2.5),
+            figsize=(10, 2.5),
             border=False,
             view_window=view_window,
             highlight_ranges=active_positions if active_positions else None,
@@ -613,7 +630,7 @@ if render_logos is True:
 
     # Generate background-separated variability logo
     fig, ax = meta_logos_no_bg.draw_variability_logo(
-        fig_size=(10,2.5),
+        figsize=(10,2.5),
         view_window=view_window
     )
     if save_logos:
@@ -627,11 +644,7 @@ if render_logos is True:
 # =============================================================================
 if delete_downloads:
     print("Cleaning up downloaded files...")
-    for filename in files.keys():
-        if os.path.exists(filename):
-            os.remove(filename)
-            print(f"Deleted {filename}")
-
-
-
-
+    if os.path.exists(assets_dir):
+        import shutil
+        shutil.rmtree(assets_dir)
+        print(f"Deleted {assets_dir} directory and all contents")

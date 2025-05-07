@@ -189,7 +189,6 @@ class Attributer:
             scores.append(tf.reduce_mean(grad, axis=0))
         return np.stack(scores, axis=0)
 
-    @tf.function(jit_compile=True)
     def _smoothgrad_gpu(self, X, num_samples=50, mean=0.0, stddev=0.1):
         """GPU-optimized implementation with parallel noise generation."""
         X = tf.cast(X, dtype=tf.float32)
@@ -985,7 +984,7 @@ class Attributer:
                 print("\n" + "-"*50)
 
     @staticmethod
-    @tf.function(jit_compile=True)
+    @tf.function
     def _batch_dinuc_shuffle_gpu(sequence: tf.Tensor, num_shuffles: int = 1, seed: Optional[int] = None) -> tf.Tensor:
         """Generate multiple dinucleotide-preserved shuffles using TensorFlow ops.
         

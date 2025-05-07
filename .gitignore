@@ -109,24 +109,14 @@ ENV/
 
 # hide models used for testing
 seam/deepshap_tf2_batch/testing/deepstarr_assets
-examples/deepstarr_data.h5
-examples/deepstarr.model.h5
-examples/deepstarr.model.json
 
+examples/assets_deepstarr
 examples/outputs_deepstarr_local_20647_intgrad
 
-examples/Zfp187_2626_contig8mers.txt
-examples/outputs_pbm_combinatorial_zfp187
-examples/Hnf4a_2640_contig8mers.txt
-examples/outputs_pbm_combinatorial_hnf4a
+examples/assets_chrombpnet
 
-examples/test_attributions
-examples/outputs_deepstarr_test_attributions
-examples/example_deepstarr_local_20647_deepshap.py
-examples/outputs_deepstarr_local_20647_deepshap
-examples/example_deepstarr_local_dnv_22612_deepshap.py
-examples/outputs_deepstarr_local_dnv_22612_deepshap
-examples/example_deepstarr_snv_20647_deepshap.py
-examples/outputs_deepstarr_snv_20647_deepshap
+examples/assets_pbm
+examples/outputs_pbm_combinatorial_zfp187
+examples/outputs_pbm_combinatorial_hnf4a
 
 examples_manuscript

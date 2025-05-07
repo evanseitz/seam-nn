@@ -709,7 +709,8 @@ class MetaExplainer:
     def generate_logos(self, logo_type='average', background_separation=False,
                        mut_rate=0.01, entropy_multiplier=0.5, adaptive_background_scaling=False, 
                        figsize=(20, 2.5), batch_size=50, font_name='sans', stack_order='big_on_top',
-                       center_values=True, color_scheme='classic'):
+                       center_values=True, color_scheme='classic', font_weight=None, fade_below=0.5,
+                       shade_below=0.5, width=0.9):
         """Generate sequence or attribution logos for each cluster.
         
         This method creates visualization logos that represent either the average attribution
@@ -753,6 +754,14 @@ class MetaExplainer:
             Whether to center values in each position. Only applies to 'average' logos.
         color_scheme : str or dict, default='classic'
             Color scheme for logo characters.
+        font_weight : str or int, optional
+            Font weight for logo text. Can be string ('normal', 'bold', etc.) or numeric (0-1000).
+        fade_below : float, default=0.5
+            Controls alpha transparency for negative values. Higher values make negative values more transparent.
+        shade_below : float, default=0.5
+            Controls color darkening for negative values. Higher values make negative values darker.
+        width : float, default=0.9
+            Controls the horizontal width of each character.
         """
         # Get sorted cluster order using class attribute
         cluster_order = self.get_cluster_order(sort_method=self.sort_method)
@@ -843,7 +852,11 @@ class MetaExplainer:
             stack_order=stack_order,
             center_values=center_values,
             y_min_max=y_min_max,
-            color_scheme=color_scheme
+            color_scheme=color_scheme,
+            font_weight=font_weight,
+            fade_below=fade_below,
+            shade_below=shade_below,
+            width=width
         )
         batch_logos.process_all()
         

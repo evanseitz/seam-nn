@@ -16,6 +16,9 @@ Tested using:
     - SEAM 0.4.3
 """
 
+# TODO: make assets_pbm folder and move all downloaded files there
+
+
 import os, sys, time
 import numpy as np
 import matplotlib.pyplot as plt
@@ -28,6 +31,12 @@ from itertools import product
 if 1: # Use this for local install (must 'pip uninstall seam' first)
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) # TODO: turn this off
 from seam import Compiler, Attributer, Clusterer, MetaExplainer
+
+# Create assets_pbm folder if it doesn't exist
+py_dir = os.path.dirname(os.path.abspath(__file__))
+assets_dir = os.path.join(py_dir, 'assets_pbm')
+if not os.path.exists(assets_dir):
+    os.makedirs(assets_dir)
 
 '''
 print(sys.version) # 3.10.12
@@ -48,6 +57,7 @@ render_logos = True # Whether to render sequence logos (Boolean)
 save_logos = True # Whether to save sequence logos (Boolean)
 dpi = 200 # DPI for saved figures
 save_data = True # Whether to save output data (Boolean)
+delete_downloads = False # Whether to delete downloaded files after use (Boolean)
 
 load_previous_library = False # Whether to load previously-generated x_mut and y_mut (Boolean)
 load_previous_attributions = False # Whether to load previously-generated attribution maps (Boolean)
@@ -94,12 +104,19 @@ if load_previous_library is False:
     if protein == 'zfp187': # e-score replicates in columns 3 and 6
         # Data accessed (2024): http://the_brain.bwh.harvard.edu/uniprobe/details2.php?id=82
         file_id = '1dPJEHggnPLVhi9kpHSha5PXZKSO2tMxZ'
-        output = 'Zfp187_2626_contig8mers.txt'
+        output = os.path.join(assets_dir, 'Zfp187_2626_contig8mers.txt')
     elif protein == 'hnf4a': # e-score replicates in columns 3 and 6
         # Data accessed (2024): http://the_brain.bwh.harvard.edu/uniprobe/details2.php?id=66
         file_id = '1shZPti6-YACz3BvvDJ_FsRjx4IazQROF'
-        output = 'Hnf4a_2640_contig8mers.txt'
-    gdown.download(id=file_id, output=output, quiet=True)
+        output = os.path.join(assets_dir, 'Hnf4a_2640_contig8mers.txt')
+    
+    # Download file if it doesn't exist in assets_pbm
+    if not os.path.exists(output):
+        print(f"Downloading {output}...")
+        gdown.download(id=file_id, output=output, quiet=True)
+    else:
+        print(f"Using existing {output}")
+        
     df = pd.read_csv(output, delimiter='\t', header=None)
 
     # Convert PBM data to sequence-function library
@@ -337,7 +354,10 @@ if render_logos is True:
 
     meta_logos = meta.generate_logos(logo_type=logo_type,
         background_separation=False,
-        font_name='sans',
+        font_name='Arial Rounded MT Bold',
+        fade_below=0.5,
+        shade_below=0.5,
+        width=0.9,
         center_values=True
     )
 
@@ -353,7 +373,7 @@ if render_logos is True:
         fig, ax = meta_logos.draw_single(
             cluster_index,
             fixed_ylim=True, # fixed y-axis limits as defined over all cluster-averaged logos
-            fig_size=(10, 5),
+            figsize=(10, 5),
             border=False,
         )
         if save_logos:
@@ -361,3 +381,13 @@ if render_logos is True:
             plt.close()
         else:
             plt.show()
+
+# =============================================================================
+# Clean up downloaded files if requested
+# =============================================================================
+if delete_downloads:
+    print("Cleaning up downloaded files...")
+    if os.path.exists(assets_dir):
+        import shutil
+        shutil.rmtree(assets_dir)
+        print(f"Deleted {assets_dir} directory and all contents")

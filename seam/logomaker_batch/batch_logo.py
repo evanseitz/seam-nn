@@ -35,8 +35,9 @@ class BatchLogo:
     _path_cache = {}
     _m_path_cache = {}
     _transform_cache = {}
+    _font_cache = {}
     
-    def __init__(self, values, alphabet=None, fig_size=[10,2.5], batch_size=50, gpu=False, font_name='sans', y_min_max=None, **kwargs):
+    def __init__(self, values, alphabet=None, figsize=[10,2.5], batch_size=50, gpu=False, font_name='sans', y_min_max=None, **kwargs):
         """Initialize BatchLogo processor"""
         if gpu:
             print("Warning: GPU acceleration not yet implemented, falling back to CPU")
@@ -45,6 +46,7 @@ class BatchLogo:
         self._path_cache = {}
         self._m_path_cache = {}
         self._transform_cache = {}
+        self._font_cache = {}  # Reset font cache
 
         # Handle centering if requested
         center_values = kwargs.pop('center_values', False)
@@ -65,7 +67,7 @@ class BatchLogo:
         self.processed_logos = {}
         
         # Set figure size
-        self.figsize = fig_size
+        self.figsize = figsize
         
         # Get font name
         self.font_name = font_name
@@ -98,9 +100,13 @@ class BatchLogo:
         self.y_min_max = y_min_max
 
     def _get_font_props(self):
-        """Get cached font properties"""
+        """Get cached font properties with fallback to sans if font not found"""
         if self.font_name not in self._font_cache:
-            self._font_cache[self.font_name] = fm.FontProperties(family=self.font_name)
+            try:
+                self._font_cache[self.font_name] = fm.FontProperties(family=self.font_name)
+            except:
+                print(f"Warning: Font '{self.font_name}' not found, falling back to 'sans'")
+                self._font_cache[self.font_name] = fm.FontProperties(family='sans')
         return self._font_cache[self.font_name]
 
     def process_all(self):
@@ -121,7 +127,7 @@ class BatchLogo:
         batch_timing = {}
         with TimingContext('batch_total', batch_timing):
             # Create font properties once
-            font_prop = fm.FontProperties(family=self.font_name)
+            font_prop = self._get_font_props()
             
             # Pre-compute paths and their extents
             if not self._path_cache:
@@ -193,12 +199,25 @@ class BatchLogo:
                                         self._m_path_cache['extents'].width
                                     )
                                     
+                                    # Apply fade and shade effects for negative values
+                                    alpha = self.kwargs['alpha']
+                                    if value < 0:
+                                        alpha *= (1 - self.kwargs['fade_below'])
+                                        if self.kwargs['shade_below'] > 0:
+                                            color = self.rgb_dict[char]
+                                            # Darken the color by shade_below amount
+                                            color = tuple(c * (1 - self.kwargs['shade_below']) for c in color)
+                                        else:
+                                            color = self.rgb_dict[char]
+                                    else:
+                                        color = self.rgb_dict[char]
+                                    
                                     glyph_data.append({
                                         'path': transformed_path,
-                                        'color': self.rgb_dict[char],
+                                        'color': color,
                                         'edgecolor': 'none',
                                         'edgewidth': 0,
-                                        'alpha': self.kwargs['alpha'],
+                                        'alpha': alpha,
                                         'floor': floor,
                                         'ceiling': ceiling
                                     })
@@ -259,7 +278,7 @@ class BatchLogo:
         plt.tight_layout()
         return fig, axes
     
-    def draw_single(self, idx, fixed_ylim=True, view_window=None, fig_size=None, 
+    def draw_single(self, idx, fixed_ylim=True, view_window=None, figsize=None, 
                     highlight_ranges=None, highlight_colors=None, highlight_alpha=0.5,
                     border=True):
         """Draw a single logo
@@ -272,7 +291,7 @@ class BatchLogo:
             Whether to use same y-axis limits across all logos
         view_window : list or tuple, optional
             [start, end] positions to view. If None, show entire logo
-        fig_size : tuple, optional
+        figsize : tuple, optional
             Figure size in inches. If None, use size from initialization
         highlight_ranges : list of tuple/list, optional
             Either [(start,stop), ...] for continuous ranges
@@ -289,7 +308,7 @@ class BatchLogo:
         if idx not in self.processed_logos:
             raise ValueError(f"Logo {idx} has not been processed yet. Run process_all() first.")
         
-        fig, ax = plt.subplots(figsize=fig_size if fig_size is not None else self.figsize)
+        fig, ax = plt.subplots(figsize=figsize if figsize is not None else self.figsize)
         self._draw_single_logo(ax, self.processed_logos[idx], fixed_ylim=fixed_ylim, border=border)
         
         # Add highlighting if specified
@@ -402,9 +421,11 @@ class BatchLogo:
             'vsep': 0.0,
             'alpha': 1.0,
             'vpad': 0.0,
-            'width': 1.0,
+            'width': 0.9,
             'flip_below': True,
             'color_scheme': 'classic',
+            'fade_below': 0.5,
+            'shade_below': 0.5, 
         }
 
     def _get_ordered_indices(self, values):
@@ -466,14 +487,14 @@ class BatchLogo:
         # For each position, subtract the mean of that position
         return values - values.mean(axis=-1, keepdims=True)
 
-    def draw_variability_logo(self, view_window=None, fig_size=None):
+    def draw_variability_logo(self, view_window=None, figsize=None):
         """Draw a variability logo showing all glyphs from all clusters overlaid at each position.
         
         Parameters
         ----------
         view_window : list or tuple, optional
             [start, end] positions to view. If None, show entire logo
-        fig_size : tuple, optional
+        figsize : tuple, optional
             Figure size in inches. If None, use size from initialization
         """
         # Process all glyphs into logo_data
@@ -539,7 +560,7 @@ class BatchLogo:
                             })
                             floor = ceiling + self.kwargs['vsep']
         
-        fig, ax = plt.subplots(figsize=fig_size if fig_size is not None else self.figsize)
+        fig, ax = plt.subplots(figsize=figsize if figsize is not None else self.figsize)
         self._draw_single_logo(ax, logo_data, fixed_ylim=True)
         
         if view_window is not None:

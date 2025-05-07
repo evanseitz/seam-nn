@@ -70,6 +70,7 @@ TODO:
         - interactive MSM viewer
         - SpliceAI example
         - change one of the examples to use PCA instead of hierarchical?
+        - update all colab examples: font_name='Arial Rounded MT Bold', fade_below=0.5, shade_below=0.5, width=0.9
 
 
 - plotting:
@@ -178,12 +179,12 @@ Documentation:
     - background_entropy currently only defined for 4 nucleotides
     - calculate expected effect for each cluster? (change in y-value from WT cluster)
     - fix state matrix bug (multiplier > 1?)
+    - add percent mismatches table and printouts from old code
 
 - Logos:
     - inconsistency between figsize and fig_size
         - meta.generate_logos((20, 2.5), ...)
         - BatchLogo(fig_size=[20, 2.5], ...) --> change to figsize, which is the SEAM way.
-
 
 - Impress:
     - move all plotting code to impress.py?
@@ -235,6 +236,9 @@ Documentation:
     - Update P3 UMAP when Custom.plt_step is changed on P2 (needs to update Predef.cluster_colors)
     - New tab to merge clusters and label them (e.g., AP-1, etc)
         - Visualize state vs. TFBS presence graph
+
+- Old code:
+    - speed up all processes with new backend, and add readme
 
 
 - Other:

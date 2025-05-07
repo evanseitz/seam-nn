@@ -7,7 +7,7 @@ from .error_handling import check, handle_errors
 from .matrix import ALPHABET_DICT
 from .validate import validate_matrix
 
-def __init__(self, values, alphabet=None, fig_size=[10,2.5], batch_size=10, gpu=False, **kwargs):
+def __init__(self, values, alphabet=None, figsize=[10,2.5], batch_size=10, gpu=False, **kwargs):
     # Initialize class-level caches if they don't exist
     if not hasattr(BatchLogo, '_path_cache'):
         BatchLogo._path_cache = {}
