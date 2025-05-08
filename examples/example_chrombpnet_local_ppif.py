@@ -1,5 +1,5 @@
 """
-# SEAM example of local library using ChromBPNet to analyze PPIF enhancer and promoter
+# SEAM example of local library using ChromBPNet to analyze PPIF foreground and background signals at human enhancers and promoters
 
 Model:
     - ChromBPNet

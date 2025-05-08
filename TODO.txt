@@ -33,6 +33,7 @@ TODO:
     - New sup fig from combined Fig. 5 leftovers (AP-1 global, etc.)
     - Table of computation times
     - Library composition schematics
+    - MAVE-NN pairwise on Galaxy GPU to analyze PPIF promoter background
 
 
 - examples
@@ -280,6 +281,8 @@ Documentation:
     - reminder that SEAM is on simplex
     - Methods: cpu and gpu optimized
     - Methods: add activity calculation from state matrix (continuous)
+    - Attribution methods discussion: saliency is spurious and can lead to suboptimal clustering (show PPIF background sfig); tradeoff speed vs accuracy (larger memory); additivity
+    - Related works section: slides, TF-Modisco, SmoothGrad
 
 
 
@@ -312,6 +315,7 @@ Documentation:
     - evolutionary graph
     - automating across genome:
         - increase cut level until no zero-entropy rows in MSM
+    - local library across cell types
 
 
 - Zenodo:

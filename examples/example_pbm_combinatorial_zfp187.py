@@ -38,12 +38,6 @@ assets_dir = os.path.join(py_dir, 'assets_pbm')
 if not os.path.exists(assets_dir):
     os.makedirs(assets_dir)
 
-'''
-print(sys.version) # 3.10.12
-print(tf.__version__) # 2.16.1
-print(np.__version__) # 1.26.1
-print(seam.__version__) # 0.4.3
-'''
 
 # =============================================================================
 # Overhead user settings

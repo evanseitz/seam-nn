@@ -75,7 +75,7 @@ SEAM provides a simple interface that takes as input a sequence-based oracle (e.
 	- Local library with 60k sequences and 10% mutation rate | Integrated gradients; hierarchical clustering
     - Expected run time: **~8.5 minutes** on Colab A100 GPU
 - [Local library to explore mechanism space of an enhancer TFBS](https://colab.research.google.com/drive/1JSDAJNdSNhLOVd2L8hcZXLocWz2iwycq?usp=sharing)
-	- DeepSTARR: Enhancer 13748 (Fig.1)
+	- DeepSTARR: Enhancer 13748 (SFig.TBD)
 	- Local library with 100k sequence and 10% mutation rate | Saliency maps; UMAP with K-Means clustering
 	- Expected run time: **~3.9 minutes** on Colab A100 GPU
 - [Combinatorial-complete library with empirical mutagenesis maps](https://colab.research.google.com/drive/1IWzjJtKzZCCvN1vndHalThLhPL6AsPEa?usp=sharing)
@@ -99,7 +99,14 @@ SEAM provides a simple interface that takes as input a sequence-based oracle (e.
 	- Global library with 100k sequences | Integrated gradients; UMAP with K-Means clustering
 	- Expected run time: **~3.9 minutes** on Colab A100 GPU
 
-**Python script examples** are provided in the `examples` folder for locally running SEAM and exporting outputs to file. Additional dependencies for these examples may be required and outlined at the top of each script.
+**Python script examples** are provided in the `examples` folder for locally running SEAM and exporting outputs to file. Some of these examples include models that are not compatible with the latest libraries supported by Google Colab, including:
+
+- [Local library to analyze foreground and background signals at human promotors and enhancers](https://github.com/evanseitz/seam-nn/blob/main/examples/example_chrombpnet_local_ppif.py)
+	- ChromBPNet: PPIF promoter/enhancer (Fig.3)
+	- Local library with 100k sequences and 10% mutation rate | Integrated gradients; hierarchical clustering
+
+Additional dependencies for these Python examples may be required and outlined at the top of each script.
+
 
 ## SEAM Interactive Interpretability Tool:
 A graphic user interface (GUI) is available for dynamically interpretting SEAM results. The GUI can be run using the command line interface from the `seam` folder via `python seam_gui.py`. The SEAM GUI requires pre-computed inputs that can be saved using the example scripts above.
