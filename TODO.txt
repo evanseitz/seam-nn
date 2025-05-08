@@ -121,14 +121,13 @@ Documentation:
 - Attributer:
     - option to use PyTorch / import Captum
     - Methods:
-        - ISM: 
-            - method to apply ISM only on region of interest
+        - ISM:
             - error running 100,000 sequences with 16 batch size in global
                 - Attribution:   0%|          | 0/6250 [00:00<?, ?it/s]GPU implementation failed with error: {{function_node __wrapped__TensorScatterUpdate_device_/job:localhost/replica:0/task:0/device:GPU:0}} Outer dimensions of indices and update must match. Indices shape: [32,1], updates shape:[1] [Op:TensorScatterUpdate] name: 
-            - check if the sequence has been used anywhere else (in any other batch)
-            - Batch_size check against memory?
+            - check if the sequence has been used anywhere else (in any other batch)... use memmap?
             - once everything is fixed up, check UMAP of global AP1 library
-            - tf.experimental.autotune for batches?
+            - automatically handle best batch_size (tf.experimental.autotune)?
+                - Batch_size check against memory
         - DeepSHAP
             - add old TF1 version
             - Refactor DeepSHAP code for newer TF versions

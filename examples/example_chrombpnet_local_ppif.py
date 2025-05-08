@@ -398,8 +398,9 @@ if load_previous_attributions is False:
         x=x_mut,
         x_ref=x_ref,
         save_window=None,
-        batch_size=32,
-        gpu=gpu
+        batch_size=16,
+        gpu=gpu,
+        snv_window=[map_start, map_end] # if using ISM, compute variants only at positions within the specified window
     )
     t2 = time.time() - t1
     print('Attribution time:', t2)
@@ -516,7 +517,7 @@ msm = meta.generate_msm(
 )
 
 # Plot MSM with different options
-view_window = None#[50,170]
+view_window = None
 
 meta.plot_msm(column='Entropy',
     square_cells=True,
@@ -590,7 +591,6 @@ if render_logos is True:
 meta.plot_attribution_variation(
     scope='clusters',  # {'all', 'clusters'}
     metric='std',  # {'std', 'var'}
-    #view_window=[0, 500],
     save_path=save_path_figs,
     dpi=dpi
 )
@@ -734,3 +734,7 @@ if render_logos is True:
         plt.close()
     else:
         plt.show()
+
+# Save average background data to numpy array
+if save_data:
+    np.save(os.path.join(save_path, 'average_background.npy'), meta.background)

@@ -337,13 +337,15 @@ class Attributer:
             return avg_grads * (X[0] - baseline[0])
         return avg_grads
     
-    def ism(self, X, log2fc=False, gpu=True):
+    def ism(self, X, log2fc=False, gpu=True, snv_window=None):
         """Compute In-Silico Mutagenesis attribution maps.
         
         Args:
             X: Input tensor of shape (batch_size, L, A)
             log2fc: Whether to compute log2 fold change instead of difference
             gpu: Whether to attempt GPU-optimized implementation
+            snv_window: Optional [start, end] positions to compute variants for.
+                       If None, compute for all positions.
         
         Returns:
             numpy.ndarray: Attribution maps of shape (batch_size, L, A)
@@ -351,61 +353,87 @@ class Attributer:
         try:
             if gpu:
                 try:
-                    return self._ism_gpu(X, log2fc)
+                    return self._ism_gpu(X, log2fc, snv_window)
                 except Exception as e:
                     print(f"GPU implementation failed with error: {str(e)}")
                     print("Falling back to CPU")
         except:
             print("GPU implementation failed, falling back to CPU")
-        return self._ism_cpu(X, log2fc)
+        return self._ism_cpu(X, log2fc, snv_window)
     
 
-    def _ism_cpu(self, X, log2fc=False):
+    def _ism_cpu(self, X, log2fc=False, snv_window=None):
         """CPU implementation of ISM."""
         X = X.astype(np.float32)  # Ensure float32
         scores = []
         
+        # Handle SNV window if provided
+        N, L, A = X.shape
+        if snv_window is not None:
+            start, end = snv_window
+            if start < 0 or end > L or start >= end:
+                raise ValueError(f"Invalid snv_window [{start}, {end}]. Must be within [0, {L}] and start < end")
+            window_length = end - start
+        else:
+            start, end = 0, L
+            window_length = L
+        
         # Pre-allocate mutation array for reuse
         mut_seq = np.zeros_like(X[0:1], dtype=np.float32)
         
-        # Add tqdm progress bar for sequences
         #for x in tqdm(X, desc="Computing ISM"):
         for x in X:
             x = x[np.newaxis]  # Faster than expand_dims
-            score_matrix = np.zeros_like(x[0], dtype=np.float32)
+            # Create score matrix for just the window
+            score_matrix = np.zeros((window_length, A), dtype=np.float32)
             
-            # Get wild-type prediction
+            # Get wild-type predictions
             wt_output = self.model(tf.constant(x, dtype=tf.float32))
-            if self.task_index is not None:
-                wt_output = wt_output[self.task_index]
-            
-            # Skip reduction if output is already scalar
-            if wt_output.shape.ndims == 1:
+            if isinstance(wt_output, list):
+                if self.task_index is not None:
+                    wt_output = wt_output[self.task_index]
+                wt_output = tf.convert_to_tensor(wt_output)
+                if wt_output.shape.ndims > 2:
+                    wt_output = tf.squeeze(wt_output)
                 wt_pred = float(wt_output)
             else:
-                wt_pred = float(self.func(wt_output))
+                if self.task_index is not None:
+                    wt_output = wt_output[self.task_index]
+                # Skip reduction if output is already scalar
+                if wt_output.shape.ndims == 1:
+                    wt_pred = float(wt_output)
+                else:
+                    wt_pred = float(self.func(wt_output))
             
             # Store all mutation predictions first
-            mut_preds = np.empty((x.shape[1] * (x.shape[2]-1)), dtype=np.float32)
+            mut_preds = np.empty((window_length * (A-1)), dtype=np.float32)
             mut_locs = []
             
             # Reuse pre-allocated array
             mut_seq[:] = x
             
             idx = 0
-            for pos in range(x.shape[1]):
-                for b in range(1, x.shape[2]):
+            for pos in range(start, end):
+                for b in range(1, A):
                     mut_seq[0, pos] = np.roll(x[0, pos], b)
                     new_base = np.where(mut_seq[0, pos] == 1)[0][0]
                     
                     mut_output = self.model(tf.constant(mut_seq))
-                    if self.task_index is not None:
-                        mut_output = mut_output[self.task_index]
-                    # Skip reduction if output is already scalar
-                    if mut_output.shape.ndims == 1:
+                    if isinstance(mut_output, list):
+                        if self.task_index is not None:
+                            mut_output = mut_output[self.task_index]
+                        mut_output = tf.convert_to_tensor(mut_output)
+                        if mut_output.shape.ndims > 2:
+                            mut_output = tf.squeeze(mut_output)
                         mut_preds[idx] = float(mut_output)
                     else:
-                        mut_preds[idx] = float(self.func(mut_output))
+                        if self.task_index is not None:
+                            mut_output = mut_output[self.task_index]
+                        # Skip reduction if output is already scalar
+                        if mut_output.shape.ndims == 1:
+                            mut_preds[idx] = float(mut_output)
+                        else:
+                            mut_preds[idx] = float(self.func(mut_output))
                     
                     mut_locs.append((pos, new_base))
                     idx += 1
@@ -421,17 +449,26 @@ class Attributer:
                 
                 for (pos, new_base), mut_pred in zip(mut_locs, mut_preds):
                     if mut_pred != wt_pred:
-                        score_matrix[pos, new_base] = np.log2(mut_pred + offset) - np.log2(wt_pred_adj)
+                        score_matrix[pos-start, new_base] = np.log2(mut_pred + offset) - np.log2(wt_pred_adj)
                     else:
-                        score_matrix[pos, new_base] = 0.
+                        score_matrix[pos-start, new_base] = 0.
             else:
                 for (pos, new_base), mut_pred in zip(mut_locs, mut_preds):
-                    score_matrix[pos, new_base] = mut_pred - wt_pred
+                    score_matrix[pos-start, new_base] = mut_pred - wt_pred
                         
             scores.append(score_matrix)
-        return np.stack(scores, axis=0)
+        
+        scores = np.stack(scores, axis=0)
+        
+        # If using SNV window, pad with zeros
+        if snv_window is not None:
+            full_scores = np.zeros((N, L, A), dtype=np.float32)
+            full_scores[:, start:end, :] = scores
+            scores = full_scores
+            
+        return scores
     
-    def _ism_gpu(self, X, log2fc=False):
+    def _ism_gpu(self, X, log2fc=False, snv_window=None):
         """GPU-accelerated implementation of In-Silico Mutagenesis.
         
         This implementation achieves significant speedup over the CPU version by:
@@ -446,38 +483,51 @@ class Attributer:
                L = sequence length
                A = alphabet size (typically 4 for DNA/RNA)
             log2fc: If True, compute log2 fold change instead of simple difference
-                   (not yet implemented for GPU version)
+            snv_window: Optional [start, end] positions to specifiy contiguous region over which variants are computed.
+                       If None, compute for all positions.
         
         Returns:
             numpy.ndarray: Attribution maps of shape (N, L, A) containing the effect
             of each possible mutation at each position.
         """
-
         # Convert input to tensor if needed
         if not isinstance(X, tf.Tensor):
             X = tf.convert_to_tensor(X, dtype=tf.float32)
         
         N, L, A = X.shape
-        mutations_per_seq = L * A
-        total_mutations = N * mutations_per_seq
+        
+        # Handle SNV window if provided
+        if snv_window is not None:
+            start, end = snv_window
+            if start < 0 or end > L or start >= end:
+                raise ValueError(f"Invalid snv_window [{start}, {end}]. Must be within [0, {L}] and start < end")
+            window_length = end - start
+            mutations_per_seq = window_length * A
+        else:
+            start, end = 0, L
+            window_length = L
+            mutations_per_seq = L * A
 
         # Generate all possible single-nucleotide mutations for each sequence
         # First, tile each input sequence
-        X_tiled = tf.repeat(X, L * A, axis=0)  # Shape: (N*L*A, L, A)
+        X_tiled = tf.repeat(X, mutations_per_seq, axis=0)  # Shape: (N*L*A, L, A)
 
         # Create position indices for mutations
-        pos_indices = tf.repeat(tf.range(L), A)  # Shape: (L*A,)
-        pos_indices = tf.tile(pos_indices, [N])  # Shape: (N*L*A,)
+        if snv_window is not None:
+            pos_indices = tf.repeat(tf.range(start, end), A)  # Shape: (window_length*A,)
+        else:
+            pos_indices = tf.repeat(tf.range(L), A)  # Shape: (L*A,)
+        pos_indices = tf.tile(pos_indices, [N])  # Shape: (N*window_length*A,)
 
         # Create base indices for mutations
-        base_indices = tf.tile(tf.range(A), [L])  # Shape: (L*A,)
-        base_indices = tf.tile(base_indices, [N])  # Shape: (N*L*A,)
+        base_indices = tf.tile(tf.range(A), [window_length])  # Shape: (window_length*A,)
+        base_indices = tf.tile(base_indices, [N])  # Shape: (N*window_length*A,)
 
         # Create update indices for scatter_nd
-        update_indices = tf.stack([tf.range(N * L * A), pos_indices], axis=1)
+        update_indices = tf.stack([tf.range(N * mutations_per_seq), pos_indices], axis=1)
 
         # Create one-hot vectors for mutations
-        mutation_vectors = tf.one_hot(base_indices, A)  # Shape: (N*L*A, A)
+        mutation_vectors = tf.one_hot(base_indices, A)  # Shape: (N*window_length*A, A)
 
         # Apply mutations using single scatter_nd operation
         all_mutations = tf.tensor_scatter_nd_update(
@@ -488,25 +538,30 @@ class Attributer:
 
         # Get wild-type predictions
         wt_preds = self.model(X)
-        if self.task_index is not None:
-            wt_preds = wt_preds[self.task_index]
         
-        # Skip map_fn if output is already scalar per sequence
-        if wt_preds.shape.ndims == 1:
-            wt_preds = wt_preds
-        else:
-            wt_preds = self.func(wt_preds)
-            
+        if isinstance(wt_preds, list):
+            if self.task_index is not None:
+                wt_preds = wt_preds[self.task_index]
+            wt_preds = tf.convert_to_tensor(wt_preds)
+            # Keep the batch dimension for list outputs
+            if wt_preds.shape.ndims > 2:
+                wt_preds = tf.squeeze(wt_preds)  # Remove extra dims but keep batch
+        elif self.task_index is not None:
+            wt_preds = wt_preds[self.task_index]
+            # For non-list outputs, use the reduction function if needed
+            if wt_preds.shape.ndims > 1:
+                wt_preds = self.func(wt_preds)
+                            
         # Find unique mutations
         flattened_mutations = tf.reshape(all_mutations, [-1, L * A])
         string_mutations = tf.strings.reduce_join(tf.strings.as_string(flattened_mutations), axis=1)
         unique_mutations, restore_indices = tf.unique(string_mutations)[0:2]
         num_unique = tf.shape(unique_mutations)[0]
-
+        
         # Get indices of first occurrences
         # Create a boolean mask for each unique value
         matches = tf.equal(restore_indices[:, tf.newaxis], tf.range(num_unique))
-        # Find the first True value for each unique mutation, with explicit int64 casting
+        # Find the first True value for each unique mutation
         matches = tf.cast(matches, tf.int64)  # Cast to int64 before argmax
         unique_indices = tf.argmax(matches, axis=0)
         unique_mutations = tf.gather(all_mutations, unique_indices)
@@ -515,17 +570,24 @@ class Attributer:
         # Pre-allocate a tensor for all predictions
         mut_preds = tf.zeros((num_unique,), dtype=tf.float32)
         
-        # Use range instead of tqdm to avoid cleanup issues
+        # Process unique mutations in batches
         for i in range(0, num_unique, self.batch_size):
             end_idx = min(i + self.batch_size, num_unique)
             batch = unique_mutations[i:end_idx]
             batch_preds = self.model(batch)
+            
             if self.task_index is not None:
                 batch_preds = batch_preds[self.task_index]
             
-            # If the output is already scalar per sequence, skip map_fn
-            if batch_preds.shape.ndims == 1:
-                reduced_preds = batch_preds
+            if isinstance(batch_preds, list):
+                reduced_preds = tf.convert_to_tensor(batch_preds)
+            elif hasattr(batch_preds, 'shape'):
+                if batch_preds.shape.ndims == 1:
+                    reduced_preds = batch_preds
+                elif batch_preds.shape[0] == end_idx - i:  # If first dim matches batch size
+                    reduced_preds = tf.squeeze(batch_preds)  # Remove extra dims but keep batch
+                else:
+                    reduced_preds = self.func(batch_preds)
             else:
                 reduced_preds = self.func(batch_preds)
             
@@ -543,17 +605,23 @@ class Attributer:
         mut_preds = tf.concat(mut_preds, axis=0)  # Shape: (num_unique,)
         
         # Create mapping from mutations back to their original sequences
-        sequence_indices = tf.repeat(tf.range(N), L * A)  # Shape: (N * L * A,)
+        sequence_indices = tf.repeat(tf.range(N), mutations_per_seq)  # Shape: (N * mutations_per_seq,)
+        
+        # Ensure mut_preds has correct shape for gathering
+        mut_preds = tf.reshape(mut_preds, [-1])  # Ensure 1D tensor #TODO: is the generalizable?
         
         # Restore predictions to full mutation set and get corresponding wild-types
-        full_mut_preds = tf.gather(mut_preds, restore_indices)  # Shape: (N * L * A,)
+        full_mut_preds = tf.gather(mut_preds, restore_indices)  # Shape: (N * L * A,)            
         wt_preds_for_mutations = tf.gather(wt_preds, sequence_indices)  # Shape: (N * L * A,)
+        # Handle both squeezed and unsqueezed wild-type predictions
+        if wt_preds_for_mutations.shape.ndims > 1:
+            wt_preds_for_mutations = tf.squeeze(wt_preds_for_mutations)  # Remove extra dimension if present
 
         if log2fc:
             # Reshape predictions to group by input sequence
-            mut_preds_per_seq = tf.reshape(full_mut_preds, [N, L * A])  # Shape: (N, L*A)
-            wt_preds_expanded = tf.repeat(wt_preds, L * A)  # Shape: (N * L * A,)
-            wt_preds_per_seq = tf.reshape(wt_preds_expanded, [N, L * A])  # Shape: (N, L*A)
+            mut_preds_per_seq = tf.reshape(full_mut_preds, [N, mutations_per_seq])  # Shape: (N, L*A)
+            wt_preds_expanded = tf.repeat(wt_preds, mutations_per_seq)  # Shape: (N * L * A,)
+            wt_preds_per_seq = tf.reshape(wt_preds_expanded, [N, mutations_per_seq])  # Shape: (N, L*A)
             
             # Calculate offset per sequence
             all_preds_per_seq = tf.concat([mut_preds_per_seq, wt_preds_per_seq[:, :1]], axis=1)  # Shape: (N, L*A + 1)
@@ -565,18 +633,31 @@ class Attributer:
             log2_wt = tf.math.log(wt_preds_per_seq + offsets) / tf.math.log(2.0)
             differences = tf.reshape(log2_mut - log2_wt, [-1])  # Back to shape: (N * L * A,)
         else:
-            differences = full_mut_preds - wt_preds_for_mutations
+            differences = full_mut_preds - wt_preds_for_mutations  # Shape: (N * L * A,)
 
-        attribution_maps = tf.reshape(differences, [N, L, A])
+        # Reshape to final attribution maps
+        attribution_maps = tf.reshape(differences, [N, window_length, A])
 
         # Create and apply wild-type mask
-        X_expanded = tf.repeat(X, L * A, axis=0)
-        X_expanded = tf.reshape(X_expanded, [N, L * A, L, A])
-        wt_mask = tf.reduce_all(tf.equal(tf.reshape(all_mutations, [N, L * A, L, A]), X_expanded), axis=[2, 3])
-        wt_mask = tf.reshape(wt_mask, [N, L, A])
+        X_expanded = tf.repeat(X, mutations_per_seq, axis=0)
+        X_expanded = tf.reshape(X_expanded, [N, mutations_per_seq, L, A])
+        wt_mask = tf.reduce_all(tf.equal(tf.reshape(all_mutations, [N, mutations_per_seq, L, A]), X_expanded), axis=[2, 3])
+        wt_mask = tf.reshape(wt_mask, [N, window_length, A])
 
         # Zero out positions where mutation matches wild-type
         attribution_maps = tf.where(wt_mask, tf.zeros_like(attribution_maps), attribution_maps)
+
+        # If using SNV window, pad with zeros
+        if snv_window is not None:
+            full_attribution_maps = tf.zeros([N, L, A], dtype=tf.float32)
+            full_attribution_maps = tf.tensor_scatter_nd_update(
+                full_attribution_maps,
+                tf.stack([tf.repeat(tf.range(N), window_length * A),
+                         tf.tile(tf.repeat(tf.range(start, end), A), [N]),
+                         tf.tile(tf.tile(tf.range(A), [window_length]), [N])], axis=1),
+                tf.reshape(attribution_maps, [-1])
+            )
+            attribution_maps = full_attribution_maps
 
         return attribution_maps.numpy()
     
@@ -777,6 +858,7 @@ class Attributer:
                 - mean, stddev: Parameters for smoothgrad noise
                 - multiply_by_inputs: Whether to multiply gradients by inputs (default: False)
                 - background: Background sequences for DeepSHAP (shape: (N, L, A))
+                - snv_window: Window [start, end] for ISM to compute variants (default: None)
         
         Returns:
             numpy.ndarray: Attribution maps (shape: (N, L, A))
@@ -856,7 +938,8 @@ class Attributer:
         elif self.method == 'ism':
             gpu = kwargs.get('gpu', self.gpu)
             log2fc = kwargs.get('log2fc', False)
-            batch_values = self.ism(x_batch, gpu=gpu, log2fc=log2fc)
+            snv_window = kwargs.get('snv_window', None)
+            batch_values = self.ism(x_batch, gpu=gpu, log2fc=log2fc, snv_window=snv_window)
 
         return batch_values
 
