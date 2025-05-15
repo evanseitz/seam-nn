@@ -55,7 +55,7 @@ Older DNNs that require inference via Tensorflow 1.x or related packages may be 
 1. Tensorflow 1.x environment for generating *in silico* sequence-function-mechanism dataset
 2. Tensorflow 2.x environment for applying SEAM to explain *in silico* sequence-function-mechanism dataset
 
-**Attribution Method Compatibility:** Saliency Maps, Integrated Gradients, SmoothGrad, and ISM are fully optimized for CPU/GPU acceleration and batch processing in modern TensorFlow 2. However, DeepSHAP implementations in this repository is not optimized for batch processing of SEAM's in silico mutagenesis library. DeepSHAP may also not be calibrated for several modern TF2 operations.
+**Attribution Method Compatibility:** Saliency Maps, Integrated Gradients, SmoothGrad, and ISM are fully optimized for CPU/GPU acceleration and batch processing in modern TensorFlow 2. However, DeepSHAP implementations in this repository (see `examples`) are not optimized for batch processing of SEAM's in silico mutagenesis library. DeepSHAP may also not be calibrated for several modern TF2 operations.
 
 ## Usage:
 SEAM provides a simple interface that takes as input a sequence-based oracle (e.g., a genomic DNN), which is used to generate an *in silico* sequence-function-mechanism dataset representing a localized region of sequence space. SEAM uses a meta-explanation framework to interpret the *in silico* sequence-function-mechanism dataset, deciphering the determinants of mechanistic variation in regulatory sequences.
