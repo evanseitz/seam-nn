@@ -111,7 +111,7 @@ Additional dependencies for these Python examples may be required and outlined a
 
 
 ## SEAM Interactive Interpretability Tool:
-A graphic user interface (GUI) is available for dynamically interpretting SEAM results. The GUI can be run using the command line interface from the `seam` folder via `python seam_gui.py`. The SEAM GUI requires pre-computed inputs that can be saved using the example scripts above.
+Interactive interpretability tools are currently under development and will be available in a future release. These tools will provide a graphic user interface (GUI) for dynamically interpreting SEAM results, allowing users to explore and analyze pre-computed inputs from the example scripts above.
 
 <img src="https://raw.githubusercontent.com/evanseitz/seam-nn/main/docs/_static/seam_gui.png" alt="fig" width="800"/>
 
