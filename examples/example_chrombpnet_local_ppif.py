@@ -280,8 +280,9 @@ class DeepSHAPAttributer:
                 
         except ImportError as e:
             error_msg = f"DeepSHAP requires additional packages. Error: {e}\n\n"
-            error_msg += "Please install the required packages:\n"
+            error_msg += "Please ensure the following packages are installed:\n"
             error_msg += "  pip install shap\n"
+            error_msg += "  pip install deeplift\n"
             error_msg += "  pip install kundajelab-shap\n"
             raise ImportError(error_msg)
         
