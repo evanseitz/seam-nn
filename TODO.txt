@@ -1,41 +1,5 @@
 TODO:
 
-- paper:
-    - Background analysis (DeepSTARR):
-        - compute backgrounds and related data for subset (or all) of test set
-            - subset: stratify by prediction (50 for each quartile)
-        - for a given attribution method:
-            - find backgrounds that are maximally different across sequences
-            - find sequences with the max difference between their cluster avg and background separated cluster avg across test set
-            - cluster backgrounds into embedded space from task=0 and 1
-                - possibly crop and align backgrounds before embedding
-                - if that doesn't work, perform k-mer spectra analysis (Yagi's code)
-        - calculate SNR: WT cluster map - WT map (could try L2 norm) for saliency --> how different are they
-            - re-compute this metric to compare to other attribution methods (each also compared to saliency)
-                - e.g., L2(SmoothGrad - Saliency) for Signal - Noise
-                - or L2(SmoothGrad) / L2(SmoothGrad - Saliency)
-                - try SmoothGrad, IntGrad, DeepSHAP, SQUID (?)
-            - compare across different number of clusters: 1, 10, 25, 50, 100
-        - calculate SBR (signal-to-background ratio) via (WT cluster map - BG) vs. BG
-            - could also quantify average background amplitude vs foreground amplitude across clusters
-        - do sequences with the same TFBSs have similar backgrounds?
-        - do lower-prediction sequences have lower-prediction overall BG amplitudes?
-        - non-uniform scaling of BG for exotic cases:
-            - 5870_0: Background amplitude colocalizes around motif hubs. Compare clusters 24-25 with 26-27.
-                - Regions of the fixed background become more important depending on the position of motifs
-
-    - Variability logo metric and make box plot (CLIPNET)
-    - Redo Fig.2 RHS with SNV and pairwise (cropped mutagenesis)
-        - 278,632 maps... poses problem for memory --> need to implement mutation window for CombinatorialMutagenesis
-            - cropped mutagenesis (mut_window=[80,210]) brings number down to 77,029
-            - then we can say later that pairwise for PIK3R3 was too much
-        - Sup fig for covariance matrices (take out of Figure 2)
-    - New sup fig from combined Fig. 5 leftovers (AP-1 global, etc.)
-    - Table of computation times
-    - Library composition schematics
-    - MAVE-NN pairwise on Galaxy GPU to analyze PPIF promoter background
-
-
 - examples
     - example for figure 1 should also mention all supplementary figures associated with it (Covariance, etc.)
     - note that DeepSHAP takes about an hour for 100,000 sequences (DeepSTARR), so other methods used in examples
@@ -60,16 +24,10 @@ TODO:
             - background
     - local:
         - Replicate global Colabs into Python scripts
-        - add adaptive_background_scaling to examples
         - folder name specification: e.g., "kmeans_k200" for 200 clusters
-        - DeepSTARR mismatch figure reproduced (index 22612; Dev) with SNVs,DNVs
-            - do local first to find background, then run SNV/DNV and remove background?
-            - color logos by reference sequence
-            - try SmoothGrad?
-            - try coarse-grain clustering via thresholding maps?
+        - SpliceAI example
     - colab:
         - interactive MSM viewer
-        - SpliceAI example
         - change one of the examples to use PCA instead of hierarchical?
         - update all colab examples: font_name='Arial Rounded MT Bold', fade_below=0.5, shade_below=0.5, width=0.9
 
@@ -86,11 +44,13 @@ TODO:
     - check why global seed is the only reason x_mut can be preserved
         - add option to input pre-generated x_mut
         - add option to skip inference (y_mut = None) -> is this already in place?
+    - backup SQUID Colabs on github
 
 
 - CLIPNET:
-    - Run on PIK3CA: 
-        - most commonly mutated proto-oncogene (mutated in 13% of cancers)
+    - Run on: 
+        - PIK3CA: 
+            - most commonly mutated proto-oncogene (mutated in 13% of cancers)
         - TERT
 
 
@@ -98,12 +58,11 @@ Documentation:
     - API figure (use squid as template)
     - Check all readthedocs pages for accuracy
     - https://pypi.org/project/seam-nn/ pictures not loading correctly? also check all text
-    - add note to all about use of DeepSHAP in paper vs others for examples
-    - add ICLR link to README when available
     - show example kwargs for each attribution method in ReadTheDocs: PCA with plot_eigenvalues, etc.
     - read through and verify API in ReadTheDocs
     - make sure requirements and installation are consistent with setup.py
-    - update all terms in the code to reflect those used in final manuscript (MSM --> SSM, etc.)
+    - update all terms in the backend code to reflect those used in final manuscript (MSM --> SSM, etc.)
+        - and in all examples
 
 
 - Compiler:
@@ -125,7 +84,7 @@ Documentation:
         - ISM:
             - error running 100,000 sequences with 16 batch size in global
                 - Attribution:   0%|          | 0/6250 [00:00<?, ?it/s]GPU implementation failed with error: {{function_node __wrapped__TensorScatterUpdate_device_/job:localhost/replica:0/task:0/device:GPU:0}} Outer dimensions of indices and update must match. Indices shape: [32,1], updates shape:[1] [Op:TensorScatterUpdate] name: 
-            - check if the sequence has been used anywhere else (in any other batch)... use memmap?
+            - check if the sequence has been used anywhere else (in any other batch)... use memmap? or caching
             - once everything is fixed up, check UMAP of global AP1 library
             - automatically handle best batch_size (tf.experimental.autotune)?
                 - Batch_size check against memory
@@ -141,6 +100,7 @@ Documentation:
             - Test that dinuc_shuffle is able to call the numpy version of batch_dinuc_shuffle
             - baseline_type=None for pre-generated baseline? (e.g., training set)
 
+
 - Clusterer:
     - implement other methods from cuml.manifold?
         - tsne CPU, GPU
@@ -151,7 +111,8 @@ Documentation:
     - hierarchical vs embedding discrepancy:
         - hierarchical doesn't take method as hyperparam: clusterer = Clusterer(attributions,gpu=gpu)
     - Does hierarchical cpu not run out of memory when gpu does? Is the memmap problematic? 
-    - Error in get_cluster_labels print(f"Cut level for {n_clusters} clusters: {max_d:.3f}") --> when more clusters are provided than maps?
+    - Error in get_cluster_labels print(f"Cut level for {n_clusters} clusters: {max_d:.3f}") --> add error message when more clusters are provided than maps
+
 
 - MetaExplainer:
     - add mutual information plot to explainer?
@@ -170,6 +131,7 @@ Documentation:
     - ability to plot a single row (cluster) of MSM, and given a position, view the nucleotide frequencies
     - change Blues to viridis for percent mismatch palette (recall, sns.color_palette('rocket', n_colors=100); sns.color_palette('viridis', n_colors=100)
 
+
 - Identifier:
     - code to combine TFBS states based on squares in covariance matrix
         - use more complicated locus: Ohler6-m0-seq171
@@ -180,12 +142,15 @@ Documentation:
     - calculate expected effect for each cluster? (change in y-value from WT cluster)
     - fix state matrix bug (multiplier > 1?)
     - add percent mismatches table and printouts from old code
+    - automate epistatic effects from state matrix
+
 
 - Impress:
     - move all plotting code to impress.py?
         - plot_dendrogram
         - minimize other redundancies between functions in identifier.py and clusterer.py
     - add Bokeh plots for colab
+
 
 - GUI Class:
     - GUI requires 'matplotlib==3.6.0', which is in conflict with scipy dendrogram plot
@@ -231,84 +196,14 @@ Documentation:
     - New tab to merge clusters and label them (e.g., AP-1, etc)
         - Visualize state vs. TFBS presence graph
 
+
 - Old code:
     - speed up all processes with new backend, and add readme
 
 
 - Other:
-    - Discussion: 
-        - augment libraries with:
-            - all SNVs, pairwise, (higher order?)
-            - a collection of known population variants
-            - indels
-            - sliding
-        - impute missing values from experimental datasets
-    - backup SEAM Colabs on github
-    - backup SQUID Colabs on github
-    - SEAM remaining figures
-    - 'ward' vs other linkages
-    - use all_maps_average to prove a point?
-    - intgrad zeros vs intgrad dinuc --> same appearance with cluster average?
-        - compare to average over all maps in library; smoothGrad comparison, etc.
-    - PCA with more dims
-    - Hessian or PW vs purely additive
-        - or pairwise directly using PBM
-    - need to say CREB is 15 flanks; DRE is 10 flanks; AP1 is 10 flanks
-    - Other figures:
-        - PPIF enhancer (cropped)
-            - cropped and hierarchical
-            - compare to Enformer (e.g., cl.36 vs cl.186)
-                - compare backgrounds
-        - compare backgrounds across different attribution methods
-        - Fig. 1 schematic example
-            - compare to SQUID pairwise
-            - compare to average of all maps in library (and smoothgrad)
-        - intra-cluster variability logo for highest occupancy cluster
-        - SEAM denoised cluster (on saliency) vs all other methods
     - Figure revisions:
-        - Illustrator attribution y-axes in Myriad: change to Arial, and add middle notch
-    - Run local library just to get out background, then remove from DNVs
-    - Choose number of clusters based on the average IQR of median predictions per cluster?
-    - Example to show local library finds soft syntax ruled like pairwise + wildcard
-    - cite the DREAM paper (same BG over different architectures)
-    - reminder that SEAM is on simplex
-    - Methods: cpu and gpu optimized
-    - Methods: add activity calculation from state matrix (continuous)
-    - Attribution methods discussion: saliency is spurious and can lead to suboptimal clustering (show PPIF background sfig); tradeoff speed vs accuracy (larger memory); additivity
-    - Related works section: slides, TF-Modisco, SmoothGrad
-
-
-
-- Sharing:
-    - Danko Lab
-    - Carlos (work on protein dataset)
-    - ...
-
-
-- Future SEAM studies:
-	- protein compartments (PLM dataset)
-    - Zoopedia evolutionary data
-    - Other Stark lab DNN with more output heads
-        - show different backgrounds for each task?
-    - Try global using genomic locus with dinuc shuffle?
-    - ResidualBind example for global? (see old slide)
-        - TEAD vs AP-1: check ENCODE profiles for each TF?
-    - Global analyis on procapnet examples (recall figure with profiles)
-    - embed Hessian and concat with attribution map?
-    - Biophysical modeling:
-        - DRE-m0-seq601
-    - Yagi's data workflow and GUI
-    - Motif finding:
-        - best attribution method?
-        - best num_seqs, mut_rate? (1000 seems sufficient)
-        - best cut_level?
-            - attribution clusters
-            - TFBS clusters
-        - poised?
-    - evolutionary graph
-    - automating across genome:
-        - increase cut level until no zero-entropy rows in MSM
-    - local library across cell types
+        - Illustrator attribution y-axes in Myriad: change to Arial, and add middle notch    
 
 
 - Zenodo:
