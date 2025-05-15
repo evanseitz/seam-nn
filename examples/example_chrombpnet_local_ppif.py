@@ -11,13 +11,6 @@ Parameters:
     - Saliency maps
     - Hierarchical clustering (ward)
 
-Tested on CPUs using:
-    - Python 3.11.8
-    - TensorFlow 2.16.1
-    - TensorFlow Probability 0.21.0
-    - Keras 2.13.1
-    - NumPy 1.26.1
-
 Tested on GPUs using:
     - Python 3.8.5
     - TensorFlow 2.8.0
@@ -40,7 +33,7 @@ Note on multiple folds:
     Each run will save attribution maps with the fold index in the filename.
 """
 
-# TODO: don't show cluster avg - BG, just show WT - BG
+# TODO: test DeepSHAP profile head in Attributer()
 
 import os, sys, time
 import random
@@ -51,6 +44,9 @@ import squid
 import pandas as pd
 from tqdm import tqdm
 from urllib.request import urlretrieve
+
+np.random.seed(42)
+random.seed(42)
 
 if 1: # Use this for local install (must 'pip uninstall seam' first)
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) # TODO: turn this off
@@ -65,8 +61,30 @@ task_type = 'counts'  # {'profile', 'counts'} for logits_profile (0), logcount (
 enhancer_or_promoter = 'promoter'  # {'promoter', 'enhancer'} of PPIF gene
 mut_rate = 0.1  # mutation rate for in silico mutagenesis
 num_seqs = 100000  # number of sequences to generate
-attribution_method = 'intgrad'  # {saliency, smoothgrad, intgrad, deepshap, ism} # TODO: add external script for deepshap or class at bottom of this script
 n_clusters = 200 # number of clusters for hierarchical clustering
+attribution_method = 'intgrad'  # {saliency, smoothgrad, intgrad, ism, deepshap}
+# Note: DeepSHAP is not optimized for batch processing of SEAM's in silico mutagenesis library, and may also not be calibrated for several modern TF2 operations.
+
+# Configure TensorFlow for DeepSHAP if needed
+if attribution_method == 'deepshap':
+    # Disable eager execution for DeepSHAP compatibility
+    try:
+        tf.compat.v1.disable_eager_execution()
+        tf.compat.v1.disable_v2_behavior()
+        print("TensorFlow eager execution disabled for DeepSHAP compatibility")
+        
+        # Import SHAP to configure handlers
+        import shap
+        # Handle AddV2 operation (element-wise addition) as a linear operation
+        shap.explainers.deep.deep_tf.op_handlers["AddV2"] = shap.explainers.deep.deep_tf.passthrough
+        # Note: Warnings about other modern TF2 operations can also be handled with the passthrough handler if they are purely linear operations;
+        # For warnings about nonlinear operations, implement a custom op_handler
+    except:
+        print("Warning: Could not disable TensorFlow eager execution. DeepSHAP may not work properly.")
+
+# Note: If using DeepSHAP (attribution_method = 'deepshap'), TensorFlow eager execution will be disabled
+# This is required by the SHAP library's TFDeepExplainer. If you need to use eager execution elsewhere
+# in your script, you should run DeepSHAP in a separate process.
 
 # =============================================================================
 # Overhead user settings
@@ -83,9 +101,9 @@ save_data = True  # Whether to save output data (Boolean)
 delete_downloads = False  # Whether to delete downloaded models/data after use (Boolean)
 
 # If starting from scratch, set all to False:
-load_previous_library = True  # Whether to load previously-generated x_mut and y_mut (Boolean)
-load_previous_attributions = True  # Whether to load previously-generated attribution maps (Boolean)
-load_previous_linkage = True  # Whether to load previously-generated linkage matrix (Boolean)
+load_previous_library = False  # Whether to load previously-generated x_mut and y_mut (Boolean)
+load_previous_attributions = False  # Whether to load previously-generated attribution maps (Boolean)
+load_previous_linkage = False  # Whether to load previously-generated linkage matrix (Boolean)
 
 # =============================================================================
 # Initial setup based on user settings
@@ -129,7 +147,7 @@ elif task_type == 'counts':
     task_index = 1
 
 # =============================================================================
-# Download and import ChromBPNet model and data
+# Download and import ChromBPNet model and data and define helper functions
 # =============================================================================
 def download_if_not_exists(url, filename):
     """Download a file if it doesn't exist locally."""
@@ -139,96 +157,13 @@ def download_if_not_exists(url, filename):
     else:
         print(f"Using existing {filename}")
 
-# Download losses script
-losses_url = "https://raw.githubusercontent.com/kundajelab/chrombpnet/master/chrombpnet/training/utils/losses.py"
-losses_path = os.path.join(assets_dir, "losses.py")
-download_if_not_exists(losses_url, losses_path)
-
-# Import losses
-sys.path.append(assets_dir)
-import losses
-
-# Download model file for selected fold
-model_url = f"https://drive.google.com/uc?id=1kxbVgnXTC7Z4BgsqKovv-IZ9jbBzIZcc"  # fold 0
-if fold_index == 1:
-    model_url = "https://drive.google.com/uc?id=1lrliung0oJfqg9BW0s6VWlUcCk9CyKfw"
-elif fold_index == 2:
-    model_url = "https://drive.google.com/uc?id=1sgsZyXrrglItP3YeyQwJCiNqI8KkZWUA"
-elif fold_index == 3:
-    model_url = "https://drive.google.com/uc?id=1HSl0KY9JuYDPkDFtG_hQm6gZU6enlLhX"
-elif fold_index == 4:
-    model_url = "https://drive.google.com/uc?id=1m8pGMqcP2zVROv3L9z-jhxvn2-PnYOk0"
-
-model_path = os.path.join(assets_dir, f"thp1_fold{fold_index}.h5")
-download_if_not_exists(model_url, model_path)
-
-# Load model
-custom_objects = {
-    "multinomial_nll": losses.multinomial_nll,
-    "tf": tf,
-}
-tf.keras.utils.get_custom_objects().update(custom_objects)
-model = tf.keras.models.load_model(model_path)
-
-# =============================================================================
-# Sequence retrieval and processing
-# =============================================================================
-if enhancer_or_promoter == 'promoter':
-    tss_pos = 81107224 # ppif tss (hg19)
-    bin_number = 3 # chosen to match enformer settings (i.e., bin_size=128)
-    map_crop = [190, 690] # crop attribution maps to focus on region of PPIF promoter
-elif enhancer_or_promoter == 'enhancer':
-    tss_pos = 81046461
-    bin_number = 8 # chosen to match enformer settings
-    map_crop = [800, 1300] # crop attribution maps to focus on region of PPIF enhancer
-
-alphabet = ['A','C','G','T']
-seq_length = int(model.input_shape[1]) # 2114
-start = tss_pos - seq_length // 2
-end = tss_pos + seq_length // 2
-map_start = (seq_length // 2) - (bin_number*128)
-map_end = (seq_length // 2) + (bin_number*128)
-
-if 1:
-    if enhancer_or_promoter == 'promoter':
-        seq = 'TTATCCTAAGAACAGACACGAGAAAAAAGCAGGATGAGGAGCATGATCGCACCCTTACCCTCCAGATGGGAAACTGAGGCCCAGAGAGGCCTGGAGCACTGGTGCAAGCTGGTAGCAATACTCCAGGGCTCCCTAGCCCTAGCCAGTGCCTTCCTGTGTCCAGGCCTCAGCTTCCCCTGGGGACAGTACAAGTGTTGGGCCAGATGCTCTCTCAGGTCCCTGCGTGGCATCCATTTATTGCAGACCTCCCACCACCTTGCAGTGAGGGTGGCTCTGGCTGCTGGGAAGCCCACTTTCAGCACGTGGGGTTTAAATGCTCCTGCTGTGGGTCTCCCCACTGAGTCCCCTCCCAGGGTGCATGCTGATGGGAGGGGGCAGCTGGCAGTCTGCCCCGGGGCTGTCAGTGTGGGTCCTAGGAGGAGGGATCAGACCCAGTCCTGGGGAGGGCTGGGGGCCTGAAAGGAGCATGATGAGCCCAGGCTGCGTTTTCAGTCTTGCTAGAAGCAGGTCTGGTCCCCAGAAACAACTAGAGACAGGCCCAGGCCGGGACAAGCAGGCTAGGGGGCATCATGGGAGGTGTCTCAGCTTATCTCCTCCCTCTTGCGCCTCTAGCTCACTAATCCCGCCTCTCATCTCACCTTTCTCTAACCCTCTCAGACTGCAGGACCTAGGGCAGCAGGGAAGCTTATTTGGCCTGAGCCTTACCTGCAAAGGGCTCAAAGGTAGACTTTTGCTATTATATTCAAATTGCAACGTATAGATGCTCATATTTTGGAATTAATTACGTTTTAGCAGTTTTTCTTTTTTTAAAAAAATCTGCTGGTACCTTAATAAACATGGAACCAGCAACCTTTTGCCAGGTGTCTGTTCTCCGGGTCTCTGGGCCTGGAGGCGGGAGTGTTTCAAAGCACTTCACGCTCCGCGGCCCCACCGGCTGGCTGCGCTGCCCGCTGCGGCCGGCAGGGGTAGTCCACGGACAGGCCTGGAGGAGGCGGGACGGGGGCAGGGCCGGGAACCTGGGCAAGCCAATAAAGGCTGCGGCGCGCGGCTGCGCGGGACTCGGCCTTCTGGGCGCGCGCGACGTCAGTTTGAGTTCTGTGTTCTCCCCGCCCGTGTCCCGCCCGACCCGCGCCCGCGATGCTGGCGCTGCGCTGCGGCTCCCGCTGGCTCGGCCTGCTCTCCGTCCCGCGCTCCGTGCCGCTGCGCCTCCCCGCGGCCCGCGCCTGCAGCAAGGGCTCCGGCGACCCGTCCTCTTCCTCCTCCTCCGGGAACCCGCTCGTGTACCTGGACGTGGACGCCAACGGGAAGCCGCTCGGCCGCGTGGTGCTGGAGGTGAGACCGCTCGCAGGGCCGGCCTGGGCGCGGGACACGGGCCCGGGGAGAGCCCTGGGCCCCGGGCGGCGCGGTGCCGGGCGCGCTGGGTGACCTTGGGCCTCCCCATGCCGAGCTCTGGGCCTCAGTTTCCCCATTTCTGAGAATGGGCGTCAGAATGATTTCTTCCGGCCTCCCTCGGAGCACTGGAGCGGGGGAGACGGGAGGGAGGGCACGTGTGGAGGAGAAAGCTCAAGGTCAGATCGCAGAGAGGGAGGGCTCAGCACCTCTGGGCCGGCCCGGGCACGAGGGAGGGGCTCCAGGAGCCTTCTGGGGCTGAGCCTAGATCCGGAGCTCCGAGGTGGGTGTCGGGGGTCTTGGGGTGAGCGTCGTGGCCCAGCGGGTGCTCACGTGGCGGCCCTTGCACAACACGGAGCGCTTCCTGGCTCCGGCCCCGCCCCTGCGGTCGGGCTCACACTGGGGGTGCTGGGAAATGGAGCGAGAGGTGGTTTCCAGCAGTAGTGCGGGCCCAGTAGGCCTCAGGCCCCGGCCACCTGGTGGACCCCAGAATGCCCCTCCTGCGAGTCGGGACACACTCAGAGACAGTGTGCCCGGCGCCTCAACCCCTGCCACTGTCCTTGGGGGCCACACTGAGCACCTCCCCTAACTCTGTTTTTGGGTCTTTTCTAAAGCAAAGTAAGAAACAGTCACCAGGGTAGCTTTAGAGGGAAAGCCCTAGTGGAGCCTTCAGGTCGGCCACACATTGACAGCAGGGGTCTGTTTGTGTTGACTGGCCCGTATCC'
-    elif enhancer_or_promoter == 'enhancer':
-        seq = 'CTGGCACATTTTTTTGTTTAGCAAAGGTTTCCTGAGCCCTATTGGTGTGTGAAGACATCATGCTTGGCTCAGGGAGCCCAAGAAATCAGTGACAGCTCCTGAGGCAGAAGGGAGAAGGCAGAGGGTTCTCACTCTTGCCAGGAATGCGAAGAGCCAGTGGAGTTCAGTACCTTCTGCAAGGGCTTCCCGGAGGAGGTGGCCTTTGGAAGAGCCTGGAAAGGATGAATGGCATTTTCAAGGTGGGATGGAACTTGCCAGCCTGAGAAGAGGCACAGAGGCCCCTGTATTAGGGAGCAGTTGGCAAATGGAACCGTTGCTGCTGACATTGCAGATGGCTTCTGGCCTTGGTGCTTCTGTGGGTGGAGCAGGATTGTTGGGGCCGTTTTGGCTGGACAGGACTGTGGCTGGGAGCAGCTTATGGTGTGATACTGGGCAGGCCATGCTGGATTAGGGTTGTACAGAGTGGGACAGAATTATTAAAAAATGCCAAGCACCTGTGACCAGGTGAAGCAAGTCTGCAGGTTAAACTGTGCTCGTCGGAGAGAAGAAGGGCTCTCAGGCACCCTCCAGACCCTCCTCCCATCCCAGCCAGGCCATGCCTTTCTGGTAGCAGCCCAGGGGTCTGCTTGGTCCTTCATCCTTGGGAACAGGGACCAGGCATTCCCCCGGTGGTGGTATCTTGAGTCTAGGCAGTGGCGTCACATCAGCAGGGCTGCTGTGGGGGCCTGCGGGGGCGAGAGCCTTCTCTGCGACAGCAGGAGCCCGTCTCCCCCAGAATGAGATGAGTCACGGTCCTGTCGGTGCGGCTGCCACTTCTGCTTCTGCAGCAGGTGCGTGTGGAGGCAAGCTAGTCCTGAGACTGCCCCACACGCTGTGCCTGTCTCTTCCCCAGTGCACGGGCAGCATGCCAGCAGGGCCTCGCGTGTGTGCACGGATGTGTCCTCCATATGCCTGCGTGCATCTTTGCTCTGGGGCGGCAAACCTTCCAGCCAGGCAGTGGGATGGCCAGTTTGGGAACGTTGGTTAGCTTTGCTTCTCACCAAGTTTGGGGCAGAGGGGACAAAACAGGAAGGAGCTGGTTTCCGCCCACAAGGCTCACCCACGGAGCTGCAGGGCAGTTGGGAGCTTGTTCGTGGGCCTGTGTAGCGTCCTGGGCTGAGGTGATGAGGCAGCAGTTGCCCACTCCCTGGCCACAGGCAGGGCCCTGCCGGCCCCTGGGGCCTCCCATGGGGGTTCATTTCCTGAGCCTGGCCAGGCATGTTCTCAAAGGATAGGAACTTCCGTCTCAAGGCCATCAGCCTGGAGGGTTGGTGGGAACTTGTGGGGCAGAAGTTCTGGGGCGAGAAGCCACTCAGGCTTGGGTTTTGTTCAGATGTAGGGGACCCCCTCTGGTCATCCAGCACACCTAGGACATGGGCCTTGAGGACAGCAGGTGTCCAGGGGATCTCCTCTTTGTTTTGTAAAAGCGTGACCTGTAGAGCCTCCCTGTGAGACTCTGGTGTGCCAGTCTGGAACCAGGTGGTGTGCCGGGTCCCCAGTGACCTCCCTGGGAGACAGAGGCTGTTCCAGCCCAGCCTTCCTGAGGAGCAGGCTCATGGCTACTTTCCTGTGTTTCTCTGCACTGCCCACTCCCTCTGGGCTCCCAGTCTCCAATCCGCCACCTGGAGAGCAGAGTCTGTCGCTATCTGTCACCTTTGGCCCAAGCATCTGGATCTTCAACAAGCCACTACCCATCATTGTGCCTGGCCAACTGAGTGCCCTGAGTACAGCTCCTCTACTCCAAATGCGAGTCCTGCAGTTTCCCCAGAAATCACGAGCAGCGCTCAGTTGGGAAAGCCCTTTGACTGCATTCTCCTCTTTGAGCCACATCAGATTTAGGCTGCTGAACCTGTGTTCAAACCTATTTGACCAAGATCCACGATAAATACACATACGACACCTTGACCCAAGGTGCACATGTATTTGTGTATAAAACCAAGACAGAAGCTCAAGGACTAATCTTCATCTTTATTGTGTGCTCACACTCCATCACTTTCTAGTTGATGCTTTTTTCTCCCCTGCTGGTTGGATGTCATCACCTGCTCAGATTCTGTAACCCACAGTTGGAAAACACA'
-else: # download fasta file (estimated time: 1 minute)
-    import pysam # 'pip install pysam', for fasta file
-    import gzip
-    fasta_file = os.path.join(assets_dir, 'hg19.fa')
-    if not os.path.exists(fasta_file) or os.path.getsize(fasta_file) == 0:
-        if os.path.exists(fasta_file):
-            os.remove(fasta_file)
-        print("Downloading hg19.fa...")
-        url = "http://hgdownload.cse.ucsc.edu/goldenPath/hg19/bigZips/hg19.fa.gz"
-        try:
-            import requests
-            response = requests.get(url, stream=True)
-            response.raise_for_status()
-            with gzip.GzipFile(fileobj=response.raw) as gz:
-                with open(fasta_file, 'wb') as f:
-                    f.write(gz.read())
-        except Exception as e:
-            print(f"Error downloading FASTA file: {e}")
-            raise
-    fasta_open = pysam.Fastafile(fasta_file)
-    chrom = 'chr10'
-    seq = fasta_open.fetch(chrom, start, end).upper()
-
-# convert to one-hot:
-x_ref = squid.utils.seq2oh(seq, alphabet)
-x_ref = np.expand_dims(x_ref,0)
-
-# =============================================================================
-# View model outputs for reference sequence
-# =============================================================================
 def softmax(x, temp=1):
+    """Apply softmax function to input."""
     norm_x = x - np.mean(x,axis=1, keepdims=True)
     return np.exp(temp*norm_x)/np.sum(np.exp(temp*norm_x), axis=1, keepdims=True)
 
 def predict_tracks(model, sequence_one_hot):
+    """Predict tracks for a single sequence."""
     profile_probs_predictions = []
     counts_sum_predictions = []
     preds = model.predict_on_batch(sequence_one_hot[None, ...])
@@ -237,43 +172,22 @@ def predict_tracks(model, sequence_one_hot):
     # Return first profile prediction and counts
     return profile_probs_predictions[0], counts_sum_predictions[0]
 
-y_profiles, y_counts = predict_tracks(model, x_ref[0])
+class ChromBPNetPredictor(squid.predictor.BasePredictor):
+    def __init__(self, pred_fun, task_idx=0, batch_size=64, reduce_fun=np.sum, axis=1, save_dir=None, save_window=None, **kwargs):
+        self.pred_fun = pred_fun
+        self.task_idx = task_idx
+        self.batch_size = batch_size
+        self.reduce_fun = reduce_fun
+        self.axis = axis
+        squid.predictor.BasePredictor.save_dir = save_dir
+        self.kwargs = kwargs
 
-print('Wild-type counts:', y_counts)
-fig, ax = plt.subplots(figsize=(20,1.5))
-ax.axhline(0, color='k', linewidth=.5)
-ax.bar(range(y_profiles.shape[0]), y_profiles, width=-2, color='r')
-plt.title('Wild-type counts: %s' % y_counts)
-plt.tight_layout()
-if save_figs:
-    fig.savefig(os.path.join(save_path_figs, 'wildtype_profile.png'), facecolor='w', dpi=dpi, bbox_inches='tight')
-    plt.close()
-else:
-    plt.show()
-
-# =============================================================================
-# SQUID API
-# Create in silico mutagenesis library
-# =============================================================================
-mut_window = [map_start, map_end]
-
-if load_previous_library is False:
-    class ChromBPNetPredictor(squid.predictor.BasePredictor):
-        def __init__(self, pred_fun, task_idx=0, batch_size=64, reduce_fun=np.sum, axis=1, save_dir=None, save_window=None, **kwargs):
-            self.pred_fun = pred_fun
-            self.task_idx = task_idx
-            self.batch_size = batch_size
-            self.reduce_fun = reduce_fun
-            self.axis = axis
-            squid.predictor.BasePredictor.save_dir = save_dir
-            self.kwargs = kwargs
-
-        def __call__(self, x, x_ref, save_window):
-            # get model predictions
-            pred = predict_in_batches(x, x_ref, self.pred_fun, batch_size=self.batch_size, task_idx=self.task_idx, save_window=save_window)
-            return pred
-
-    def predict_in_batches(x, x_ref, model_pred_fun, batch_size=None, task_idx=None, save_window=None, **kwargs):
+    def __call__(self, x, x_ref, save_window):
+        # get model predictions
+        pred = self.predict_in_batches(x, x_ref, self.pred_fun, batch_size=self.batch_size, task_idx=self.task_idx, save_window=save_window)
+        return pred
+        
+    def predict_in_batches(self, x, x_ref, model_pred_fun, batch_size=None, task_idx=None, save_window=None, **kwargs):
         if save_window is not None:
             x_ref = x_ref[np.newaxis,:].astype('uint8')
         N, L, A = x.shape
@@ -326,6 +240,272 @@ if load_previous_library is False:
         preds = np.concatenate(pred, axis=0)
         return preds.reshape(-1, 1)  # Ensure 2D output for SQUID
 
+class DeepSHAPAttributer:
+    """Class for computing DeepSHAP attribution maps for ChromBPNet models."""
+    
+    def __init__(self, model, task_type='counts', use_dinuc_shuffle=True, dinuc_shuffle_n=20):
+        """Initialize DeepSHAPAttributer.
+        
+        Parameters
+        ----------
+        model : tf.keras.Model
+            ChromBPNet model
+        task_type : str
+            'counts' or 'profile'
+        use_dinuc_shuffle : bool
+            Whether to use dinucleotide shuffling (vs random) for background
+        dinuc_shuffle_n : int
+            Number of dinucleotide shuffles for background
+        """
+        self.model = model
+        self.task_type = task_type
+        self.use_dinuc_shuffle = use_dinuc_shuffle
+        self.dinuc_shuffle_n = dinuc_shuffle_n
+        
+        # Import required libraries for DeepSHAP
+        try:
+            import shap
+            from deeplift.dinuc_shuffle import dinuc_shuffle
+            
+            # Import shap_utils (will be downloaded in the main script if needed)
+            if assets_dir not in sys.path:
+                sys.path.append(assets_dir)
+                
+            try:
+                import shap_utils
+            except ImportError:
+                raise ImportError("Could not import shap_utils. Make sure it's available in the assets directory.")
+            
+            # TensorFlow eager execution should already be disabled at the top of the script
+                
+        except ImportError as e:
+            error_msg = f"DeepSHAP requires additional packages. Error: {e}\n\n"
+            error_msg += "Please install the required packages:\n"
+            error_msg += "  pip install shap\n"
+            error_msg += "  pip install kundajelab-shap\n"
+            raise ImportError(error_msg)
+        
+        self.shap = shap
+        self.dinuc_shuffle = dinuc_shuffle
+        self.shap_utils = shap_utils
+        
+        # Create explainer based on task type
+        if self.use_dinuc_shuffle:
+            background_fn = self.dinuc_shuffle_several_times
+        else:
+            background_fn = self.random_shuffle
+            
+        if task_type == 'counts':
+            self.explainer = shap.explainers.deep.TFDeepExplainer(
+                (model.input, tf.reduce_sum(model.outputs[1], axis=-1)),
+                background_fn,
+                combine_mult_and_diffref=shap_utils.combine_mult_and_diffref,
+            )
+        elif task_type == 'profile':
+            weightedsum_meannormed_logits = shap_utils.get_weightedsum_meannormed_logits(model)
+            self.explainer = shap.explainers.deep.TFDeepExplainer(
+                (model.input, weightedsum_meannormed_logits),
+                background_fn,
+            )
+        else:
+            raise ValueError(f"Invalid task_type: {task_type}. Must be 'counts' or 'profile'")
+    
+    def dinuc_shuffle_several_times(self, list_containing_input_modes_for_an_example, seed=1234):
+        """Generate multiple dinucleotide shuffled sequences as background."""
+        assert len(list_containing_input_modes_for_an_example)==1
+        onehot_seq = list_containing_input_modes_for_an_example[0]
+        rng = np.random.RandomState(seed)
+        to_return = np.array([self.dinuc_shuffle(onehot_seq, rng=rng) for i in range(self.dinuc_shuffle_n)])
+        return [to_return]  # wrap in list for compatibility with multiple modes
+    
+    def random_shuffle(self, list_containing_input_modes_for_an_example, alphabet=['A','C','G','T']):
+        """Generate multiple random sequences as background."""
+        import random
+        onehot_seq = list_containing_input_modes_for_an_example[0]
+        seqs = np.zeros(shape=(self.dinuc_shuffle_n, onehot_seq.shape[0], onehot_seq.shape[1]))
+        for seq_idx in range(self.dinuc_shuffle_n):
+            random_seq = ''.join(random.choices(str(''.join(alphabet)), k=onehot_seq.shape[0]))
+            seqs[seq_idx,:,:] = squid.utils.seq2oh(random_seq, alphabet)
+        return [seqs]
+    
+    def interpret(self, seqs):
+        """Compute DeepSHAP values for sequences."""
+        shap_values = self.explainer.shap_values(seqs)
+        # DeepSHAP returns a list with one element for TFDeepExplainer
+        if isinstance(shap_values, list):
+            return shap_values[0]
+        return shap_values
+    
+    def compute(self, x, x_ref, save_window=None, batch_size=16, gpu=True):
+        """Compute attribution maps for all sequences.
+        
+        Parameters
+        ----------
+        x : numpy.ndarray
+            One-hot sequences (shape: (N, L, A))
+        x_ref : numpy.ndarray
+            Reference sequence (shape: (L, A))
+        save_window : list
+            [start, end] positions to save attributions for
+        batch_size : int
+            Number of sequences per batch (not used, kept for API compatibility)
+        gpu : bool
+            Whether to use GPU (not used, kept for API compatibility)
+            
+        Returns
+        -------
+        numpy.ndarray
+            Attribution maps (shape: (N, window_size, A))
+        """
+        N, L, A = x.shape
+        window_size = save_window[1] - save_window[0] if save_window else L
+        map_stack = np.zeros((N, window_size, A), dtype='float32')
+        
+        # Process one sequence at a time (no batching in current implementation)
+        x_ref = x_ref[np.newaxis, :].astype('uint8')
+        
+        for i in tqdm(range(N), desc="Computing DeepSHAP attributions"):
+            # Get the current sequence
+            x_seq = x[i][np.newaxis, :]
+            
+            # Pad sequence with reference sequence outside the mutation window
+            if save_window is not None:
+                x_ref_start = np.broadcast_to(x_ref[:, :save_window[0], :], 
+                                            (1, save_window[0], x_ref.shape[2]))
+                x_ref_stop = np.broadcast_to(x_ref[:, save_window[1]:, :], 
+                                           (1, x_ref.shape[1] - save_window[1], x_ref.shape[2]))
+                x_padded = np.concatenate([x_ref_start, x_seq[:, save_window[0]:save_window[1], :], x_ref_stop], axis=1).astype(np.float32)
+            else:
+                x_padded = x_seq.astype(np.float32)
+            
+            try:
+                # Compute attribution map for the entire sequence
+                attribution_scores = self.interpret(seqs=x_padded)
+                
+                # Extract the attribution scores for the region of interest
+                if save_window is not None:
+                    if attribution_scores.ndim == 3:  # If shape is (batch, seq_len, 4)
+                        map_stack[i] = attribution_scores[0, save_window[0]:save_window[1], :]
+                    else:  # If shape is (seq_len, 4)
+                        map_stack[i] = attribution_scores[save_window[0]:save_window[1], :]
+                else:
+                    if attribution_scores.ndim == 3:  # If shape is (batch, seq_len, 4)
+                        map_stack[i] = attribution_scores[0]
+                    else:  # If shape is (seq_len, 4)
+                        map_stack[i] = attribution_scores
+            except Exception as e:
+                print(f"Error computing DeepSHAP for sequence {i}: {e}")
+                # Fill with zeros for this sequence
+                map_stack[i] = np.zeros((window_size, A), dtype='float32')
+        
+        return map_stack
+
+# Download losses script
+losses_url = "https://raw.githubusercontent.com/kundajelab/chrombpnet/master/chrombpnet/training/utils/losses.py"
+losses_path = os.path.join(assets_dir, "losses.py")
+download_if_not_exists(losses_url, losses_path)
+
+# Import losses
+sys.path.append(assets_dir)
+import losses
+
+# Download model file for selected fold
+model_url = f"https://drive.google.com/uc?id=1kxbVgnXTC7Z4BgsqKovv-IZ9jbBzIZcc"  # fold 0
+if fold_index == 1:
+    model_url = "https://drive.google.com/uc?id=1lrliung0oJfqg9BW0s6VWlUcCk9CyKfw"
+elif fold_index == 2:
+    model_url = "https://drive.google.com/uc?id=1sgsZyXrrglItP3YeyQwJCiNqI8KkZWUA"
+elif fold_index == 3:
+    model_url = "https://drive.google.com/uc?id=1HSl0KY9JuYDPkDFtG_hQm6gZU6enlLhX"
+elif fold_index == 4:
+    model_url = "https://drive.google.com/uc?id=1m8pGMqcP2zVROv3L9z-jhxvn2-PnYOk0"
+
+model_path = os.path.join(assets_dir, f"thp1_fold{fold_index}.h5")
+download_if_not_exists(model_url, model_path)
+
+# Load model
+custom_objects = {
+    "multinomial_nll": losses.multinomial_nll,
+    "tf": tf,
+}
+tf.keras.utils.get_custom_objects().update(custom_objects)
+model = tf.keras.models.load_model(model_path)
+
+# =============================================================================
+# Sequence retrieval and processing
+# =============================================================================
+if enhancer_or_promoter == 'promoter':
+    tss_pos = 81107224 # ppif tss (hg19)
+    bin_number = 3 # chosen to match enformer settings (i.e., bin_size=128)
+    map_crop = [190, 690] # crop attribution maps to focus on region of PPIF promoter
+elif enhancer_or_promoter == 'enhancer':
+    tss_pos = 81046461
+    bin_number = 8 # chosen to match enformer settings
+    map_crop = [730, 1230] # crop attribution maps to focus on region of PPIF enhancer
+
+alphabet = ['A','C','G','T']
+seq_length = int(model.input_shape[1]) # 2114
+start = tss_pos - seq_length // 2
+end = tss_pos + seq_length // 2
+map_start = (seq_length // 2) - (bin_number*128)
+map_end = (seq_length // 2) + (bin_number*128)
+
+if 1:
+    if enhancer_or_promoter == 'promoter':
+        seq = 'TTATCCTAAGAACAGACACGAGAAAAAAGCAGGATGAGGAGCATGATCGCACCCTTACCCTCCAGATGGGAAACTGAGGCCCAGAGAGGCCTGGAGCACTGGTGCAAGCTGGTAGCAATACTCCAGGGCTCCCTAGCCCTAGCCAGTGCCTTCCTGTGTCCAGGCCTCAGCTTCCCCTGGGGACAGTACAAGTGTTGGGCCAGATGCTCTCTCAGGTCCCTGCGTGGCATCCATTTATTGCAGACCTCCCACCACCTTGCAGTGAGGGTGGCTCTGGCTGCTGGGAAGCCCACTTTCAGCACGTGGGGTTTAAATGCTCCTGCTGTGGGTCTCCCCACTGAGTCCCCTCCCAGGGTGCATGCTGATGGGAGGGGGCAGCTGGCAGTCTGCCCCGGGGCTGTCAGTGTGGGTCCTAGGAGGAGGGATCAGACCCAGTCCTGGGGAGGGCTGGGGGCCTGAAAGGAGCATGATGAGCCCAGGCTGCGTTTTCAGTCTTGCTAGAAGCAGGTCTGGTCCCCAGAAACAACTAGAGACAGGCCCAGGCCGGGACAAGCAGGCTAGGGGGCATCATGGGAGGTGTCTCAGCTTATCTCCTCCCTCTTGCGCCTCTAGCTCACTAATCCCGCCTCTCATCTCACCTTTCTCTAACCCTCTCAGACTGCAGGACCTAGGGCAGCAGGGAAGCTTATTTGGCCTGAGCCTTACCTGCAAAGGGCTCAAAGGTAGACTTTTGCTATTATATTCAAATTGCAACGTATAGATGCTCATATTTTGGAATTAATTACGTTTTAGCAGTTTTTCTTTTTTTAAAAAAATCTGCTGGTACCTTAATAAACATGGAACCAGCAACCTTTTGCCAGGTGTCTGTTCTCCGGGTCTCTGGGCCTGGAGGCGGGAGTGTTTCAAAGCACTTCACGCTCCGCGGCCCCACCGGCTGGCTGCGCTGCCCGCTGCGGCCGGCAGGGGTAGTCCACGGACAGGCCTGGAGGAGGCGGGACGGGGGCAGGGCCGGGAACCTGGGCAAGCCAATAAAGGCTGCGGCGCGCGGCTGCGCGGGACTCGGCCTTCTGGGCGCGCGCGACGTCAGTTTGAGTTCTGTGTTCTCCCCGCCCGTGTCCCGCCCGACCCGCGCCCGCGATGCTGGCGCTGCGCTGCGGCTCCCGCTGGCTCGGCCTGCTCTCCGTCCCGCGCTCCGTGCCGCTGCGCCTCCCCGCGGCCCGCGCCTGCAGCAAGGGCTCCGGCGACCCGTCCTCTTCCTCCTCCTCCGGGAACCCGCTCGTGTACCTGGACGTGGACGCCAACGGGAAGCCGCTCGGCCGCGTGGTGCTGGAGGTGAGACCGCTCGCAGGGCCGGCCTGGGCGCGGGACACGGGCCCGGGGAGAGCCCTGGGCCCCGGGCGGCGCGGTGCCGGGCGCGCTGGGTGACCTTGGGCCTCCCCATGCCGAGCTCTGGGCCTCAGTTTCCCCATTTCTGAGAATGGGCGTCAGAATGATTTCTTCCGGCCTCCCTCGGAGCACTGGAGCGGGGGAGACGGGAGGGAGGGCACGTGTGGAGGAGAAAGCTCAAGGTCAGATCGCAGAGAGGGAGGGCTCAGCACCTCTGGGCCGGCCCGGGCACGAGGGAGGGGCTCCAGGAGCCTTCTGGGGCTGAGCCTAGATCCGGAGCTCCGAGGTGGGTGTCGGGGGTCTTGGGGTGAGCGTCGTGGCCCAGCGGGTGCTCACGTGGCGGCCCTTGCACAACACGGAGCGCTTCCTGGCTCCGGCCCCGCCCCTGCGGTCGGGCTCACACTGGGGGTGCTGGGAAATGGAGCGAGAGGTGGTTTCCAGCAGTAGTGCGGGCCCAGTAGGCCTCAGGCCCCGGCCACCTGGTGGACCCCAGAATGCCCCTCCTGCGAGTCGGGACACACTCAGAGACAGTGTGCCCGGCGCCTCAACCCCTGCCACTGTCCTTGGGGGCCACACTGAGCACCTCCCCTAACTCTGTTTTTGGGTCTTTTCTAAAGCAAAGTAAGAAACAGTCACCAGGGTAGCTTTAGAGGGAAAGCCCTAGTGGAGCCTTCAGGTCGGCCACACATTGACAGCAGGGGTCTGTTTGTGTTGACTGGCCCGTATCC'
+    elif enhancer_or_promoter == 'enhancer':
+        seq = 'CTGGCACATTTTTTTGTTTAGCAAAGGTTTCCTGAGCCCTATTGGTGTGTGAAGACATCATGCTTGGCTCAGGGAGCCCAAGAAATCAGTGACAGCTCCTGAGGCAGAAGGGAGAAGGCAGAGGGTTCTCACTCTTGCCAGGAATGCGAAGAGCCAGTGGAGTTCAGTACCTTCTGCAAGGGCTTCCCGGAGGAGGTGGCCTTTGGAAGAGCCTGGAAAGGATGAATGGCATTTTCAAGGTGGGATGGAACTTGCCAGCCTGAGAAGAGGCACAGAGGCCCCTGTATTAGGGAGCAGTTGGCAAATGGAACCGTTGCTGCTGACATTGCAGATGGCTTCTGGCCTTGGTGCTTCTGTGGGTGGAGCAGGATTGTTGGGGCCGTTTTGGCTGGACAGGACTGTGGCTGGGAGCAGCTTATGGTGTGATACTGGGCAGGCCATGCTGGATTAGGGTTGTACAGAGTGGGACAGAATTATTAAAAAATGCCAAGCACCTGTGACCAGGTGAAGCAAGTCTGCAGGTTAAACTGTGCTCGTCGGAGAGAAGAAGGGCTCTCAGGCACCCTCCAGACCCTCCTCCCATCCCAGCCAGGCCATGCCTTTCTGGTAGCAGCCCAGGGGTCTGCTTGGTCCTTCATCCTTGGGAACAGGGACCAGGCATTCCCCCGGTGGTGGTATCTTGAGTCTAGGCAGTGGCGTCACATCAGCAGGGCTGCTGTGGGGGCCTGCGGGGGCGAGAGCCTTCTCTGCGACAGCAGGAGCCCGTCTCCCCCAGAATGAGATGAGTCACGGTCCTGTCGGTGCGGCTGCCACTTCTGCTTCTGCAGCAGGTGCGTGTGGAGGCAAGCTAGTCCTGAGACTGCCCCACACGCTGTGCCTGTCTCTTCCCCAGTGCACGGGCAGCATGCCAGCAGGGCCTCGCGTGTGTGCACGGATGTGTCCTCCATATGCCTGCGTGCATCTTTGCTCTGGGGCGGCAAACCTTCCAGCCAGGCAGTGGGATGGCCAGTTTGGGAACGTTGGTTAGCTTTGCTTCTCACCAAGTTTGGGGCAGAGGGGACAAAACAGGAAGGAGCTGGTTTCCGCCCACAAGGCTCACCCACGGAGCTGCAGGGCAGTTGGGAGCTTGTTCGTGGGCCTGTGTAGCGTCCTGGGCTGAGGTGATGAGGCAGCAGTTGCCCACTCCCTGGCCACAGGCAGGGCCCTGCCGGCCCCTGGGGCCTCCCATGGGGGTTCATTTCCTGAGCCTGGCCAGGCATGTTCTCAAAGGATAGGAACTTCCGTCTCAAGGCCATCAGCCTGGAGGGTTGGTGGGAACTTGTGGGGCAGAAGTTCTGGGGCGAGAAGCCACTCAGGCTTGGGTTTTGTTCAGATGTAGGGGACCCCCTCTGGTCATCCAGCACACCTAGGACATGGGCCTTGAGGACAGCAGGTGTCCAGGGGATCTCCTCTTTGTTTTGTAAAAGCGTGACCTGTAGAGCCTCCCTGTGAGACTCTGGTGTGCCAGTCTGGAACCAGGTGGTGTGCCGGGTCCCCAGTGACCTCCCTGGGAGACAGAGGCTGTTCCAGCCCAGCCTTCCTGAGGAGCAGGCTCATGGCTACTTTCCTGTGTTTCTCTGCACTGCCCACTCCCTCTGGGCTCCCAGTCTCCAATCCGCCACCTGGAGAGCAGAGTCTGTCGCTATCTGTCACCTTTGGCCCAAGCATCTGGATCTTCAACAAGCCACTACCCATCATTGTGCCTGGCCAACTGAGTGCCCTGAGTACAGCTCCTCTACTCCAAATGCGAGTCCTGCAGTTTCCCCAGAAATCACGAGCAGCGCTCAGTTGGGAAAGCCCTTTGACTGCATTCTCCTCTTTGAGCCACATCAGATTTAGGCTGCTGAACCTGTGTTCAAACCTATTTGACCAAGATCCACGATAAATACACATACGACACCTTGACCCAAGGTGCACATGTATTTGTGTATAAAACCAAGACAGAAGCTCAAGGACTAATCTTCATCTTTATTGTGTGCTCACACTCCATCACTTTCTAGTTGATGCTTTTTTCTCCCCTGCTGGTTGGATGTCATCACCTGCTCAGATTCTGTAACCCACAGTTGGAAAACACA'
+else: # download fasta file (estimated time: 1 minute)
+    import pysam # 'pip install pysam', for fasta file
+    import gzip
+    fasta_file = os.path.join(assets_dir, 'hg19.fa')
+    if not os.path.exists(fasta_file) or os.path.getsize(fasta_file) == 0:
+        if os.path.exists(fasta_file):
+            os.remove(fasta_file)
+        print("Downloading hg19.fa...")
+        url = "http://hgdownload.cse.ucsc.edu/goldenPath/hg19/bigZips/hg19.fa.gz"
+        try:
+            import requests
+            response = requests.get(url, stream=True)
+            response.raise_for_status()
+            with gzip.GzipFile(fileobj=response.raw) as gz:
+                with open(fasta_file, 'wb') as f:
+                    f.write(gz.read())
+        except Exception as e:
+            print(f"Error downloading FASTA file: {e}")
+            raise
+    fasta_open = pysam.Fastafile(fasta_file)
+    chrom = 'chr10'
+    seq = fasta_open.fetch(chrom, start, end).upper()
+
+# convert to one-hot:
+x_ref = squid.utils.seq2oh(seq, alphabet)
+x_ref = np.expand_dims(x_ref,0)
+
+# =============================================================================
+# View model outputs for reference sequence
+# =============================================================================
+y_profiles, y_counts = predict_tracks(model, x_ref[0])
+
+print('Wild-type counts:', y_counts)
+fig, ax = plt.subplots(figsize=(20,1.5))
+ax.axhline(0, color='k', linewidth=.5)
+ax.bar(range(y_profiles.shape[0]), y_profiles, width=-2, color='r')
+plt.title('Wild-type counts: %s' % y_counts)
+plt.tight_layout()
+if save_figs:
+    fig.savefig(os.path.join(save_path_figs, 'wildtype_profile.png'), facecolor='w', dpi=dpi, bbox_inches='tight')
+    plt.close()
+else:
+    plt.show()
+
+# =============================================================================
+# SQUID API
+# Create in silico mutagenesis library
+# =============================================================================
+mut_window = [map_start, map_end]
+
+if load_previous_library is False:
     # Set up predictor class for in silico MAVE
     pred_generator = ChromBPNetPredictor(
         pred_fun=model.predict_on_batch,
@@ -335,7 +515,8 @@ if load_previous_library is False:
 
     # Set up mutagenizer class for in silico MAVE
     mut_generator = squid.mutagenizer.RandomMutagenesis(
-        mut_rate=mut_rate
+        mut_rate=mut_rate,
+        seed=42
     )
 
     # Generate in silico MAVE
@@ -364,17 +545,17 @@ if not save_path_figs:
 # SEAM API
 # Compile sequence analysis data into a standardized format
 # =============================================================================
-# Initialize compiler
-compiler = Compiler(
-    x=x_mut,
-    y=y_mut,
-    x_ref=x_ref,
-    y_bg=None,
-    alphabet=alphabet,
-    gpu=gpu
-)
-
 if load_previous_library is False:
+    # Initialize compiler
+    compiler = Compiler(
+        x=x_mut,
+        y=y_mut,
+        x_ref=x_ref,
+        y_bg=None,
+        alphabet=alphabet,
+        gpu=gpu
+    )
+
     mave_df = compiler.compile()
     if save_data:
         mave_df.to_csv(os.path.join(save_path, 'mave_df.csv'), index=False)
@@ -387,30 +568,66 @@ print(mave_df)
 # Compute attribution maps for each sequence in library
 # =============================================================================
 if load_previous_attributions is False:
-    attributer = Attributer(
-        model,
-        method=attribution_method,
-        task_index=task_index
-    )
+    if attribution_method == 'deepshap':
+        dinuc_shuffle_n = 20  # Number of dinucleotide shuffles for DeepSHAP
+        use_dinuc_shuffle = True  # Whether to use dinucleotide shuffling (vs random) for DeepSHAP
+        
+        # Download necessary files for DeepSHAP
+        shap_utils_path = os.path.join(assets_dir, "shap_utils.py")
+        if not os.path.exists(shap_utils_path):
+            print("Downloading shap_utils.py...")
+            shap_utils_url = "https://raw.githubusercontent.com/kundajelab/chrombpnet/master/chrombpnet/evaluation/interpret/shap_utils.py"
+            download_if_not_exists(shap_utils_url, shap_utils_path)
+        
+        # Add assets_dir to sys.path if not already there
+        if assets_dir not in sys.path:
+            sys.path.append(assets_dir)
+        
+        # Use DeepSHAPAttributer for deepshap method
+        attributer = DeepSHAPAttributer(
+            model,
+            task_type=task_type,
+            use_dinuc_shuffle=use_dinuc_shuffle,
+            dinuc_shuffle_n=dinuc_shuffle_n
+        )
+        
+        t1 = time.time()
+        attributions = attributer.compute(
+            x=x_mut,
+            x_ref=x_ref[0],
+            save_window=None,
+            batch_size=16,
+            gpu=gpu
+        )
+        t2 = time.time() - t1
+        print('Attribution time:', t2)
+    else:
+        # Use standard Attributer for other methods
+        attributer = Attributer(
+            model,
+            method=attribution_method,
+            task_index=task_index
+        )
 
-    t1 = time.time()
-    attributions = attributer.compute(
-        x=x_mut,
-        x_ref=x_ref,
-        save_window=None,
-        batch_size=16,
-        gpu=gpu,
-        snv_window=[map_start, map_end] # if using ISM, compute variants only at positions within the specified window
-    )
-    t2 = time.time() - t1
-    print('Attribution time:', t2)
+        t1 = time.time()
+        attributions = attributer.compute(
+            x=x_mut,
+            x_ref=x_ref,
+            save_window=None,
+            batch_size=16,
+            gpu=gpu,
+            snv_window=[map_start, map_end] # if using ISM, compute variants only at positions within the specified window
+        )
+        t2 = time.time() - t1
+        print('Attribution time:', t2)
 
     if save_data:
         np.save(os.path.join(save_path, f'attributions_{attribution_method}.npy'), attributions)
 
 # Render logo of attribution map for reference sequence
 if render_logos is True:
-    reference_logo = BatchLogo(attributions[ref_index:ref_index+1, map_start+map_crop[0]:map_start+map_crop[1]],
+    reference_logo = BatchLogo(attributions[ref_index:ref_index+1, map_start:map_end],
+    #reference_logo = BatchLogo(attributions[ref_index:ref_index+1, map_start+map_crop[0]:map_start+map_crop[1]],
         alphabet=alphabet,
         font_name='Arial Rounded MT Bold',
         fade_below=0.5,
@@ -433,7 +650,7 @@ if render_logos is True:
     else:
         plt.show()
 
-if 1: # crop attribution maps to focus on specific region of PPIF locus
+if 1: # crop attribution maps to focus on specific region of PPIF locus, enabling higher resolution analysis
     attributions = attributions[:,map_start+map_crop[0]:map_start+map_crop[1],:]
     mave_df['Sequence'] = mave_df['Sequence'].str[map_start+map_crop[0]:map_start+map_crop[1]]
 
@@ -668,6 +885,7 @@ if render_logos is True:
         plt.show()
 
     # Reference cluster: noise reduction via averaging
+    # Note: membership of the reference sequence to a cluster can be less reliable for more-variable Saliency maps and/or when using a small num_clusters
     fig, ax = meta_logos.draw_single(
         ref_cluster,
         fixed_ylim=False,
@@ -738,3 +956,19 @@ if render_logos is True:
 # Save average background data to numpy array
 if save_data:
     np.save(os.path.join(save_path, 'average_background.npy'), meta.background)
+
+# =====================================================================================
+# ============================= END OF MAIN EXAMPLE ===================================
+# =====================================================================================
+# The code below contains utility classes and implementations used in the example above.
+# These are separated from the main example for clarity and organization.
+# =====================================================================================
+
+# =============================================================================
+# ChromBPNet Predictor Implementation
+# =============================================================================
+# The ChromBPNetPredictor class is defined at the top of the file
+
+# =============================================================================
+# DeepSHAP Implementation
+# =============================================================================

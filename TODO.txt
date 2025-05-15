@@ -102,7 +102,8 @@ Documentation:
     - add ICLR link to README when available
     - show example kwargs for each attribution method in ReadTheDocs: PCA with plot_eigenvalues, etc.
     - read through and verify API in ReadTheDocs
-    - make sure requirements and installation are consistent with setup.py 
+    - make sure requirements and installation are consistent with setup.py
+    - update all terms in the code to reflect those used in final manuscript (MSM --> SSM, etc.)
 
 
 - Compiler:
@@ -140,19 +141,17 @@ Documentation:
             - Test that dinuc_shuffle is able to call the numpy version of batch_dinuc_shuffle
             - baseline_type=None for pre-generated baseline? (e.g., training set)
 
-
 - Clusterer:
     - implement other methods from cuml.manifold?
         - tsne CPU, GPU
-        - pca GPU
     - phate GPU?
     - add diffusion maps code
     - reuse DM distance matrix for clustering?
     - add Louvain (or Leiden) clustering
     - hierarchical vs embedding discrepancy:
-        - hieararhical doesn't take method as hyperparam: clusterer = Clusterer(attributions,gpu=gpu)
+        - hierarchical doesn't take method as hyperparam: clusterer = Clusterer(attributions,gpu=gpu)
     - Does hierarchical cpu not run out of memory when gpu does? Is the memmap problematic? 
-
+    - Error in get_cluster_labels print(f"Cut level for {n_clusters} clusters: {max_d:.3f}") --> when more clusters are provided than maps?
 
 - MetaExplainer:
     - add mutual information plot to explainer?
@@ -169,6 +168,7 @@ Documentation:
         - currently: background_entropy = entropy([null_rate, (1-null_rate)/3, (1-null_rate)/3, (1-null_rate)/3], base=2)
     - plot_msm() needs xtick_spacing
     - ability to plot a single row (cluster) of MSM, and given a position, view the nucleotide frequencies
+    - change Blues to viridis for percent mismatch palette (recall, sns.color_palette('rocket', n_colors=100); sns.color_palette('viridis', n_colors=100)
 
 - Identifier:
     - code to combine TFBS states based on squares in covariance matrix
@@ -181,17 +181,11 @@ Documentation:
     - fix state matrix bug (multiplier > 1?)
     - add percent mismatches table and printouts from old code
 
-- Logos:
-    - inconsistency between figsize and fig_size
-        - meta.generate_logos((20, 2.5), ...)
-        - BatchLogo(fig_size=[20, 2.5], ...) --> change to figsize, which is the SEAM way.
-
 - Impress:
     - move all plotting code to impress.py?
         - plot_dendrogram
         - minimize other redundancies between functions in identifier.py and clusterer.py
     - add Bokeh plots for colab
-
 
 - GUI Class:
     - GUI requires 'matplotlib==3.6.0', which is in conflict with scipy dendrogram plot

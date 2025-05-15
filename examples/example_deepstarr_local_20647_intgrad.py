@@ -161,7 +161,8 @@ if load_previous_library is False:
 
     # Set up mutagenizer class for in silico MAVE
     mut_generator = squid.mutagenizer.RandomMutagenesis(
-        mut_rate=mut_rate
+        mut_rate=mut_rate,
+        seed=42
     )
 
     # Generate in silico MAVE
