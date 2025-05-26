@@ -35,6 +35,8 @@ TODO:
 - plotting:
     - Missing save outputs:
         - all_maps_average_y_adaptive.png / all_maps_average_y_fixed.png
+    - TypeError: draw_variability_logo() got an unexpected keyword argument 'border'
+
 
 
 - SQUID:
@@ -60,9 +62,13 @@ Documentation:
     - https://pypi.org/project/seam-nn/ pictures not loading correctly? also check all text
     - show example kwargs for each attribution method in ReadTheDocs: PCA with plot_eigenvalues, etc.
     - read through and verify API in ReadTheDocs
+    - add Colab copies to ReadTheDocs
     - make sure requirements and installation are consistent with setup.py
     - update all terms in the backend code to reflect those used in final manuscript (MSM --> SSM, etc.)
         - and in all examples
+    - Note in readme about DeepSHAP only in examples due to conflicts in eager mode defaulted in modern Colab (TF). Also mention PyTorch
+    - A graphic user interface (GUI) is available for dynamically interpretting SEAM results. The GUI can be run using the command line interface from the 'seam" folder via
+        "python seam_gui.py'. The SEAM GUI requires pre-computed inputs that can be saved using the example scripts above.
 
 
 - Compiler:
@@ -88,6 +94,7 @@ Documentation:
             - once everything is fixed up, check UMAP of global AP1 library
             - automatically handle best batch_size (tf.experimental.autotune)?
                 - Batch_size check against memory
+            - check gpu version time per batch over batches (memory leakage?)
         - DeepSHAP
             - add old TF1 version
             - Refactor DeepSHAP code for newer TF versions
@@ -99,12 +106,14 @@ Documentation:
             - Plot each map within a given int grad trajectory
             - Test that dinuc_shuffle is able to call the numpy version of batch_dinuc_shuffle
             - baseline_type=None for pre-generated baseline? (e.g., training set)
+            - Leo's sub-batch code?
 
 
 - Clusterer:
     - implement other methods from cuml.manifold?
         - tsne CPU, GPU
     - phate GPU?
+    - Dendrogram plot: update cluster colors based on cut level
     - add diffusion maps code
     - reuse DM distance matrix for clustering?
     - add Louvain (or Leiden) clustering
@@ -195,6 +204,17 @@ Documentation:
     - Update P3 UMAP when Custom.plt_step is changed on P2 (needs to update Predef.cluster_colors)
     - New tab to merge clusters and label them (e.g., AP-1, etc)
         - Visualize state vs. TFBS presence graph
+    - Instructions to install Matplotlib==3.6 (or fix errors)
+    - Write .md manual
+    - inputs: linkage and dropdown: {number of clusters, cut level}
+    - sort: {None, median} with tooltip
+    - pop up box to view dendrogram
+    - remove all old logo methods and replace with BatchLogo
+    - input alphabet: DNA, RNA, Protein, Custom, Automate?
+    - youtube tutorial
+    - demo data (orig slides with 3-way mutation; crop and no crop)
+    - inputs need to be straight from local script; i.e., no crop params in gui
+
 
 
 - Old code:
@@ -203,7 +223,8 @@ Documentation:
 
 - Other:
     - Figure revisions:
-        - Illustrator attribution y-axes in Myriad: change to Arial, and add middle notch    
+        - Illustrator attribution y-axes in Myriad: change to Arial, and add middle notch  
+    - sampling from clusters  
 
 
 - Zenodo:

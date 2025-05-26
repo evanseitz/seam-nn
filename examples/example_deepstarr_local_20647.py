@@ -47,6 +47,7 @@ task_index = 1  # Housekeeping (Hk) program
 
 mut_rate = 0.1 # mutation rate for in silico mutagenesis
 num_seqs = 10000 # number of sequences to generate
+n_clusters = 30 # number of clusters for hierarchical clustering
 attribution_method = 'intgrad' # {saliency, smoothgrad, intgrad, deepshap, ism} # TODO: deepshap under construction
 
 gpu = len(tf.config.list_physical_devices('GPU')) > 0 # Whether to use GPU (Boolean)
@@ -280,9 +281,6 @@ if load_previous_linkage is False:
     if save_data:
         np.save(os.path.join(save_path, f'hierarchical_linkage_{link_method}_{attribution_method}.npy'), linkage)
 
-# Cut tree to get a specific number of clusters
-n_clusters = 30
-
 labels_n, cut_level = clusterer.get_cluster_labels(
     linkage,
     criterion='maxclust',
@@ -448,6 +446,20 @@ meta_logos_no_bg = meta.generate_logos(
     figsize=(20, 2.5)
 )
 
+# View average background over all clusters
+average_background_logo = BatchLogo(
+    meta.background[np.newaxis, :, :],
+    alphabet=meta.alphabet,
+    figsize=[20, 1.5],
+    batch_size=1,
+    font_name='Arial Rounded MT Bold',
+    fade_below=0.5,
+    shade_below=0.5,
+    width=0.9,
+    center_values=True
+)
+average_background_logo.process_all()
+
 if render_logos is True:
     if sort_method is not None:
         ref_cluster = meta.membership_df.loc[ref_index, 'Cluster_Sorted']
@@ -496,6 +508,24 @@ if render_logos is True:
         plt.close()
     else:
         plt.show()
+
+    # Background averaged over all clusters
+    fig, ax = average_background_logo.draw_single(
+        0,
+        fixed_ylim=False,
+        figsize=(20,1.5),
+        border=False,
+        view_window=view_window
+        )
+    if save_logos:
+        fig.savefig(os.path.join(save_path_logos, '4_average_background.png'), facecolor='w', dpi=dpi, bbox_inches='tight')
+        plt.close()
+    else:
+        plt.show()
+
+# Save average background data to numpy array
+if save_data:
+    np.save(os.path.join(save_path, 'average_background.npy'), meta.background)
 
 # =============================================================================
 # SEAM API

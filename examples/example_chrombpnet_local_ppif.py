@@ -31,6 +31,11 @@ Note on multiple folds:
     2. Continue for folds 1-4
     3. Combine results across folds for final analysis
     Each run will save attribution maps with the fold index in the filename.
+
+Note on model type:
+    If model encounters a mashable error, see FAQs on ChromBPNet GitHub page for conversion to compatible format:
+    https://github.com/kundajelab/chrombpnet/blob/master/chrombpnet/helpers/postprocessing/reformat_chrombpnet_h5.py
+    e.g., python reformat_chrombpnet_h5.py -cnb model.chrombpnet_nobias.fold_0.ENCSR000EOT.h5 -bm model.bias_scaled.fold_0.ENCSR000EOT.h5 -o .
 """
 
 # TODO: test DeepSHAP profile head in Attributer()
@@ -56,13 +61,14 @@ from seam.logomaker_batch.batch_logo import BatchLogo
 # =============================================================================
 # Key hyperparameters
 # =============================================================================
+model_type = 'dnase' # {'thp1', 'thp1_nobias', 'dnase', 'atac'}
 fold_index = 0  # Choose which fold to use (0-4)
 task_type = 'counts'  # {'profile', 'counts'} for logits_profile (0), logcount (1)
 enhancer_or_promoter = 'promoter'  # {'promoter', 'enhancer'} of PPIF gene
 mut_rate = 0.1  # mutation rate for in silico mutagenesis
 num_seqs = 100000  # number of sequences to generate
 n_clusters = 200 # number of clusters for hierarchical clustering
-attribution_method = 'intgrad'  # {saliency, smoothgrad, intgrad, ism, deepshap}
+attribution_method = 'deepshap'  # {saliency, smoothgrad, intgrad, ism, deepshap}
 # Note: DeepSHAP is not optimized for batch processing of SEAM's in silico mutagenesis library, and may also not be calibrated for several modern TF2 operations.
 
 # Configure TensorFlow for DeepSHAP if needed
@@ -83,8 +89,7 @@ if attribution_method == 'deepshap':
         print("Warning: Could not disable TensorFlow eager execution. DeepSHAP may not work properly.")
 
 # Note: If using DeepSHAP (attribution_method = 'deepshap'), TensorFlow eager execution will be disabled
-# This is required by the SHAP library's TFDeepExplainer. If you need to use eager execution elsewhere
-# in your script, you should run DeepSHAP in a separate process.
+# This is required by the SHAP library's TFDeepExplainer.
 
 # =============================================================================
 # Overhead user settings
@@ -115,7 +120,7 @@ if not os.path.exists(assets_dir):
     os.makedirs(assets_dir)
 
 if save_data:
-    save_path = os.path.join(py_dir, f'outputs_chrombpnet_local_ppif_{enhancer_or_promoter}_fold{fold_index}_{attribution_method}')
+    save_path = os.path.join(py_dir, f'outputs_chrombpnet_local_ppif_{enhancer_or_promoter}_fold{fold_index}_{attribution_method}_{model_type}')
     if not os.path.exists(save_path):
         os.makedirs(save_path)
     if save_figs:
@@ -410,18 +415,44 @@ download_if_not_exists(losses_url, losses_path)
 sys.path.append(assets_dir)
 import losses
 
+# TODO: below, get models from Zenodo
 # Download model file for selected fold
-model_url = f"https://drive.google.com/uc?id=1kxbVgnXTC7Z4BgsqKovv-IZ9jbBzIZcc"  # fold 0
-if fold_index == 1:
-    model_url = "https://drive.google.com/uc?id=1lrliung0oJfqg9BW0s6VWlUcCk9CyKfw"
-elif fold_index == 2:
-    model_url = "https://drive.google.com/uc?id=1sgsZyXrrglItP3YeyQwJCiNqI8KkZWUA"
-elif fold_index == 3:
-    model_url = "https://drive.google.com/uc?id=1HSl0KY9JuYDPkDFtG_hQm6gZU6enlLhX"
-elif fold_index == 4:
-    model_url = "https://drive.google.com/uc?id=1m8pGMqcP2zVROv3L9z-jhxvn2-PnYOk0"
+if model_type == 'thp1':
+    model_url = f"https://drive.google.com/uc?id=1kxbVgnXTC7Z4BgsqKovv-IZ9jbBzIZcc"  # fold 0
+    if fold_index == 1:
+        model_url = "https://drive.google.com/uc?id=1lrliung0oJfqg9BW0s6VWlUcCk9CyKfw"
+    elif fold_index == 2:
+        model_url = "https://drive.google.com/uc?id=1sgsZyXrrglItP3YeyQwJCiNqI8KkZWUA"
+    elif fold_index == 3:
+        model_url = "https://drive.google.com/uc?id=1HSl0KY9JuYDPkDFtG_hQm6gZU6enlLhX"
+    elif fold_index == 4:
+        model_url = "https://drive.google.com/uc?id=1m8pGMqcP2zVROv3L9z-jhxvn2-PnYOk0"
+    model_path = os.path.join(assets_dir, f"thp1_fold{fold_index}.h5")
 
-model_path = os.path.join(assets_dir, f"thp1_fold{fold_index}.h5")
+elif model_type == 'thp1_nobias':
+    model_url = f"https://drive.google.com/uc?id=1KaAwg1Q9Jr0IHNNbR-8m_FWx_TRSiNaF"  # fold 0
+    if fold_index == 1:
+        model_url = "https://drive.google.com/uc?id=1xArib-bT1kYWst3LblPUnV80RO93zvnn"
+    elif fold_index == 2:
+        model_url = "https://drive.google.com/uc?id=1BgnoqtQ8UcAyjZ_yV0i160JCBFsjMao9"
+    elif fold_index == 3:
+        model_url = "https://drive.google.com/uc?id=11Dg0jzMYtjEtpETz60HYHyjqbo2PEvcC"
+    elif fold_index == 4:
+        model_url = "https://drive.google.com/uc?id=1NuXzTwCe-DlJ00tC17zY12_ukP7KLMGa"
+    model_path = os.path.join(assets_dir, f"thp1_nobias_fold{fold_index}.h5")
+
+elif model_type == 'atac':
+    model_url = "https://drive.google.com/uc?id=11_3zZAYMbb_wWo2fzzbfIW4fYI0Uagml" # fold 0
+    if fold_index > 0:
+        print("ATAC model fold %s not implemented yet" % fold_index)
+    model_path = os.path.join(assets_dir, f"atac_fold{fold_index}.h5")
+
+elif model_type == 'dnase':
+    model_url = "https://drive.google.com/uc?id=18aowmrCI81HIA2SVuJ6hq9PV7DG8Z0PT" # fold 0
+    if fold_index > 0:
+        print("DNase model fold %s not implemented yet" % fold_index)
+    model_path = os.path.join(assets_dir, f"dnase_fold{fold_index}.h5")
+
 download_if_not_exists(model_url, model_path)
 
 # Load model
@@ -715,6 +746,7 @@ pred_boxplots = meta.plot_cluster_stats(
     metric='prediction',
     show_ref=True,
     show_fliers=False,
+    compact=True,
     save_path=save_path_figs,
     dpi=dpi
 )
@@ -793,7 +825,7 @@ if render_logos is True:
     # Generate variability logo, representing the overlap of all averaged cluster logos
     fig, ax = meta_logos.draw_variability_logo(
         figsize=(20,1.5),
-        view_window=view_window
+        view_window=view_window,
     )
     if save_logos:
         fig.savefig(os.path.join(save_path_logos_average, '_variability_logo.png'), facecolor='w', dpi=dpi, bbox_inches='tight')
@@ -872,6 +904,19 @@ if render_logos is True:
 
     # Compare reference map with and without noise reduction and background separation
     # Reference logo
+    reference_logo = BatchLogo(attributions[ref_index:ref_index+1],  # already-cropped attributions
+        alphabet=alphabet,
+        font_name='Arial Rounded MT Bold',
+        fade_below=0.5,
+        shade_below=0.5,
+        width=0.9,
+        figsize=[20,1.5],
+        center_values=True,
+        batch_size=1
+    )
+
+    reference_logo.process_all()
+
     fig, ax = reference_logo.draw_single(
         0,
         fixed_ylim=False,

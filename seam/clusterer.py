@@ -492,11 +492,26 @@ class Clusterer:
             dist_squared = tf.maximum(dist_squared, 0.0)  # ensure non-negative values
             return tf.sqrt(dist_squared)
         
+        # Check TensorFlow execution mode to handle different attribution methods:
+        # - DeepSHAP requires non-eager execution (tf.compat.v1.disable_eager_execution())
+        # - Other methods (saliency, smoothgrad, etc.) typically use eager execution
+        # This check ensures compatibility with both modes when computing distances
+        is_eager = tf.executing_eagerly()
+        
         for i in tqdm(range(0, num_A, batch_size), desc='Distance batch'):
             A_batch = A[i:i + batch_size]
             for j in range(0, num_B, batch_size):
                 B_batch = B[j:j + batch_size]
-                distances = pairwise_distance(A_batch, B_batch).numpy()
+                distances = pairwise_distance(A_batch, B_batch)
+                
+                if is_eager:
+                    # In eager mode, we can call .numpy() directly
+                    distances = distances.numpy()
+                else:
+                    # In non-eager mode, we need to use a session
+                    with tf.compat.v1.Session() as sess:
+                        distances = sess.run(distances)
+                
                 distance_matrix[i:i + batch_size, j:j + batch_size] = distances
         
         distance_matrix.flush()  # Ensure all data is written to disk
