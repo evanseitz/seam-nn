@@ -61,7 +61,7 @@ from seam.logomaker_batch.batch_logo import BatchLogo
 # =============================================================================
 # Key hyperparameters
 # =============================================================================
-model_type = 'dnase' # {'thp1', 'thp1_nobias', 'dnase', 'atac'}
+model_type = 'dnase_thp1' # {'dnase_thp1', 'dnase_thp1_nobias', 'dnase_k562', 'atac_k562'}
 fold_index = 0  # Choose which fold to use (0-4)
 task_type = 'counts'  # {'profile', 'counts'} for logits_profile (0), logcount (1)
 enhancer_or_promoter = 'promoter'  # {'promoter', 'enhancer'} of PPIF gene
@@ -417,7 +417,7 @@ import losses
 
 # TODO: below, get models from Zenodo
 # Download model file for selected fold
-if model_type == 'thp1':
+if model_type == 'dnase_thp1':
     model_url = f"https://drive.google.com/uc?id=1kxbVgnXTC7Z4BgsqKovv-IZ9jbBzIZcc"  # fold 0
     if fold_index == 1:
         model_url = "https://drive.google.com/uc?id=1lrliung0oJfqg9BW0s6VWlUcCk9CyKfw"
@@ -429,7 +429,7 @@ if model_type == 'thp1':
         model_url = "https://drive.google.com/uc?id=1m8pGMqcP2zVROv3L9z-jhxvn2-PnYOk0"
     model_path = os.path.join(assets_dir, f"thp1_fold{fold_index}.h5")
 
-elif model_type == 'thp1_nobias':
+elif model_type == 'dnase_thp1_nobias':
     model_url = f"https://drive.google.com/uc?id=1KaAwg1Q9Jr0IHNNbR-8m_FWx_TRSiNaF"  # fold 0
     if fold_index == 1:
         model_url = "https://drive.google.com/uc?id=1xArib-bT1kYWst3LblPUnV80RO93zvnn"
@@ -441,13 +441,13 @@ elif model_type == 'thp1_nobias':
         model_url = "https://drive.google.com/uc?id=1NuXzTwCe-DlJ00tC17zY12_ukP7KLMGa"
     model_path = os.path.join(assets_dir, f"thp1_nobias_fold{fold_index}.h5")
 
-elif model_type == 'atac':
+elif model_type == 'atac_k562':
     model_url = "https://drive.google.com/uc?id=11_3zZAYMbb_wWo2fzzbfIW4fYI0Uagml" # fold 0
     if fold_index > 0:
         print("ATAC model fold %s not implemented yet" % fold_index)
     model_path = os.path.join(assets_dir, f"atac_fold{fold_index}.h5")
 
-elif model_type == 'dnase':
+elif model_type == 'dnase_k562':
     model_url = "https://drive.google.com/uc?id=18aowmrCI81HIA2SVuJ6hq9PV7DG8Z0PT" # fold 0
     if fold_index > 0:
         print("DNase model fold %s not implemented yet" % fold_index)
