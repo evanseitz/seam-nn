@@ -61,7 +61,7 @@ from seam.logomaker_batch.batch_logo import BatchLogo
 # =============================================================================
 # Key hyperparameters
 # =============================================================================
-model_type = 'dnase_thp1' # {'dnase_thp1', 'dnase_thp1_nobias', 'dnase_k562', 'atac_k562'}
+model_type = 'dnase_jurkat' # {'dnase_thp1', 'dnase_thp1_nobias', 'dnase_k562', 'dnase_jurkat', 'dnase_jurkat_stim', 'atac_k562'}
 fold_index = 0  # Choose which fold to use (0-4)
 task_type = 'counts'  # {'profile', 'counts'} for logits_profile (0), logcount (1)
 enhancer_or_promoter = 'promoter'  # {'promoter', 'enhancer'} of PPIF gene
@@ -427,31 +427,37 @@ if model_type == 'dnase_thp1':
         model_url = "https://drive.google.com/uc?id=1HSl0KY9JuYDPkDFtG_hQm6gZU6enlLhX"
     elif fold_index == 4:
         model_url = "https://drive.google.com/uc?id=1m8pGMqcP2zVROv3L9z-jhxvn2-PnYOk0"
-    model_path = os.path.join(assets_dir, f"thp1_fold{fold_index}.h5")
+    model_path = os.path.join(assets_dir, f"dnase_thp1_fold{fold_index}.h5")
 
 elif model_type == 'dnase_thp1_nobias':
     model_url = f"https://drive.google.com/uc?id=1KaAwg1Q9Jr0IHNNbR-8m_FWx_TRSiNaF"  # fold 0
-    if fold_index == 1:
-        model_url = "https://drive.google.com/uc?id=1xArib-bT1kYWst3LblPUnV80RO93zvnn"
-    elif fold_index == 2:
-        model_url = "https://drive.google.com/uc?id=1BgnoqtQ8UcAyjZ_yV0i160JCBFsjMao9"
-    elif fold_index == 3:
-        model_url = "https://drive.google.com/uc?id=11Dg0jzMYtjEtpETz60HYHyjqbo2PEvcC"
-    elif fold_index == 4:
-        model_url = "https://drive.google.com/uc?id=1NuXzTwCe-DlJ00tC17zY12_ukP7KLMGa"
-    model_path = os.path.join(assets_dir, f"thp1_nobias_fold{fold_index}.h5")
-
-elif model_type == 'atac_k562':
-    model_url = "https://drive.google.com/uc?id=11_3zZAYMbb_wWo2fzzbfIW4fYI0Uagml" # fold 0
     if fold_index > 0:
-        print("ATAC model fold %s not implemented yet" % fold_index)
-    model_path = os.path.join(assets_dir, f"atac_fold{fold_index}.h5")
+        print("DNase-seq THP1_nobias model fold %s not implemented yet" % fold_index)
+    model_path = os.path.join(assets_dir, f"dnase_thp1_nobias_fold{fold_index}.h5")
 
 elif model_type == 'dnase_k562':
     model_url = "https://drive.google.com/uc?id=18aowmrCI81HIA2SVuJ6hq9PV7DG8Z0PT" # fold 0
     if fold_index > 0:
-        print("DNase model fold %s not implemented yet" % fold_index)
-    model_path = os.path.join(assets_dir, f"dnase_fold{fold_index}.h5")
+        print("DNase K562 model fold %s not implemented yet" % fold_index)
+    model_path = os.path.join(assets_dir, f"dnase_k562_fold{fold_index}.h5")
+
+elif model_type == 'dnase_jurkat':
+    model_url = "https://drive.google.com/uc?id=1UD9LAND14zrp0yio9dQSOL4FPtDcoIQi" # fold 0
+    if fold_index > 0:
+        print("DNase-seq jurkat model fold %s not implemented" % fold_index)
+    model_path = os.path.join(assets_dir, f"dnase_jurkat_fold{fold_index}.h5")
+
+elif model_type == 'dnase_jurkat_stim':
+    model_url = "https://drive.google.com/uc?id=1mdRlvTZhdk4kxTIY12tiVmQ1HSJWyck9" # fold 0
+    if fold_index > 0:
+        print("DNase-seq jurkat_stim model fold %s not implemented" % fold_index)
+    model_path = os.path.join(assets_dir, f"dnase_jurkat_stim_fold{fold_index}.h5")
+
+elif model_type == 'atac_k562':
+    model_url = "https://drive.google.com/uc?id=11_3zZAYMbb_wWo2fzzbfIW4fYI0Uagml" # fold 0
+    if fold_index > 0:
+        print("ATAC K562 model fold %s not implemented yet" % fold_index)
+    model_path = os.path.join(assets_dir, f"atac_k562_fold{fold_index}.h5")
 
 download_if_not_exists(model_url, model_path)
 
