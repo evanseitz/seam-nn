@@ -12,7 +12,7 @@ SEAM: systematic explanation of attribution-based mechanisms for regulatory geno
 	<img src="https://raw.githubusercontent.com/evanseitz/seam-nn/main/docs/_static/seam_logo_dark.png#gh-dark-mode-only" width="250" height="250">
 </p>
 
-This repository contains the Python implementation of **SEAM** (**S**ystematic **E**xplanation of **A**ttribution-based for **M**echanisms), an AI interpretation tool that systematically investigates how mutations reshape regulatory mechanisms. For an extended discussion of this approach and its applications, please refer to our manuscript, which we presented at the [ICLR 2025](https://iclr.cc/) [GEM Workshop](https://www.gembio.ai/):
+This repository contains the Python implementation of **SEAM** (**S**ystematic **E**xplanation of **A**ttribution-based **M**echanisms), an AI interpretation framework that systematically investigates how mutations reshape regulatory mechanisms. For an extended discussion of this approach and its applications, please refer to our manuscript, which we presented at the [ICLR 2025](https://iclr.cc/) [GEM Workshop](https://www.gembio.ai/):
 
 * Seitz, E.E., McCandlish, D.M., Kinney, J.B., and Koo P.K. Decoding the Mechanistic Impact of Genetic Variation on Regulatory Sequences with Deep Learning. *Workshop on Generative and Experimental Perspectives for Biomolecular Design*, *International Conference on Learning Representations*, April 15, 2025. https://openreview.net/forum?id=PtjMeyHcTt
 
@@ -68,11 +68,6 @@ The framework takes as input a sequence-based oracle (e.g., a genomic DNN) and r
 2. **Predictions/Measurements** (`numpy.ndarray`): Experimental or model-derived values of shape (N,1), corresponding to each sequence's functional output.
 
 3. **Attribution Maps** (`numpy.ndarray`): Mechanistic importance scores of shape (N, L, A), quantifying the contribution of each position-feature pair to the sequence's function. These can be generated using various attribution methods:
-   - Saliency Maps
-   - Integrated Gradients
-   - SmoothGrad
-   - *In Silico* Mutagenesis (ISM)
-   - DeepSHAP (see note below)
 
 4. **Clustering/Embedding** (either):
    - Hierarchical clustering linkage matrix (e.g., from `scipy.cluster.hierarchy.linkage`)
