@@ -75,10 +75,6 @@ The framework takes as input a sequence-based oracle (e.g., a genomic DNN) and r
 
 These required files can be generated either externally or using SEAM's specialized modules (described below). Once provided, SEAM applies a meta-explanation approach to interpret the sequence-function-mechanism dataset, deciphering the determinants of mechanistic variation in regulatory sequences.
 
-> *Note about attribution methods:*
->
-> SEAM provides GPU-accelerated implementations of Saliency Maps, Integrated Gradients, SmoothGrad, and ISM. DeepSHAP is not optimized for batch processing across the sequence library. Examples for incorportating DeepSHAP using external scripts are provided in the `examples` folder.
-
 The examples below demonstrate how to generate these requirements using SEAM's modules and apply the analysis pipeline to reproduce key findings from our main manuscript.
 
 ## SEAM Modules:
@@ -88,7 +84,7 @@ SEAM's analysis pipeline is implemented through several specialized modules that
 
 - **Compiler**: Standardizes sequence analysis by converting one-hot encoded sequences to string format and computing associated metrics. Compiles sequences and functional properties into a DataFrame, with support for metrics such as Hamming distances and global importance analysis scores. Implements GPU-accelerated sequence conversion and vectorized operations.
 
-- **Attributer**: Computes attribution maps using various GPU-optimized methods (Saliency Maps, Integrated Gradients, SmoothGrad, or ISM), quantifying the base-wise contribution to regulatory activity.
+- **Attributer**: Computes attribution maps using various GPU-optimized methods (Saliency Maps, Integrated Gradients, SmoothGrad, or ISM), quantifying the base-wise contribution to regulatory activity. SEAM provides GPU-accelerated implementations of Saliency Maps, IntGrad, SmoothGrad, and ISM. However, DeepSHAP is not optimized for efficient batch processing across the sequence library. Examples for incorportating DeepSHAP using external scripts are provided in the `examples` folder.
 
 - **Clusterer**: Computes mechanistic clusters and embeddings from attribution maps to identify distinct regulatory mechanisms. Supports hierarchical clustering (GPU-optimized), K-means, and DBSCAN algorithms, with optional dimensionality reduction (UMAP, t-SNE, PCA) for complementary interpretability.
 
