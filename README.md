@@ -88,9 +88,12 @@ SEAM's analysis pipeline is implemented through several specialized modules that
 
 - **Clusterer**: Computes mechanistic clusters and embeddings from attribution maps to identify distinct regulatory mechanisms. Supports hierarchical clustering (GPU-optimized), K-means, and DBSCAN algorithms, with optional dimensionality reduction (UMAP, t-SNE, PCA) for complementary interpretability.
 
-- **MetaExplainer**: The core SEAM module that integrates results to identify and interpret mechanistic patterns. Generates cluster-averaged attribution maps and the Mechanism Summary Matrix (MSM), implementing background separation with adaptive scaling. Provides visualization tools for sequence logos, attribution logos, and cluster statistics, with support for both PWM-based and enrichment-based analysis. Features GPU acceleration with CPU fallbacks.
+- **MetaExplainer**: The core SEAM module that integrates results to identify and interpret mechanistic patterns. Generates cluster-averaged attribution maps (shape: (L, A) for each cluster) and the Mechanism Summary Matrix (MSM), a DataFrame containing position-wise statistics (entropy, consensus matches, reference mismatches) for each cluster. Also implements background separation and provides visualization tools for sequence logos, attribution logos, and cluster statistics, with support for both PWM-based and enrichment-based analysis. Features GPU acceleration with CPU fallbacks.
 
 - **Identifier**: Analyzes cluster-averaged attribution maps in conjunction with the MSM to identify precise locations of motifs and their epistatic interactions.
+
+### Module Relationships:
+SEAM's modules form an integrated pipeline where outputs from earlier modules feed into subsequent analysis. The Mutagenizer generates sequences that are processed by the Compiler and Attributer. These attribution maps are then clustered by the Clusterer, with results from Mutagenizer, Compiler and Attributer integrated by the MetaExplainer to characterize each SEAM-derived mechanism. The Identifier module then analyzes these MetaExplainer outputs to pinpoint specific regulatory elements and their interactions.
 
 ### Examples
 
