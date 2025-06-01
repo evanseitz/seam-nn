@@ -75,9 +75,9 @@ The framework takes as input a sequence-based oracle (e.g., a genomic DNN) and r
 
 These required files can be generated either externally or using SEAM's specialized modules (described below). Once provided, SEAM applies a meta-explanation approach to interpret the sequence-function-mechanism dataset, deciphering the determinants of mechanistic variation in regulatory sequences.
 
-> **Note on attribution methods:**
+> *Note about attribution methods:*
 >
-> SEAM provides GPU-accelerated implementations of Saliency Maps, Integrated Gradients, SmoothGrad, and ISM, with efficient batch processing for large sequence libraries. DeepSHAP is not optimized for batch processing in SEAM's Attributer class. Examples for incorportating DeepSHAP using external scripts are provided in the `examples` folder.
+> SEAM provides GPU-accelerated implementations of Saliency Maps, Integrated Gradients, SmoothGrad, and ISM. DeepSHAP is not optimized for batch processing across the sequence library. Examples for incorportating DeepSHAP using external scripts are provided in the `examples` folder.
 
 The examples below demonstrate how to generate these requirements using SEAM's modules and apply the analysis pipeline to reproduce key findings from our main manuscript.
 
@@ -100,7 +100,7 @@ SEAM's analysis pipeline is implemented through several specialized modules that
 
 **Google Colab examples** for applying SEAM on previously-published deep learning models are available at the links below.
 
-> Note: Due to memory requirements for calculating distance matrices, Colab Pro may be required for examples using hierarchical clustering with their current settings.
+> **Note:** Due to memory requirements for calculating distance matrices, Colab Pro may be required for examples using hierarchical clustering with their current settings.
 
 - [Local library to annotate all TFBSs and biophysical states](https://colab.research.google.com/drive/1HOM_ysa4HIh_ZoYzLwa4jZu4evyRntF7?usp=sharing)
 	- DeepSTARR: Enhancer 20647 (Fig.2a)
