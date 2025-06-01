@@ -75,7 +75,7 @@ The framework takes as input a sequence-based oracle (e.g., a genomic DNN) and r
 
 These required files can be generated either externally or using SEAM's specialized modules (described below). Once provided, SEAM applies a meta-explanation approach to interpret the sequence-function-mechanism dataset, deciphering the determinants of mechanistic variation in regulatory sequences.
 
-The examples below demonstrate how to generate these requirements using SEAM's modules and apply the analysis pipeline to reproduce key findings from our main manuscript.
+For detailed examples of how to generate these requirements using SEAM's modules and apply the analysis pipeline to reproduce key findings from our main manuscript, see the Examples section at the end of this document.
 
 ## SEAM Modules:
 SEAM's analysis pipeline is implemented through several specialized modules that work together:
