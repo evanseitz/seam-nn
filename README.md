@@ -75,7 +75,7 @@ The framework takes as input a sequence-based oracle (e.g., a genomic DNN) and r
 
 These required files can be generated either externally or using SEAM's specialized modules (described below). Once provided, SEAM applies a meta-explanation approach to interpret the sequence-function-mechanism dataset, deciphering the determinants of mechanistic variation in regulatory sequences.
 
-**Note on Attribution Methods:** Saliency Maps, Integrated Gradients, SmoothGrad, and ISM are fully optimized for CPU/GPU acceleration and batch processing in modern TensorFlow 2. However, DeepSHAP implementations in this repository (as seen in the `examples` folder) are not optimized for batch processing across SEAM's sequence library.
+> Note on attribution methods: SEAM provides GPU-accelerated implementations of Saliency Maps, Integrated Gradients, SmoothGrad, and ISM, with efficient batch processing for large sequence libraries. DeepSHAP is not optimized for batch processing in SEAM's Attributer class. Examples for incorportating DeepSHAP using external scripts are provided in the `examples` folder.
 
 The examples below demonstrate how to generate these requirements using SEAM's modules and apply the analysis pipeline to reproduce key findings from our main manuscript.
 
