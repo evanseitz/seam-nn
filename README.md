@@ -38,7 +38,6 @@ pip install seam-nn
 
 Finally, when you are done using the environment, always exit via `conda deactivate`.
 
-
 ### Notes
 
 SEAM has been tested on Mac and Linux operating systems. Typical installation time on a normal computer is less than 1 minute.
@@ -55,12 +54,52 @@ Older DNNs that require inference via Tensorflow 1.x or related packages may be 
 1. Tensorflow 1.x environment for generating *in silico* sequence-function-mechanism dataset
 2. Tensorflow 2.x environment for applying SEAM to explain *in silico* sequence-function-mechanism dataset
 
-**Attribution Method Compatibility:** Saliency Maps, Integrated Gradients, SmoothGrad, and ISM are fully optimized for CPU/GPU acceleration and batch processing in modern TensorFlow 2. However, DeepSHAP implementations in this repository (see `examples`) are not optimized for batch processing of SEAM's in silico mutagenesis library.
-
-## Usage:
-SEAM provides a simple interface that takes as input a sequence-based oracle (e.g., a genomic DNN), which is used to generate an *in silico* sequence-function-mechanism dataset representing a localized region of sequence space. SEAM uses a meta-explanation framework to interpret the *in silico* sequence-function-mechanism dataset, deciphering the determinants of mechanistic variation in regulatory sequences.
+## Usage and Requirements:
+SEAM provides a unified interface for mechanistic interpretation of sequence-based deep learning models. 
 
 <img src="https://raw.githubusercontent.com/evanseitz/seam-nn/main/docs/_static/framework.png" alt="fig" width="800"/>
+
+
+The framework takes as input a sequence-based oracle (e.g., a genomic DNN) and requires four key components to perform analysis:
+
+1. **Sequence Library** (`numpy.ndarray`): One-hot encoded sequences of shape (N, L, A), where:
+   - N: Number of sequences
+   - L: Sequence length
+   - A: Number of features (e.g., 4 for DNA nucleotides)
+
+2. **Predictions/Measurements** (`numpy.ndarray`): Experimental or model-derived values of shape (N,1), corresponding to each sequence's functional output.
+
+3. **Attribution Maps** (`numpy.ndarray`): Mechanistic importance scores of shape (N, L, A), quantifying the contribution of each position-feature pair to the sequence's function. These can be generated using various attribution methods:
+   - Saliency Maps
+   - Integrated Gradients
+   - SmoothGrad
+   - *In Silico* Mutagenesis (ISM)
+   - DeepSHAP (see note below)
+
+4. **Clustering/Embedding** (either):
+   - Hierarchical clustering linkage matrix (e.g., from `scipy.cluster.hierarchy.linkage`)
+   - Dimensionality reduction embedding of shape (N,Z), where Z is the number of dimensions in the embedded space
+
+These required files can be generated either externally or using SEAM's specialized modules (described below). Once provided, SEAM applies a meta-explanation approach to interpret the sequence-function-mechanism dataset, deciphering the determinants of mechanistic variation in regulatory sequences.
+
+**Note on Attribution Methods:** Saliency Maps, Integrated Gradients, SmoothGrad, and ISM are fully optimized for CPU/GPU acceleration and batch processing in modern TensorFlow 2. However, DeepSHAP implementations in this repository (as seen in the `examples` folder) are not optimized for batch processing across SEAM's sequence library.
+
+The examples below demonstrate how to generate these requirements using SEAM's modules and apply the analysis pipeline to reproduce key findings from our main manuscript.
+
+## SEAM Modules:
+SEAM's analysis pipeline is implemented through several specialized modules that work together:
+
+- **Mutagenizer** (from [SQUID](https://github.com/evanseitz/squid-nn)): Generates *in silico* sequence libraries through various mutagenesis strategies, including local, global, optimized, and complete libraries (supporting all combinatorial mutations up to a specified order). Features GPU-acceleration and batch processing for efficient sequence generation.
+
+- **Compiler**: Standardizes sequence analysis by converting one-hot encoded sequences to string format and computing associated metrics. Compiles sequences and functional properties into a DataFrame, with support for metrics such as Hamming distances and global importance analysis scores. Implements GPU-accelerated sequence conversion and vectorized operations.
+
+- **Attributer**: Computes attribution maps using various GPU-optimized methods (Saliency Maps, Integrated Gradients, SmoothGrad, or ISM), quantifying the base-wise contribution to regulatory activity.
+
+- **Clusterer**: Computes mechanistic clusters and embeddings from attribution maps to identify distinct regulatory mechanisms. Supports hierarchical clustering (GPU-optimized), K-means, and DBSCAN algorithms, with optional dimensionality reduction (UMAP, t-SNE, PCA) for complementary interpretability.
+
+- **MetaExplainer**: The core SEAM module that integrates results to identify and interpret mechanistic patterns. Generates cluster-averaged attribution maps and the Mechanism Summary Matrix (MSM), implementing background separation with adaptive scaling. Provides visualization tools for sequence logos, attribution logos, and cluster statistics, with support for both PWM-based and enrichment-based analysis. Features GPU acceleration with CPU fallbacks.
+
+- **Identifier**: Analyzes cluster-averaged attribution maps and MSM to identify motifs and separate foreground from background signals. Implements hierarchical clustering of position-wise covariance patterns to identify regulatory elements. Provides visualization tools for covariance matrices, dendrograms, and state matrices, supporting both binary and continuous activity modes.
 
 ### Examples
 
