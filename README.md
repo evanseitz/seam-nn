@@ -84,13 +84,13 @@ SEAM's analysis pipeline is implemented through several specialized modules that
 
 - **Compiler**: Standardizes sequence analysis by converting one-hot encoded sequences to string format and computing associated metrics. Compiles sequences and functional properties into a DataFrame, with support for metrics such as Hamming distances and global importance analysis scores. Implements GPU-accelerated sequence conversion and vectorized operations.
 
-- **Attributer**: Computes attribution maps using various GPU-optimized methods (Saliency Maps, Integrated Gradients, SmoothGrad, or ISM), quantifying the base-wise contribution to regulatory activity. SEAM provides GPU-accelerated implementations of Saliency Maps, IntGrad, SmoothGrad, and ISM. However, DeepSHAP is not optimized for efficient batch processing across the sequence library. Examples for incorportating DeepSHAP using external scripts are provided in the `examples` folder.
+- **Attributer**: Computes attribution maps that quantify the base-wise contribution to regulatory activity. SEAM provides GPU-accelerated implementations of Saliency Maps, IntGrad, SmoothGrad, and ISM. DeepSHAP is not yet optimized for efficient batch processing across the sequence library. Examples for incorportating DeepSHAP using external scripts are provided in the `examples` folder.
 
 - **Clusterer**: Computes mechanistic clusters and embeddings from attribution maps to identify distinct regulatory mechanisms. Supports hierarchical clustering (GPU-optimized), K-means, and DBSCAN algorithms, with optional dimensionality reduction (UMAP, t-SNE, PCA) for complementary interpretability.
 
 - **MetaExplainer**: The core SEAM module that integrates results to identify and interpret mechanistic patterns. Generates cluster-averaged attribution maps and the Mechanism Summary Matrix (MSM), implementing background separation with adaptive scaling. Provides visualization tools for sequence logos, attribution logos, and cluster statistics, with support for both PWM-based and enrichment-based analysis. Features GPU acceleration with CPU fallbacks.
 
-- **Identifier**: Analyzes cluster-averaged attribution maps and MSM to identify motifs and separate foreground from background signals. Implements hierarchical clustering of position-wise covariance patterns to identify regulatory elements. Provides visualization tools for covariance matrices, dendrograms, and state matrices, supporting both binary and continuous activity modes.
+- **Identifier**: Analyzes cluster-averaged attribution maps in conjunction with the MSM to identify precise locations of motifs and their epistatic interactions.
 
 ### Examples
 
