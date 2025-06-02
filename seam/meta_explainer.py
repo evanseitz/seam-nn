@@ -816,6 +816,17 @@ class MetaExplainer:
         # Stack matrices into 3D array
         logo_array = np.stack(cluster_matrices)
         
+        # Store both raw and background-separated maps
+        if logo_type == 'average':
+            if background_separation:
+                # Store both versions - the raw maps and the background-separated maps
+                self.cluster_maps = np.stack([np.mean(self.attributions[self.mave['Cluster'] == k], axis=0) 
+                                            for k in cluster_order])
+                self.cluster_maps_no_bg = logo_array.copy()  # These are already background-separated
+            else:
+                # If no background separation, just store the raw maps
+                self.cluster_maps = logo_array.copy()
+
         # Always compute global y-limits for attribution logos
         y_min_max = None
         if logo_type == 'average':
@@ -861,6 +872,7 @@ class MetaExplainer:
         batch_logos.process_all()
         
         self.batch_logos = batch_logos
+        
         return batch_logos
 
     def show_sequences(self, cluster_idx):

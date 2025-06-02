@@ -26,7 +26,7 @@ import squid
 from urllib.request import urlretrieve
 import pandas as pd
 from tqdm import tqdm
-if 1: # Use this for local install (must 'pip uninstall seam' first)
+if 0: # Use this for local install (must 'pip uninstall seam' first)
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) # TODO: turn this off
 from seam import Compiler, Attributer, Clusterer, MetaExplainer, Identifier
 from seam.logomaker_batch.batch_logo import BatchLogo
@@ -288,7 +288,8 @@ labels_n, cut_level = clusterer.get_cluster_labels(
 )
 
 # Plot dendrogram to visualize hierarchy
-clusterer.plot_dendrogram(
+if 0:
+    clusterer.plot_dendrogram(
     linkage,
     cut_level=cut_level,
     figsize=(15, 10),
@@ -592,7 +593,8 @@ print(tfbs_positions)
 
 # Get and display state matrix
 state_matrix = identifier.get_state_matrix(
-    active_clusters=meta.active_clusters_by_tfbs
+    active_clusters=meta.active_clusters_by_tfbs,
+    mode='continuous'  # Explicitly request continuous mode
 )
 
 # Visualize state matrix
@@ -616,8 +618,8 @@ fig, ax = identifier.plot_state_matrix(
 # SEAM API
 # Plot meta-attribution maps after background separation and TFBS identification
 # =============================================================================
-position_lists = tfbs_positions['Positions'].tolist()
-active_clusters = tfbs_positions['Active_Clusters'].tolist()
+position_lists = tfbs_positions['Positions'].tolist() # list of nucleotide positions that are active for each TFBS
+active_clusters = tfbs_positions['Active_Clusters'].tolist() # list of clusters that are active for each TFBS
 
 # Create fixed colors for each TFBS
 tfbs_colors = [plt.cm.Pastel1(i % 9) for i in range(len(position_lists))]
@@ -663,6 +665,157 @@ if render_logos is True:
         plt.close()
     else:
         plt.show()
+
+# =============================================================================
+# SEAM API
+# Get state assignments for all TFBS combinations
+# =============================================================================
+if save_data:
+    print("\nGetting state assignments for all TFBS combinations...")
+    
+    # Get automatic state assignments using the continuous state matrix
+    state_assignments = identifier.get_state_assignments(
+        tfbs_positions,
+        mode='auto' # or 'template' (and first add 'print_template=True') to print a template that can be used for manual assignment
+    )
+    
+    # Print assignments in a readable format
+    print("\nAutomatic State Assignments:")
+    print("---------------------------")
+    for combo, cluster in sorted(state_assignments.items(), key=lambda x: (len(x[0]), x[0])):
+        if len(combo) == 0:
+            print(f"BG: Cluster {cluster}")
+        elif len(combo) == 1:
+            print(f"TFBS {combo[0]}: Cluster {cluster}")
+        else:
+            print(f"TFBSs {', '.join(combo)}: Cluster {cluster}")
+
+# =============================================================================
+# SEAM API
+# Extract and save additive parameters for each TFBS
+# =============================================================================
+if save_data:
+    # Create directory for identified parameters
+    save_path_params = os.path.join(save_path, 'identified_parameters')
+    if not os.path.exists(save_path_params):
+        os.makedirs(save_path_params)
+    
+    # Extract and save parameters (full span with inactive positions zeroed out)
+    if 0: # Use this to generate additive parameters for each TFBS by averaging over all clusters where its active
+        print("Extracting additive parameters for each TFBS...")
+        additive_params = identifier.get_additive_params(tfbs_positions, 
+            zero_out_inactive=True, 
+            specific_clusters=None, 
+            separate_background=True
+        )
+    else: # Use this to generate additive paramters for each TFBS based on the single, best-matching cluster it was assignet to
+        specific_clusters = []
+        for tfbs in sorted(tfbs_positions['TFBS']):
+            # Find the cluster assigned to this TFBS alone
+            cluster = state_assignments[(tfbs,)]
+            specific_clusters.append(cluster)
+        print("\nUsing these clusters for additive parameters:")
+        for tfbs, cluster in zip(sorted(tfbs_positions['TFBS']), specific_clusters):
+            print(f"TFBS {tfbs}: Cluster {cluster}")
+        
+        # Extract and save parameters using the assigned clusters
+        print("\nExtracting additive parameters for each TFBS...")
+        additive_params = identifier.get_additive_params(
+            tfbs_positions, 
+            zero_out_inactive=True, 
+            specific_clusters=specific_clusters,
+            separate_background=True
+        )
+    for tfbs_id, tfbs_params in additive_params.items():
+        additive_params_batch = np.expand_dims(tfbs_params, axis=0)        
+        np.save(os.path.join(save_path_params, f'additive_{tfbs_id}.npy'), tfbs_params)
+    
+    # Plot sequence logo for each TFBS
+    if render_logos:
+        for tfbs_id, tfbs_params in additive_params.items():
+            additive_params_batch = np.expand_dims(tfbs_params, axis=0)
+            
+            tfbs_logo = BatchLogo(
+                additive_params_batch,
+                alphabet=alphabet,
+                font_name='Arial Rounded MT Bold',
+                fade_below=0.5,
+                shade_below=0.5,
+                width=0.9,
+                figsize=[5, 5],
+                center_values=True,
+                batch_size=1
+            )
+            tfbs_logo.process_all()
+            
+            # Draw logo
+            fig, ax = tfbs_logo.draw_single(
+                0,  # Only one logo in batch
+                fixed_ylim=False,
+                border=False
+            )
+            
+            if save_logos:
+                fig.savefig(os.path.join(save_path_params, f'logo_additive_{tfbs_id}.png'), 
+                        facecolor='w', dpi=dpi, bbox_inches='tight')
+                plt.close()
+            else:
+                plt.show()
+
+# =============================================================================
+# SEAM API
+# Calculate and visualize epistatic interactions between TFBSs
+# =============================================================================
+if save_data:
+    print("\nCalculating epistatic interactions between TFBSs...")
+    
+    # Get epistatic parameters using the state assignments we already have
+    epistatic_params = identifier.get_epistatic_params(
+        tfbs_positions,
+        state_assignments=state_assignments  # Use the assignments we got earlier
+    )
+    
+    # Save epistatic parameters
+    np.save(os.path.join(save_path_params, 'epistatic_params.npy'), epistatic_params)
+    
+    # Print interactions in a readable format
+    print("\nEpistatic Interactions:")
+    print("--------------------")
+    # Sort by interaction order
+    sorted_interactions = sorted(epistatic_params.items(), 
+                               key=lambda x: len(x[0]))  # Sort by interaction order (2-way, 3-way, 4-way)
+    for combo, value in sorted_interactions:
+        if len(combo) == 2:
+            print(f"Pairwise {combo[0]}-{combo[1]}: {value:.3f}")
+        else:
+            print(f"Higher-order {''.join(combo)}: {value:.3f}")
+    
+    # Plot both pairwise and higher-order epistatic interactions
+    try:
+        (fig_heatmap, ax_heatmap), (fig_bar, ax_bar) = identifier.plot_epistatic_interactions(
+            epistatic_params,
+            tfbs_positions=tfbs_positions,  # For consistent TFBS ordering
+            save_path=save_path_params if save_logos else None,
+            dpi=dpi
+        )
+        if save_logos:
+            plt.close()
+        else:
+            plt.show()
+    except ValueError as e:
+        print(f"Note: {str(e)}")
+        # If there are no higher-order interactions, just plot pairwise
+        fig_heatmap, ax_heatmap = identifier.plot_epistatic_interactions(
+            epistatic_params,
+            tfbs_positions=tfbs_positions,
+            pairwise_only=True,
+            save_path=save_path_params if save_logos else None,
+            dpi=dpi
+        )
+        if save_logos:
+            plt.close()
+        else:
+            plt.show()
 
 # =============================================================================
 # Clean up downloaded files if requested

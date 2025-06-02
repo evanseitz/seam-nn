@@ -13,9 +13,66 @@ import matplotlib.colors as mpl
 import itertools
 from scipy.stats import entropy
 import matplotlib.colors as colors
+import os
 
 class Identifier:
-    """Class for identifying and analyzing patterns in MSM data."""
+    """Class for identifying and analyzing transcription factor binding sites (TFBSs) from attribution maps.
+    
+    The Identifier class takes attribution maps from a MetaExplainer and identifies distinct TFBSs
+    by analyzing patterns of activity across clusters. It uses a multi-step process:
+    
+    1. Covariance Analysis:
+       - Analyzes the covariance between positions in the attribution maps
+       - Identifies regions that show coordinated activity across clusters
+       - Uses hierarchical clustering to group positions into potential TFBSs
+    
+    2. TFBS Identification:
+       - Defines TFBS regions based on clustered covariance patterns
+       - Determines which clusters are active for each TFBS using entropy-based thresholds
+       - Creates a binary orcontinuous state matrix showing TFBS activity levels in each cluster
+    
+    3. State Assignment:
+       - Assigns clusters to specific TFBS states (e.g., A only, A+B, background)
+       - Uses a distance-based scoring system to find the best cluster for each state
+       - For background state, finds clusters with minimal TFBS activity across all TFBSs
+    
+    Key Concepts:
+    - TFBS Activity: Measured as 1 - (normalized entropy), where higher values indicate
+      stronger TFBS activity in a cluster
+    - State Matrix: Shows binary orcontinuous activity levels (0-1) for each TFBS in each cluster
+    - State Assignments: Maps each possible TFBS combination to its optimal cluster
+    
+    Parameters
+    ----------
+    msm_df : pandas.DataFrame
+        Mechanism Summary Matrix (MSM) data from MetaExplainer, containing entropy
+        or other activity measures for each position in each cluster
+    meta_explainer : MetaExplainer
+        Instance of MetaExplainer class that generated the attribution maps
+    column : str, optional
+        Column from MSM to use for analysis (default: 'Entropy')
+    
+    Attributes
+    ----------
+    revels : pandas.DataFrame
+        Pivoted MSM data with clusters as rows and positions as columns
+    cov_matrix : pandas.DataFrame
+        Covariance matrix between positions, used for TFBS identification
+    tfbs_clusters : dict
+        Dictionary mapping TFBS labels to their constituent positions
+    entropy_multiplier : float
+        Threshold multiplier for determining active clusters
+    active_clusters_by_tfbs : dict
+        Dictionary mapping TFBS labels to their active clusters
+    
+    Notes
+    -----
+    The class uses entropy-based measures to identify TFBS activity, where:
+    - Lower entropy indicates more specific, TFBS-like activity
+    - Higher entropy indicates more background-like activity
+    - Activity is normalized relative to background entropy to account for
+      mutation rate and sequence composition
+    """
     
     def __init__(self, msm_df, meta_explainer, column='Entropy'):
         """Initialize Identifier with MSM data and MetaExplainer instance.
@@ -877,3 +934,465 @@ class Identifier:
             plt.close(fig)
         
         return fig, ax
+
+    def get_state_assignments(self, tfbs_positions, mode='auto', print_template=False):
+        """Assign clusters to specific TFBS state combinations based on their activity patterns.
+        
+        This function analyzes the continuous activity levels of TFBSs across clusters to find
+        the optimal cluster for each possible TFBS state combination. For example, it will find:
+        - Which cluster best represents TFBS A alone
+        - Which cluster best represents TFBS B alone
+        - Which cluster best represents the combined presence of TFBSs A and B
+        - Which cluster best represents the background state (no TFBSs active)
+        
+        The scoring system works by:
+        1. For each state combination, defining an "ideal" activity pattern where:
+           - Desired TFBS(s) have maximum observed activity
+           - Other TFBSs have minimum observed activity
+        2. Calculating how far each cluster's activity pattern is from this ideal
+        3. Selecting the cluster that minimizes this distance
+        
+        For example, when finding a cluster for TFBS A:
+        - The ideal state would have maximum activity for A and minimum for others
+        - Each cluster's score is based on how close it comes to this ideal
+        - The cluster with the highest score (smallest distance from ideal) is selected
+        
+        Parameters
+        ----------
+        tfbs_positions : pd.DataFrame
+            DataFrame from get_tfbs_positions containing TFBS information.
+            Must have columns: 'TFBS', 'Start', 'Stop', 'Positions', 'Active_Clusters'
+        mode : str, optional
+            'auto' : Automatically assign clusters based on activity patterns
+            'template' : Print a template for manual assignment
+        print_template : bool, optional
+            If True and mode='template', prints a formatted template showing all possible
+            TFBS combinations and their current cluster assignments
+
+        Returns
+        -------
+        dict or None
+            If mode='auto': Dictionary mapping TFBS state combinations to cluster indices.
+            For example:
+            {
+                (): 5,           # Background state (no TFBSs)
+                ('A',): 1,       # TFBS A alone
+                ('B',): 3,       # TFBS B alone
+                ('A', 'B'): 7,   # Interaction of TFBSs A and B
+                ...
+            }
+            If mode='template': None, but prints template for manual assignment
+
+        Notes
+        -----
+        The function internally uses the continuous state matrix (normalized entropy-based
+        activity levels) to make assignments, ensuring consistent scoring across all
+        state combinations. This means:
+        - Activity levels are normalized relative to background entropy
+        - Higher values (closer to 1) indicate stronger TFBS activity
+        - Lower values (closer to 0) indicate weaker or no TFBS activity
+        
+        The scoring system prioritizes finding clusters that:
+        1. Have high activity for the desired TFBS(s)
+        2. Have low activity for other TFBSs
+        3. Show balanced activity when multiple TFBSs are desired
+        """
+        # Get continuous state matrix internally
+        state_matrix = self.get_state_matrix(
+            active_clusters=self.meta_explainer.active_clusters_by_tfbs,
+            mode='continuous'
+        )
+        
+        # Get list of TFBS IDs
+        tfbs_ids = tfbs_positions['TFBS'].tolist()
+        n_tfbs = len(tfbs_ids)
+        
+        # Generate all possible combinations (including empty set)
+        all_combinations = [()]  # Start with empty set
+        for r in range(1, n_tfbs + 1):
+            all_combinations.extend(list(itertools.combinations(tfbs_ids, r)))
+        
+        if mode == 'template':
+            # Print template for manual assignment
+            print("\nState Assignment Template:")
+            print("-------------------------")
+            print("# Copy this template and replace None with cluster indices")
+            print("state_assignments = {")
+            
+            # Print each combination with a descriptive comment
+            for combo in all_combinations:
+                if len(combo) == 0:
+                    comment = "# Cluster for background state (no TFBSs active)"
+                elif len(combo) == n_tfbs:
+                    comment = "# Cluster for all TFBSs active (highest minimum activity)"
+                elif len(combo) == 1:
+                    comment = f"# Cluster for TFBS {combo[0]} alone (highest activity for {combo[0]}, lowest for others)"
+                else:
+                    comment = f"# Cluster for interaction between TFBSs {', '.join(combo)} (highest activity for these, lowest for others)"
+                print(f"    {combo}: None,  {comment}")
+            
+            print("}")
+            return None
+            
+        elif mode == 'auto':
+            # Initialize assignments dictionary
+            assignments = {}
+            
+            # For each combination
+            for combo in all_combinations:
+                if len(combo) == 0:
+                    # For background state: find cluster with lowest maximum activity
+                    max_activities = state_matrix.max(axis=1)
+                    assignments[combo] = max_activities.idxmin()
+                    
+                elif len(combo) == n_tfbs:
+                    # For all-TFBSs state: find cluster with highest minimum activity
+                    min_activities = state_matrix.min(axis=1)
+                    assignments[combo] = min_activities.idxmax()
+                    
+                else:
+                    # Get the columns for this combination and others
+                    combo_cols = list(combo)
+                    other_cols = [col for col in state_matrix.columns if col not in combo_cols]
+                    
+                    # Define ideal state using actual observed values
+                    ideal_state = pd.Series(0, index=state_matrix.columns)
+                    # For desired TFBSs, use maximum observed value
+                    ideal_state[combo_cols] = state_matrix[combo_cols].max().max()
+                    # For other TFBSs, use minimum observed value
+                    ideal_state[other_cols] = state_matrix[other_cols].min().min()
+                    
+                    # Calculate distance from ideal state for each cluster
+                    # Using negative distance so higher scores are better
+                    scores = -(state_matrix - ideal_state).abs().mean(axis=1)
+                    
+                    # Assign the cluster with highest score (smallest distance from ideal)
+                    assignments[combo] = scores.idxmax()
+            
+            return assignments
+            
+        else:
+            raise ValueError("mode must be either 'auto' or 'template'")
+
+    def get_additive_params(self, tfbs_positions, specific_clusters=None, zero_out_inactive=False, separate_background=True):
+        """Extract additive parameters for each TFBS by cropping from meta-attribution maps.
+        
+        Parameters
+        ----------
+        tfbs_positions : pd.DataFrame
+            DataFrame containing TFBS information (from get_tfbs_positions)
+        specific_clusters : list of int, optional
+            List of one cluster per TFBS to use for cropping (e.g., [5, 17, 20, 23] for TFBSs A, B, C, D).
+            If None, uses the average of all active clusters for each TFBS.
+        zero_out_inactive : bool, optional
+            Controls how to handle positions within the cropped region:
+            - False (default): Return the full cropped region (start to stop) with all positions
+            - True: Return the full cropped region (start to stop), with inactive positions set to zero
+        separate_background : bool, optional
+            Whether to use background-separated cluster maps (default: True).
+            If True, uses meta_explainer.cluster_maps_no_bg if available.
+            If False or if background-separated maps aren't available, uses regular cluster maps.
+            
+        Returns
+        -------
+        dict
+            Dictionary mapping TFBS IDs (A, B, C, etc.) to their 4xL parameter matrices.
+            For each TFBS, the matrix is cropped from either:
+            - The cluster-averaged attribution map for the specified cluster, or
+            - The average of cluster-averaged attribution maps from all active clusters
+            The matrix always spans the full region (start to stop), with L = stop - start + 1.
+            If zero_out_inactive=True, positions not in the TFBS's Positions list are set to zero.
+        """
+        if not hasattr(self, 'tfbs_clusters'):
+            raise ValueError("Must run cluster_covariance() before getting additive parameters")
+            
+        # Validate specific_clusters if provided
+        if specific_clusters is not None:
+            if len(specific_clusters) != len(tfbs_positions):
+                raise ValueError(f"Length of specific_clusters ({len(specific_clusters)}) must match number of TFBSs ({len(tfbs_positions)})")
+        
+        # Get cluster maps from meta_explainer
+        if separate_background and hasattr(self.meta_explainer, 'cluster_maps_no_bg'):
+            print("\nUsing background-separated maps")
+            cluster_maps = self.meta_explainer.cluster_maps_no_bg
+            # Debug: Compare raw and background-separated maps for first cluster
+            if hasattr(self.meta_explainer, 'cluster_maps'):
+                raw_maps = self.meta_explainer.cluster_maps
+        elif hasattr(self.meta_explainer, 'cluster_maps'):
+            print("\nUsing raw maps (background-separated maps not available)")
+            cluster_maps = self.meta_explainer.cluster_maps
+        else:
+            print("\nGenerating new maps with background_separation=", separate_background)
+            # Generate logos if maps aren't available
+            self.meta_explainer.generate_logos(
+                logo_type='average',
+                background_separation=separate_background
+            )
+            cluster_maps = (self.meta_explainer.cluster_maps_no_bg if separate_background 
+                          else self.meta_explainer.cluster_maps)
+        
+        # Initialize dictionary to store parameters for each TFBS
+        params_dict = {}
+        
+        # Process each TFBS
+        for i, (_, tfbs_row) in enumerate(tfbs_positions.iterrows()):
+            tfbs_id = tfbs_row['TFBS']
+            active_positions = tfbs_row['Positions']  # List of active positions for this TFBS
+            start_pos = tfbs_row['Start']
+            stop_pos = tfbs_row['Stop']
+            
+            # Get the cluster-averaged attribution map to crop from
+            if specific_clusters is not None:
+                # Use the specified cluster's averaged map for this TFBS
+                cluster = specific_clusters[i]
+                attribution_map = cluster_maps[cluster]  # Already averaged
+            else:
+                # Average the cluster-averaged maps from all active clusters
+                active_clusters = tfbs_row['Active_Clusters']
+                attribution_map = np.mean(cluster_maps[active_clusters], axis=0)  # Average over cluster maps
+            
+            # Create matrix spanning the full cropped region
+            length = stop_pos - start_pos + 1
+            params = np.zeros((length, 4))  # Changed from (4, length) to (length, 4)
+            
+            # Fill in values for all positions in the region
+            for pos in range(start_pos, stop_pos + 1):
+                rel_pos = pos - start_pos  # Position relative to start of cropped region
+                if pos in active_positions:
+                    params[rel_pos] = attribution_map[pos]
+                elif zero_out_inactive:
+                    # Position is already zero from initialization
+                    pass
+                else:
+                    params[rel_pos] = attribution_map[pos]
+                
+            params_dict[tfbs_id] = params  # (L_cropped,4) matrix
+            
+        return params_dict
+
+    def get_epistatic_params(self, tfbs_positions, state_assignments=None):
+        """Calculate epistatic interactions between TFBSs using Möbius inversion.
+        
+        For each combination of TFBSs, calculates the interaction using the inclusion-exclusion principle.
+        For example, for a 3-way interaction ABC:
+        I_ABC = y_ABC - y_AB - y_AC - y_BC + y_A + y_B + y_C - y_bg
+        
+        Parameters
+        ----------
+        tfbs_positions : pd.DataFrame
+            DataFrame containing TFBS information (from get_tfbs_positions)
+        state_assignments : dict, optional
+            Dictionary mapping TFBS state combinations to cluster indices.
+            If None, will use get_state_assignments() with mode='auto' to get assignments.
+            
+        Returns
+        -------
+        dict
+            Dictionary mapping TFBS combinations to their epistatic interaction values.
+            Keys are tuples of TFBS IDs (e.g., ('A', 'B') for 2-way, ('A', 'B', 'C') for 3-way).
+            Values are the calculated interaction terms using Möbius inversion.
+            
+        Notes
+        -----
+        The epistatic interactions are calculated using Möbius inversion, where each term's
+        coefficient is (-1)^k for a subset of size k. This ensures that:
+        
+        1. The interaction term captures the deviation from additivity
+        2. Higher-order interactions are properly decomposed into their constituent terms
+        3. The background state (empty set) is properly accounted for
+        
+        For example:
+        - 2-way: I_AB = y_AB - y_A - y_B + y₀
+        - 3-way: I_ABC = y_ABC - y_AB - y_AC - y_BC + y_A + y_B + y_C - y₀
+        - 4-way: I_ABCD = y_ABCD - y_ABC - y_ABD - y_ACD - y_BCD + 
+                       y_AB + y_AC + y_AD + y_BC + y_BD + y_CD - 
+                       y_A - y_B - y_C - y_D + y₀
+        
+        A positive interaction indicates synergy (combined effect > sum of individual effects),
+        while a negative interaction indicates antagonism (combined effect < sum of individual effects).
+        """
+        if not hasattr(self, 'tfbs_clusters'):
+            raise ValueError("Must run cluster_covariance() before getting epistatic parameters")
+        
+        # Get state assignments if not provided
+        if state_assignments is None:
+            state_assignments = self.get_state_assignments(tfbs_positions, mode='auto')
+        
+        # Get list of TFBS IDs
+        tfbs_ids = tfbs_positions['TFBS'].tolist()
+        n_tfbs = len(tfbs_ids)
+        
+        # Get median DNN scores for each cluster from the actual sequences
+        mave_df = self.meta_explainer.mave
+        
+        # Calculate cluster medians using original cluster indices
+        cluster_medians = {}
+        for cluster in np.unique(mave_df['Cluster']):
+            cluster_data = mave_df[mave_df['Cluster'] == cluster]['DNN']
+            cluster_medians[cluster] = cluster_data.median()
+        
+        # Initialize dictionary to store epistatic interactions
+        epistatic_params = {}
+        
+        # Generate all possible combinations (excluding empty set and single TFBSs)
+        all_combinations = []
+        for r in range(2, n_tfbs + 1):  # Start from 2-way interactions
+            all_combinations.extend(list(itertools.combinations(tfbs_ids, r)))
+        
+        # Calculate interactions for each combination
+        for combo in all_combinations:
+            # Get all possible subsets of the combination
+            subsets = []
+            for r in range(len(combo) + 1):
+                subsets.extend(list(itertools.combinations(combo, r)))
+            
+            # Calculate interaction using inclusion-exclusion principle
+            interaction = 0
+            
+            for subset in subsets:
+                # Get the cluster for this subset
+                sorted_cluster = state_assignments.get(subset)
+                if sorted_cluster is None:
+                    raise ValueError(f"No cluster assigned for TFBS combination {subset}")
+                
+                # Convert sorted cluster index to original cluster index if needed
+                if self.meta_explainer.cluster_order is not None:
+                    original_cluster = self.meta_explainer.cluster_order[sorted_cluster]
+                else:
+                    original_cluster = sorted_cluster
+                
+                # Get median DNN score for this subset
+                y = cluster_medians[original_cluster]
+                
+                # Add or subtract based on subset size parity
+                # Even-sized subsets (including empty set) get +1, odd-sized get -1
+                sign = 1 if len(subset) % 2 == 0 else -1
+                term = sign * y
+                interaction += term
+            
+            # Store the interaction
+            epistatic_params[combo] = interaction
+        
+        return epistatic_params
+
+    def plot_epistatic_interactions(self, epistatic_params, tfbs_positions=None, 
+                                  pairwise_only=False, annotate=True, cmap='RdBu_r',
+                                  figsize=(10, 8), save_path=None, dpi=200, file_format='png'):
+        """Plot epistatic interactions between TFBSs.
+        
+        Creates two visualizations:
+        1. A lower triangular heatmap showing pairwise interactions (excluding diagonal)
+        2. A bar plot showing higher-order interactions (if any exist)
+        
+        Parameters
+        ----------
+        epistatic_params : dict
+            Dictionary mapping TFBS combinations to their interaction values
+        tfbs_positions : pandas.DataFrame, optional
+            DataFrame containing TFBS positions, used for consistent ordering
+        pairwise_only : bool, default=False
+            If True, only plot pairwise interactions
+        annotate : bool, default=True
+            Whether to show interaction values on the heatmap
+        cmap : str, default='RdBu_r'
+            Colormap for the heatmap
+        figsize : tuple, default=(10, 8)
+            Figure size for the heatmap
+        save_path : str, optional
+            Directory to save the plots
+        dpi : int, default=200
+            DPI for saved figures
+        file_format : str, default='png'
+            Format for saved figures
+            
+        Returns
+        -------
+        tuple
+            (fig_heatmap, ax_heatmap) if pairwise_only=True
+            ((fig_heatmap, ax_heatmap), (fig_bar, ax_bar)) if pairwise_only=False
+        """
+        # Get TFBS IDs in consistent order
+        if tfbs_positions is not None:
+            tfbs_ids = sorted(tfbs_positions['TFBS'])
+        else:
+            # Extract unique TFBS IDs from epistatic_params
+            tfbs_ids = sorted(set(tfbs for combo in epistatic_params.keys() for tfbs in combo))
+        
+        # Create pairwise interaction matrix
+        n = len(tfbs_ids)
+        interaction_matrix = np.zeros((n, n))
+        
+        # Only process pairwise interactions for the heatmap
+        for combo, value in epistatic_params.items():
+            if len(combo) == 2:  # Only process pairs
+                i = tfbs_ids.index(combo[0])
+                j = tfbs_ids.index(combo[1])
+                interaction_matrix[i, j] = value
+                interaction_matrix[j, i] = value  # Make symmetric
+        
+        # Create mask for upper triangular and diagonal
+        mask = np.triu(np.ones_like(interaction_matrix, dtype=bool))
+        
+        # Plot pairwise interactions
+        fig_heatmap, ax_heatmap = plt.subplots(figsize=figsize)
+        
+        # Find the maximum absolute value for symmetric colormap
+        vmax = np.max(np.abs(interaction_matrix))
+        vmin = -vmax
+        
+        # Create heatmap with centered colormap, masking upper triangle and diagonal
+        sns.heatmap(interaction_matrix, 
+                   xticklabels=tfbs_ids,
+                   yticklabels=tfbs_ids,
+                   cmap=cmap,
+                   center=0,  # Center colormap at 0
+                   vmin=vmin,  # Set symmetric limits
+                   vmax=vmax,
+                   annot=annotate,
+                   fmt='.2f',
+                   square=True,
+                   mask=mask,  # Mask upper triangle and diagonal
+                   ax=ax_heatmap)
+        
+        ax_heatmap.set_title('Pairwise Epistatic Interactions')
+        
+        if save_path:
+            fig_heatmap.savefig(os.path.join(save_path, 'epistatic_interactions_pairwise.png'),
+                              dpi=dpi, bbox_inches='tight', format=file_format)
+        
+        if pairwise_only:
+            return fig_heatmap, ax_heatmap
+            
+        # Check if there are any higher-order interactions
+        higher_order = {combo: value for combo, value in epistatic_params.items() 
+                       if len(combo) > 2}
+        
+        if not higher_order:
+            plt.close(fig_heatmap)
+            raise ValueError("No higher-order interactions found")
+            
+        # Plot higher-order interactions
+        fig_bar, ax_bar = plt.subplots(figsize=(10, 6))
+        
+        # Sort interactions by order first
+        sorted_interactions = sorted(higher_order.items(), 
+                                  key=lambda x: len(x[0]))  # Sort by interaction order
+        
+        combos = [''.join(combo) for combo, _ in sorted_interactions]
+        values = [value for _, value in sorted_interactions]
+        
+        # Create bar plot with color based on sign
+        bars = ax_bar.bar(range(len(combos)), values)
+        for bar, value in zip(bars, values):
+            bar.set_color('red' if value < 0 else 'blue')
+            
+        ax_bar.axhline(y=0, color='black', linestyle='-', alpha=0.3)
+        ax_bar.set_title('Higher-Order Epistatic Interactions')
+        ax_bar.set_xticks(range(len(combos)))
+        ax_bar.set_xticklabels(combos, rotation=45, ha='right')
+        
+        if save_path:
+            fig_bar.savefig(os.path.join(save_path, 'epistatic_interactions_higher_order.png'),
+                          dpi=dpi, bbox_inches='tight', format=file_format)
+            
+        return (fig_heatmap, ax_heatmap), (fig_bar, ax_bar)
