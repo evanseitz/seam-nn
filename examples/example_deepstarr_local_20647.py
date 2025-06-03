@@ -566,7 +566,7 @@ fig, ax = identifier.plot_msm_covariance_square(
     dpi=dpi
 )
 
-identifier.set_entropy_multiplier(0.8)  # Adjust until desired TFBS positions are visually enclosed
+identifier.set_entropy_multiplier(0.8)  # Adjust threshold until desired TFBS positions are visually enclosed
 
 # Plot MSM with TFBS positions enclosed
 fig, ax = identifier.meta_explainer.plot_msm(
@@ -667,7 +667,7 @@ if render_logos is True:
 
 # =============================================================================
 # SEAM API
-# Get binding configuration assignments for all TFBS combinations
+# Get optimal binding configuration assignments for all TFBS combinations
 # =============================================================================
 if save_data:
     print("\nGetting binding configuration assignments...")
@@ -700,14 +700,14 @@ if save_data:
         os.makedirs(save_path_params)
     
     # Extract and save parameters (full span with inactive positions zeroed out)
-    if 0: # Use this to generate additive parameters for each TFBS by averaging over all clusters where its active
+    if 0: # Use this to capture additive parameters for each TFBS by averaging over all clusters where its active
         print("Extracting additive parameters for each TFBS...")
         additive_params = identifier.get_additive_params(tfbs_positions, 
             zero_out_inactive=True, 
             specific_clusters=None, 
             separate_background=True
         )
-    else: # Use this to generate additive paramters for each TFBS based on the single, best-matching cluster it was assignet to
+    else: # Use this to capture additive paramters for each TFBS based on the single, best-matching cluster it was assigned to
         specific_clusters = []
         for tfbs in sorted(tfbs_positions['TFBS']):
             # Find the cluster assigned to this TFBS alone
@@ -729,7 +729,7 @@ if save_data:
         additive_params_batch = np.expand_dims(tfbs_params, axis=0)        
         np.save(os.path.join(save_path_params, f'additive_{tfbs_id}.npy'), tfbs_params)
     
-    # Plot sequence logo for each TFBS
+    # Visualize additive parameters for each TFBS
     if render_logos:
         for tfbs_id, tfbs_params in additive_params.items():
             additive_params_batch = np.expand_dims(tfbs_params, axis=0)
