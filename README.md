@@ -101,7 +101,7 @@ SEAM's modules form an integrated pipeline where outputs from earlier modules fe
 
 > **Note:** Due to memory requirements for calculating distance matrices, Colab Pro may be required for examples using hierarchical clustering with their current settings.
 
-- [Local library to annotate all TFBSs and biophysical states](https://colab.research.google.com/drive/1HOM_ysa4HIh_ZoYzLwa4jZu4evyRntF7?usp=sharing)
+- [Local library to annotate all TFBSs and quantify epistatic interactions](https://colab.research.google.com/drive/1HOM_ysa4HIh_ZoYzLwa4jZu4evyRntF7?usp=sharing)
 	- DeepSTARR: Enhancer 20647 (Fig.2a)
 	- Local library with 30k sequences and 10% mutation rate | Integrated gradients; hierarchical clustering
     - Expected run time: **~3.2 minutes** on Colab A100 GPU

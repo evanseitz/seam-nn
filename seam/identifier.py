@@ -29,18 +29,18 @@ class Identifier:
     2. TFBS Identification:
        - Defines TFBS regions based on clustered covariance patterns
        - Determines which clusters are active for each TFBS using entropy-based thresholds
-       - Creates a binary orcontinuous state matrix showing TFBS activity levels in each cluster
+       - Creates a binary or continuous binding configuration matrix showing TFBS activity levels in each cluster
     
-    3. State Assignment:
-       - Assigns clusters to specific TFBS states (e.g., A only, A+B, background)
-       - Uses a distance-based scoring system to find the best cluster for each state
-       - For background state, finds clusters with minimal TFBS activity across all TFBSs
+    3. Binding Configuration Assignment:
+       - Assigns clusters to specific TFBS binding configurations (e.g., A only, A+B, background)
+       - Uses a distance-based scoring system to find the best cluster for each configuration
+       - For background configuration, finds clusters with minimal TFBS activity across all TFBSs
     
     Key Concepts:
     - TFBS Activity: Measured as 1 - (normalized entropy), where higher values indicate
       stronger TFBS activity in a cluster
-    - State Matrix: Shows binary orcontinuous activity levels (0-1) for each TFBS in each cluster
-    - State Assignments: Maps each possible TFBS combination to its optimal cluster
+    - Binding Configuration Matrix: Shows binary or continuous activity levels (0-1) for each TFBS in each cluster
+    - Binding Configuration Assignments: Maps each possible TFBS combination to its optimal cluster
     
     Parameters
     ----------
@@ -737,8 +737,8 @@ class Identifier:
         
         return tfbs_df
     
-    def get_state_matrix(self, active_clusters, mode='binary'):
-        """Create a state matrix showing TFBS activity in each cluster.
+    def get_binding_config_matrix(self, active_clusters, mode='binary'):
+        """Create a binding configuration matrix showing TFBS activity in each cluster.
         
         Parameters
         ----------
@@ -752,10 +752,10 @@ class Identifier:
         Returns
         -------
         pd.DataFrame
-            State matrix with clusters as rows and TFBSs as columns
+            Binding configuration matrix with clusters as rows and TFBSs as columns
         """
         if not hasattr(self, 'tfbs_clusters'):
-            raise ValueError("Must run cluster_covariance() before getting state matrix")
+            raise ValueError("Must run cluster_covariance() before getting binding configuration matrix")
         
         # Get cluster order from meta_explainer
         cluster_order = range(self.nC)  # Default order
@@ -766,8 +766,8 @@ class Identifier:
         tfbs_df = self.get_tfbs_positions(active_clusters)
         tfbs_order = tfbs_df['TFBS'].tolist()
         
-        # Initialize state matrix with ordered clusters and TFBSs
-        state_matrix = pd.DataFrame(0, 
+        # Initialize binding configuration matrix with ordered clusters and TFBSs
+        binding_config_matrix = pd.DataFrame(0, 
                                   index=cluster_order,
                                   columns=tfbs_order)
         
@@ -780,7 +780,7 @@ class Identifier:
             for _, row in tfbs_df.iterrows():
                 tfbs = row['TFBS']
                 active_cluster_indices = row['Active_Clusters']
-                state_matrix.iloc[active_cluster_indices, state_matrix.columns.get_loc(tfbs)] = 1
+                binding_config_matrix.iloc[active_cluster_indices, binding_config_matrix.columns.get_loc(tfbs)] = 1
         
         elif mode == 'continuous':
             # For each cluster
@@ -803,16 +803,16 @@ class Identifier:
                     normalized_activity = 1 - (mean_entropy / background_entropy)
                     normalized_activity = max(0, min(1, normalized_activity))  # Clip to [0,1]
                     
-                    state_matrix.iloc[cluster, state_matrix.columns.get_loc(tfbs_row['TFBS'])] = normalized_activity
+                    binding_config_matrix.iloc[cluster, binding_config_matrix.columns.get_loc(tfbs_row['TFBS'])] = normalized_activity
         
         else:
             raise ValueError("mode must be 'binary' or 'continuous'")
         
-        return state_matrix
+        return binding_config_matrix
     
-    def plot_state_matrix(self, active_clusters, mode='binary', orientation='vertical',
+    def plot_binding_config_matrix(self, active_clusters, mode='binary', orientation='vertical',
                           figsize=None, save_path=None, dpi=200, file_format='png'):
-        """Plot state matrix showing TFBS activity in each cluster.
+        """Plot binding configuration matrix showing TFBS activity in each cluster.
         
         Parameters
         ----------
@@ -845,7 +845,7 @@ class Identifier:
             return {
                 'orientation': 'vertical' if is_vertical else 'horizontal',
                 'location': 'right' if is_vertical else 'bottom',
-                'label': 'TFBS State Activity',
+                'label': 'TFBS Binding Activity',
                 'fraction': 0.046,
                 'aspect': 40,
                 'pad': 0.04 if is_vertical else 0.08,
@@ -855,10 +855,10 @@ class Identifier:
             """Get axis labels based on orientation."""
             return ('TFBS', 'Cluster') if orientation == 'vertical' else ('Cluster', 'TFBS')
         
-        # Get and prepare state matrix
-        state_matrix = self.get_state_matrix(active_clusters=active_clusters, mode=mode)
+        # Get and prepare binding configuration matrix
+        binding_config_matrix = self.get_binding_config_matrix(active_clusters=active_clusters, mode=mode)
         if orientation == 'horizontal':
-            state_matrix = state_matrix.T
+            binding_config_matrix = binding_config_matrix.T
         
         if figsize is not None:
             fig = plt.figure(figsize=figsize)
@@ -869,7 +869,7 @@ class Identifier:
         # Plot heatmap
         if mode == 'continuous':
             cbar_ax = sns.heatmap(
-                state_matrix,
+                binding_config_matrix,
                 cmap='Greys',
                 cbar=True,
                 cbar_kws=_get_colorbar_params(orientation),
@@ -883,7 +883,7 @@ class Identifier:
             _add_colorbar_border(cbar_ax)
         else:  # binary mode
             sns.heatmap(
-                state_matrix,
+                binding_config_matrix,
                 cmap=colors.ListedColormap(['white', '#404040']),  # Use dark gray instead of black
                 cbar=False,
                 xticklabels=True,
@@ -900,7 +900,7 @@ class Identifier:
             ]
             legend_params = {
                 'handles': legend_elements,
-                'title': "TFBS State Activity",
+                'title': "TFBS Binding Activity",
                 'bbox_to_anchor': (1.05, 1) if orientation == 'vertical' else (1.0, -0.8),
                 'loc': 'upper left' if orientation == 'vertical' else 'lower right',
                 'ncol': 1 if orientation == 'vertical' else 2
@@ -910,8 +910,8 @@ class Identifier:
         # Add border to matrix
         ax.add_patch(patches.Rectangle(
             (0, 0),
-            state_matrix.shape[1],
-            state_matrix.shape[0],
+            binding_config_matrix.shape[1],
+            binding_config_matrix.shape[0],
             linewidth=2,
             edgecolor='black',
             facecolor='none'
@@ -925,7 +925,7 @@ class Identifier:
         
         # Handle layout and display
         if save_path:
-            plt.savefig(save_path + f'/state_matrix_{mode}.{file_format}', 
+            plt.savefig(save_path + f'/binding_config_matrix_{mode}.{file_format}', 
                        facecolor='w', dpi=dpi, bbox_inches='tight')
             plt.close(fig)
         else:
@@ -935,25 +935,25 @@ class Identifier:
         
         return fig, ax
 
-    def get_state_assignments(self, tfbs_positions, mode='auto', print_template=False):
-        """Assign clusters to specific TFBS state combinations based on their activity patterns.
+    def get_binding_config_assignments(self, tfbs_positions, mode='auto', print_template=False):
+        """Assign clusters to specific TFBS binding configurations based on their activity patterns.
         
         This function analyzes the continuous activity levels of TFBSs across clusters to find
-        the optimal cluster for each possible TFBS state combination. For example, it will find:
+        the optimal cluster for each possible TFBS binding configuration. For example, it will find:
         - Which cluster best represents TFBS A alone
         - Which cluster best represents TFBS B alone
         - Which cluster best represents the combined presence of TFBSs A and B
-        - Which cluster best represents the background state (no TFBSs active)
+        - Which cluster best represents the background configuration (no TFBSs active)
         
         The scoring system works by:
-        1. For each state combination, defining an "ideal" activity pattern where:
+        1. For each binding configuration, defining an "ideal" activity pattern where:
            - Desired TFBS(s) have maximum observed activity
            - Other TFBSs have minimum observed activity
         2. Calculating how far each cluster's activity pattern is from this ideal
         3. Selecting the cluster that minimizes this distance
         
         For example, when finding a cluster for TFBS A:
-        - The ideal state would have maximum activity for A and minimum for others
+        - The ideal configuration would have maximum activity for A and minimum for others
         - Each cluster's score is based on how close it comes to this ideal
         - The cluster with the highest score (smallest distance from ideal) is selected
         
@@ -972,10 +972,10 @@ class Identifier:
         Returns
         -------
         dict or None
-            If mode='auto': Dictionary mapping TFBS state combinations to cluster indices.
+            If mode='auto': Dictionary mapping TFBS binding configurations to cluster indices.
             For example:
             {
-                (): 5,           # Background state (no TFBSs)
+                (): 5,           # Background configuration (no TFBSs)
                 ('A',): 1,       # TFBS A alone
                 ('B',): 3,       # TFBS B alone
                 ('A', 'B'): 7,   # Interaction of TFBSs A and B
@@ -985,9 +985,9 @@ class Identifier:
 
         Notes
         -----
-        The function internally uses the continuous state matrix (normalized entropy-based
+        The function internally uses the continuous binding configuration matrix (normalized entropy-based
         activity levels) to make assignments, ensuring consistent scoring across all
-        state combinations. This means:
+        binding configurations. This means:
         - Activity levels are normalized relative to background entropy
         - Higher values (closer to 1) indicate stronger TFBS activity
         - Lower values (closer to 0) indicate weaker or no TFBS activity
@@ -997,8 +997,8 @@ class Identifier:
         2. Have low activity for other TFBSs
         3. Show balanced activity when multiple TFBSs are desired
         """
-        # Get continuous state matrix internally
-        state_matrix = self.get_state_matrix(
+        # Get continuous binding configuration matrix internally
+        binding_config_matrix = self.get_binding_config_matrix(
             active_clusters=self.meta_explainer.active_clusters_by_tfbs,
             mode='continuous'
         )
@@ -1014,15 +1014,15 @@ class Identifier:
         
         if mode == 'template':
             # Print template for manual assignment
-            print("\nState Assignment Template:")
-            print("-------------------------")
+            print("\nBinding Configuration Assignment Template:")
+            print("----------------------------------------")
             print("# Copy this template and replace None with cluster indices")
-            print("state_assignments = {")
+            print("binding_config_assignments = {")
             
             # Print each combination with a descriptive comment
             for combo in all_combinations:
                 if len(combo) == 0:
-                    comment = "# Cluster for background state (no TFBSs active)"
+                    comment = "# Cluster for background configuration (no TFBSs active)"
                 elif len(combo) == n_tfbs:
                     comment = "# Cluster for all TFBSs active (highest minimum activity)"
                 elif len(combo) == 1:
@@ -1041,30 +1041,30 @@ class Identifier:
             # For each combination
             for combo in all_combinations:
                 if len(combo) == 0:
-                    # For background state: find cluster with lowest maximum activity
-                    max_activities = state_matrix.max(axis=1)
+                    # For background configuration: find cluster with lowest maximum activity
+                    max_activities = binding_config_matrix.max(axis=1)
                     assignments[combo] = max_activities.idxmin()
                     
                 elif len(combo) == n_tfbs:
-                    # For all-TFBSs state: find cluster with highest minimum activity
-                    min_activities = state_matrix.min(axis=1)
+                    # For all-TFBSs configuration: find cluster with highest minimum activity
+                    min_activities = binding_config_matrix.min(axis=1)
                     assignments[combo] = min_activities.idxmax()
                     
                 else:
                     # Get the columns for this combination and others
                     combo_cols = list(combo)
-                    other_cols = [col for col in state_matrix.columns if col not in combo_cols]
+                    other_cols = [col for col in binding_config_matrix.columns if col not in combo_cols]
                     
-                    # Define ideal state using actual observed values
-                    ideal_state = pd.Series(0, index=state_matrix.columns)
+                    # Define ideal configuration using actual observed values
+                    ideal_config = pd.Series(0, index=binding_config_matrix.columns)
                     # For desired TFBSs, use maximum observed value
-                    ideal_state[combo_cols] = state_matrix[combo_cols].max().max()
+                    ideal_config[combo_cols] = binding_config_matrix[combo_cols].max().max()
                     # For other TFBSs, use minimum observed value
-                    ideal_state[other_cols] = state_matrix[other_cols].min().min()
+                    ideal_config[other_cols] = binding_config_matrix[other_cols].min().min()
                     
-                    # Calculate distance from ideal state for each cluster
+                    # Calculate distance from ideal configuration for each cluster
                     # Using negative distance so higher scores are better
-                    scores = -(state_matrix - ideal_state).abs().mean(axis=1)
+                    scores = -(binding_config_matrix - ideal_config).abs().mean(axis=1)
                     
                     # Assign the cluster with highest score (smallest distance from ideal)
                     assignments[combo] = scores.idxmax()
@@ -1170,7 +1170,7 @@ class Identifier:
             
         return params_dict
 
-    def get_epistatic_params(self, tfbs_positions, state_assignments=None):
+    def get_epistatic_params(self, tfbs_positions, binding_config_assignments=None):
         """Calculate epistatic interactions between TFBSs using Möbius inversion.
         
         For each combination of TFBSs, calculates the interaction using the inclusion-exclusion principle.
@@ -1181,9 +1181,9 @@ class Identifier:
         ----------
         tfbs_positions : pd.DataFrame
             DataFrame containing TFBS information (from get_tfbs_positions)
-        state_assignments : dict, optional
-            Dictionary mapping TFBS state combinations to cluster indices.
-            If None, will use get_state_assignments() with mode='auto' to get assignments.
+        binding_config_assignments : dict, optional
+            Dictionary mapping TFBS binding configurations to cluster indices.
+            If None, will use get_binding_config_assignments() with mode='auto' to get assignments.
             
         Returns
         -------
@@ -1199,7 +1199,7 @@ class Identifier:
         
         1. The interaction term captures the deviation from additivity
         2. Higher-order interactions are properly decomposed into their constituent terms
-        3. The background state (empty set) is properly accounted for
+        3. The background configuration (empty set) is properly accounted for
         
         For example:
         - 2-way: I_AB = y_AB - y_A - y_B + y₀
@@ -1210,13 +1210,39 @@ class Identifier:
         
         A positive interaction indicates synergy (combined effect > sum of individual effects),
         while a negative interaction indicates antagonism (combined effect < sum of individual effects).
+
+        Saving and Loading
+        -----------------
+        If the epistatic parameters are saved as a NumPy file (.npy), these parameters can be loaded as follows:
+
+        ```python
+        import numpy as np
+
+        # Load the saved parameters
+        epistatic_params = np.load('path/to/identified_parameters/epistatic_params.npy', 
+                                 allow_pickle=True).item()
+
+        # The loaded data will be a dictionary where:
+        # - Keys are tuples of TFBS IDs (e.g., ('A', 'B') for pairwise interactions)
+        # - Values are the interaction terms (float values)
+        
+        # Example usage:
+        # Get a pairwise interaction
+        ab_interaction = epistatic_params[('A', 'B')]
+        
+        # Get a higher-order interaction
+        abc_interaction = epistatic_params[('A', 'B', 'C')]
+        ```
+
+        Note: The allow_pickle=True parameter is required because the data is stored as a dictionary,
+        and .item() is needed to convert the NumPy array back into a dictionary format.
         """
         if not hasattr(self, 'tfbs_clusters'):
             raise ValueError("Must run cluster_covariance() before getting epistatic parameters")
         
-        # Get state assignments if not provided
-        if state_assignments is None:
-            state_assignments = self.get_state_assignments(tfbs_positions, mode='auto')
+        # Get binding configuration assignments if not provided
+        if binding_config_assignments is None:
+            binding_config_assignments = self.get_binding_config_assignments(tfbs_positions, mode='auto')
         
         # Get list of TFBS IDs
         tfbs_ids = tfbs_positions['TFBS'].tolist()
@@ -1251,7 +1277,7 @@ class Identifier:
             
             for subset in subsets:
                 # Get the cluster for this subset
-                sorted_cluster = state_assignments.get(subset)
+                sorted_cluster = binding_config_assignments.get(subset)
                 if sorted_cluster is None:
                     raise ValueError(f"No cluster assigned for TFBS combination {subset}")
                 

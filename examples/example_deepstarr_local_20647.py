@@ -1,5 +1,5 @@
 """
-# SEAM example of local library using DeepSTARR enhancer to annotate all TFBSs and biophysical states (Fig.2a)
+# SEAM example of local library using DeepSTARR enhancer to annotate all TFBSs and quantify epistatic interactions (Fig.2a)
 
 Model:
     - DeepSTARR
@@ -566,7 +566,6 @@ fig, ax = identifier.plot_msm_covariance_square(
     dpi=dpi
 )
 
-# Set threshold and update state
 identifier.set_entropy_multiplier(0.8)  # Adjust until desired TFBS positions are visually enclosed
 
 # Plot MSM with TFBS positions enclosed
@@ -591,14 +590,14 @@ tfbs_positions = identifier.get_tfbs_positions(
 print("\nTFBS Positions and Active Clusters:")
 print(tfbs_positions)
 
-# Get and display state matrix
-state_matrix = identifier.get_state_matrix(
+# Get and display binding configuration matrix
+binding_config_matrix = identifier.get_binding_config_matrix(
     active_clusters=meta.active_clusters_by_tfbs,
-    mode='continuous'  # Explicitly request continuous mode
+    mode='continuous'
 )
 
-# Visualize state matrix
-fig, ax = identifier.plot_state_matrix(
+# Visualize binding configuration matrix
+fig, ax = identifier.plot_binding_config_matrix(
     active_clusters=meta.active_clusters_by_tfbs,
     mode='binary',
     orientation='horizontal',
@@ -606,7 +605,7 @@ fig, ax = identifier.plot_state_matrix(
     dpi=dpi
 )
 
-fig, ax = identifier.plot_state_matrix(
+fig, ax = identifier.plot_binding_config_matrix(
     active_clusters=meta.active_clusters_by_tfbs,
     mode='continuous',
     orientation='horizontal',
@@ -668,21 +667,21 @@ if render_logos is True:
 
 # =============================================================================
 # SEAM API
-# Get state assignments for all TFBS combinations
+# Get binding configuration assignments for all TFBS combinations
 # =============================================================================
 if save_data:
-    print("\nGetting state assignments for all TFBS combinations...")
+    print("\nGetting binding configuration assignments...")
     
-    # Get automatic state assignments using the continuous state matrix
-    state_assignments = identifier.get_state_assignments(
+    # Get automatic binding configuration assignments using the continuous binding configuration matrix
+    binding_config_assignments = identifier.get_binding_config_assignments(
         tfbs_positions,
         mode='auto' # or 'template' (and first add 'print_template=True') to print a template that can be used for manual assignment
     )
     
     # Print assignments in a readable format
-    print("\nAutomatic State Assignments:")
+    print("\nAutomatic Binding Configuration Assignments:")
     print("---------------------------")
-    for combo, cluster in sorted(state_assignments.items(), key=lambda x: (len(x[0]), x[0])):
+    for combo, cluster in sorted(binding_config_assignments.items(), key=lambda x: (len(x[0]), x[0])):
         if len(combo) == 0:
             print(f"BG: Cluster {cluster}")
         elif len(combo) == 1:
@@ -712,7 +711,7 @@ if save_data:
         specific_clusters = []
         for tfbs in sorted(tfbs_positions['TFBS']):
             # Find the cluster assigned to this TFBS alone
-            cluster = state_assignments[(tfbs,)]
+            cluster = binding_config_assignments[(tfbs,)]
             specific_clusters.append(cluster)
         print("\nUsing these clusters for additive parameters:")
         for tfbs, cluster in zip(sorted(tfbs_positions['TFBS']), specific_clusters):
@@ -769,10 +768,10 @@ if save_data:
 if save_data:
     print("\nCalculating epistatic interactions between TFBSs...")
     
-    # Get epistatic parameters using the state assignments we already have
+    # Get epistatic parameters using the binding configuration assignments we already have
     epistatic_params = identifier.get_epistatic_params(
         tfbs_positions,
-        state_assignments=state_assignments  # Use the assignments we got earlier
+        binding_config_assignments=binding_config_assignments  # Use the assignments we got earlier
     )
     
     # Save epistatic parameters
