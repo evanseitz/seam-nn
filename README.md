@@ -36,12 +36,10 @@ pip install seam-nn
 
 Finally, when you are done using the environment, always exit via `conda deactivate`.
 
-> SEAM has been tested on Mac and Linux operating systems. Typical installation time on a normal computer is less than 1 minute.
-
 > If you have any issues installing SEAM, please see:
 > - https://seam-nn.readthedocs.io/en/latest/installation.html
 > - https://github.com/evanseitz/seam-nn/issues
-
+>
 > For issues installing SQUID, the package used for sequence generation and inference, please see:
 > - https://squid-nn.readthedocs.io/en/latest/installation.html
 > - https://github.com/evanseitz/squid-nn/issues
