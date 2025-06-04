@@ -70,7 +70,7 @@ These required files can be generated either externally or using SEAM's speciali
 For detailed examples of how to generate these requirements using SEAM's modules and apply the analysis pipeline to reproduce key findings from our main manuscript, see the Examples section at the end of this document.
 
 ## SEAM Modules:
-SEAM's analysis pipeline is implemented through several specialized modules that work together:
+SEAM's analysis pipeline is implemented through several specialized modules, where outputs from earlier modules feed into subsequent analysis. Results from Mutagenizer, Compiler and Attributer are integrated by the MetaExplainer to characterize each SEAM-derived mechanism. The Identifier module then analyzes these MetaExplainer outputs to annotate the discovered regulatory elements and quantify their combinatoric properties.
 
 - **Mutagenizer** (from [SQUID](https://github.com/evanseitz/squid-nn)): Generates *in silico* sequence libraries through various mutagenesis strategies, including local, global, optimized, and complete libraries (supporting all combinatorial mutations up to a specified order). Features GPU-acceleration and batch processing for efficient sequence generation.
 
@@ -84,7 +84,6 @@ SEAM's analysis pipeline is implemented through several specialized modules that
 
 - **Identifier**: Analyzes cluster-averaged attribution maps in conjunction with the MSM to identify precise locations of motifs and their epistatic interactions.
 
-SEAM's modules form an integrated pipeline where outputs from earlier modules feed into subsequent analysis. The Mutagenizer generates sequences that are processed by the Compiler and Attributer. These attribution maps are then clustered by the Clusterer, with results from Mutagenizer, Compiler and Attributer integrated by the MetaExplainer to characterize each SEAM-derived mechanism. The Identifier module then analyzes these MetaExplainer outputs to pinpoint specific regulatory elements and their interactions.
 
 ## Examples
 
