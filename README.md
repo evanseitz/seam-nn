@@ -36,21 +36,15 @@ pip install seam-nn
 
 Finally, when you are done using the environment, always exit via `conda deactivate`.
 
-### Notes
+> SEAM has been tested on Mac and Linux operating systems. Typical installation time on a normal computer is less than 1 minute.
 
-SEAM has been tested on Mac and Linux operating systems. Typical installation time on a normal computer is less than 1 minute.
+> If you have any issues installing SEAM, please see:
+> - https://seam-nn.readthedocs.io/en/latest/installation.html
+> - https://github.com/evanseitz/seam-nn/issues
 
-If you have any issues installing SEAM, please see:
-- https://seam-nn.readthedocs.io/en/latest/installation.html
-- https://github.com/evanseitz/seam-nn/issues
-
-For issues installing SQUID, the package used for sequence generation and inference, please see:
-- https://squid-nn.readthedocs.io/en/latest/installation.html
-- https://github.com/evanseitz/squid-nn/issues
-
-Older DNNs that require inference via Tensorflow 1.x or related packages may be in conflict with SEAM defaults. Users will need to run SEAM piecewise within separate environments:
-1. Tensorflow 1.x environment for generating *in silico* sequence-function-mechanism dataset
-2. Tensorflow 2.x environment for applying SEAM to explain *in silico* sequence-function-mechanism dataset
+> For issues installing SQUID, the package used for sequence generation and inference, please see:
+> - https://squid-nn.readthedocs.io/en/latest/installation.html
+> - https://github.com/evanseitz/squid-nn/issues
 
 ## Usage and Requirements:
 SEAM provides a unified interface for mechanistic interpretation of sequence-based deep learning models. 
@@ -101,10 +95,10 @@ SEAM's modules form an integrated pipeline where outputs from earlier modules fe
 
 > **Note:** Due to memory requirements for calculating distance matrices, Colab Pro may be required for examples using hierarchical clustering with their current settings.
 
-- [Local library to annotate all TFBSs and quantify epistatic interactions](https://colab.research.google.com/drive/1HOM_ysa4HIh_ZoYzLwa4jZu4evyRntF7?usp=sharing)
+- [Local library to annotate all TFBSs and binding configurations](https://colab.research.google.com/drive/1HOM_ysa4HIh_ZoYzLwa4jZu4evyRntF7?usp=sharing)
 	- DeepSTARR: Enhancer 20647 (Fig.2a)
 	- Local library with 30k sequences and 10% mutation rate | Integrated gradients; hierarchical clustering
-    - Expected run time: **~3.2 minutes** on Colab A100 GPU
+    - Expected run time: **~3 minutes** on Colab A100 GPU
 - [Local library to reveal low-affinity motifs using background separation](https://colab.research.google.com/drive/1lkcLYMyVMYPh3ARzYjI-gJjh69PK9COt?usp=sharing)
 	- DeepSTARR: Enhancer 5353 (Fig.TBD)
 	- Local library with 60k sequences and 10% mutation rate | Integrated gradients; hierarchical clustering

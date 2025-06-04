@@ -222,9 +222,14 @@ Documentation:
 
 
 - Other:
-    - Figure revisions:
-        - Illustrator attribution y-axes in Myriad: change to Arial, and add middle notch  
     - sampling from clusters  
+    - epistasis robustness:
+        - test with num_clusters = 2^4
+        - instead of median:
+            - smallest hamming
+            - specifically shuffle region and re-compute preserved
+        - view variability logo for each cluster
+        - consistency across attribution methods
 
 
 - Zenodo:
