@@ -82,7 +82,7 @@ SEAM’s analysis pipeline is organized into modular components, with outputs fr
 
 - **MetaExplainer**: The core SEAM module that integrates results to identify and interpret mechanistic patterns. Generates cluster-averaged attribution maps (shape: (L, A) for each cluster) and the Mechanism Summary Matrix (MSM), a DataFrame containing position-wise statistics (entropy, consensus matches, reference mismatches) for each cluster. Also implements background separation and provides visualization tools for sequence logos, attribution logos, and cluster statistics, with support for both PWM-based and enrichment-based analysis. Features GPU acceleration with CPU fallbacks.
 
-- **Identifier**: Analyzes cluster-averaged attribution maps in conjunction with the MSM to identify precise locations of motifs and their epistatic interactions.
+- **Identifier**: Analyzes cluster-averaged attribution maps in conjunction with the MSM to identify such properties as the precise locations of motifs and their epistatic interactions.
 
 
 ## Examples
