@@ -87,7 +87,7 @@ SEAM's analysis pipeline is implemented through several specialized modules that
 ### Module Relationships:
 SEAM's modules form an integrated pipeline where outputs from earlier modules feed into subsequent analysis. The Mutagenizer generates sequences that are processed by the Compiler and Attributer. These attribution maps are then clustered by the Clusterer, with results from Mutagenizer, Compiler and Attributer integrated by the MetaExplainer to characterize each SEAM-derived mechanism. The Identifier module then analyzes these MetaExplainer outputs to pinpoint specific regulatory elements and their interactions.
 
-### Examples
+## Examples
 
 **Google Colab examples** for applying SEAM on previously-published deep learning models are available at the links below.
 
