@@ -84,7 +84,6 @@ SEAM's analysis pipeline is implemented through several specialized modules that
 
 - **Identifier**: Analyzes cluster-averaged attribution maps in conjunction with the MSM to identify precise locations of motifs and their epistatic interactions.
 
-### Module Relationships:
 SEAM's modules form an integrated pipeline where outputs from earlier modules feed into subsequent analysis. The Mutagenizer generates sequences that are processed by the Compiler and Attributer. These attribution maps are then clustered by the Clusterer, with results from Mutagenizer, Compiler and Attributer integrated by the MetaExplainer to characterize each SEAM-derived mechanism. The Identifier module then analyzes these MetaExplainer outputs to pinpoint specific regulatory elements and their interactions.
 
 ## Examples
