@@ -1008,19 +1008,3 @@ if render_logos is True:
 # Save average background data to numpy array
 if save_data:
     np.save(os.path.join(save_path, 'average_background.npy'), meta.background)
-
-# =====================================================================================
-# ============================= END OF MAIN EXAMPLE ===================================
-# =====================================================================================
-# The code below contains utility classes and implementations used in the example above.
-# These are separated from the main example for clarity and organization.
-# =====================================================================================
-
-# =============================================================================
-# ChromBPNet Predictor Implementation
-# =============================================================================
-# The ChromBPNetPredictor class is defined at the top of the file
-
-# =============================================================================
-# DeepSHAP Implementation
-# =============================================================================

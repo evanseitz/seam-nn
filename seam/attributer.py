@@ -55,7 +55,7 @@ class Attributer:
         - ISM (GPU): ~44.6s
         
         GPU acceleration provides significant speedup for IntGrad and SmoothGrad.
-        Batch processing is optimized for saliency, intgrad, and smoothgrad methods.
+        Batch processing is optimized for saliency, intgrad, smoothgrad and ism methods.
         
         Hardware used for benchmarks:
         - GPU: NVIDIA A100-SXM4-40GB
@@ -67,8 +67,18 @@ class Attributer:
         attributer = Attributer(
             model, 
             method='saliency',
-            task_index=0,
-            func=lambda x: tf.reduce_mean(x[:, :, 1])  # Example: mean of second output channel
+            task_index=0,  # Select first output head
+            compress_fun=tf.math.reduce_mean,  # Reduce selected output to scalar
+            pred_fun=None  # Not used for gradient-based methods
+        )
+
+        # Example with ISM (forward-pass method)
+        attributer = Attributer(
+            model,
+            method='ism',
+            task_index=0,  # Select first output head
+            compress_fun=tf.math.reduce_mean,  # Reduce selected output to scalar
+            pred_fun=model.predict_on_batch  # Optional: use predict_on_batch for ISM
         )
 
         # Computing attributions for a specific window while maintaining full context
@@ -103,7 +113,8 @@ class Attributer:
     }
     
     def __init__(self, model, method='saliency', task_index=None, out_layer=-1, 
-                batch_size=None, num_shuffles=100, func=tf.math.reduce_mean, gpu=True):
+                batch_size=None, num_shuffles=100, compress_fun=tf.math.reduce_mean, 
+                pred_fun=None, gpu=True):
         """Initialize the Attributer.
         
         Args:
@@ -113,7 +124,10 @@ class Attributer:
             out_layer: Output layer index for DeepSHAP
             batch_size: Batch size for computing attributions (optional, defaults to method-specific size)
             num_shuffles: Number of shuffles for DeepSHAP background
-            func: Function to apply to model output (default: tf.math.reduce_mean)
+            compress_fun: Function to compress model output to scalar (default: tf.math.reduce_mean)
+            pred_fun: Function to use for model predictions in forward-pass methods like ISM.
+                     Not used for gradient-based methods (saliency, smoothgrad, intgrad).
+                     Default: model.__call__
             gpu: Whether to use GPU-optimized implementation (default: True)
         """
         if method not in self.SUPPORTED_METHODS:
@@ -122,7 +136,8 @@ class Attributer:
         self.model = model
         self.method = method
         self.task_index = task_index
-        self.func = func
+        self.compress_fun = compress_fun
+        self.pred_fun = pred_fun or model.__call__
         self.out_layer = out_layer
         self.gpu = gpu
         self.num_shuffles = num_shuffles
@@ -147,10 +162,11 @@ class Attributer:
 
         with tf.GradientTape() as tape:
             tape.watch(X)
+            pred = self.model(X)
             if self.task_index is not None:
-                outputs = self.model(X)[self.task_index]
-            else:
-                outputs = self.func(self.model(X))
+                pred = pred[self.task_index]
+            
+            outputs = self.compress_fun(pred)
         return tape.gradient(outputs, X)
 
     def saliency(self, X, batch_size=None):
@@ -363,7 +379,13 @@ class Attributer:
     
 
     def _ism_cpu(self, X, log2fc=False, snv_window=None):
-        """CPU implementation of ISM."""
+        """CPU implementation of ISM.
+        
+        Args:
+            X: Input sequences
+            log2fc: Whether to compute log2 fold change
+            snv_window: Optional [start, end] positions to compute variants for
+        """
         X = X.astype(np.float32)  # Ensure float32
         scores = []
         
@@ -381,29 +403,20 @@ class Attributer:
         # Pre-allocate mutation array for reuse
         mut_seq = np.zeros_like(X[0:1], dtype=np.float32)
         
-        #for x in tqdm(X, desc="Computing ISM"):
         for x in X:
-            x = x[np.newaxis]  # Faster than expand_dims
+            x = x[np.newaxis]
             # Create score matrix for just the window
             score_matrix = np.zeros((window_length, A), dtype=np.float32)
             
             # Get wild-type predictions
-            wt_output = self.model(tf.constant(x, dtype=tf.float32))
-            if isinstance(wt_output, list):
-                if self.task_index is not None:
-                    wt_output = wt_output[self.task_index]
-                wt_output = tf.convert_to_tensor(wt_output)
-                if wt_output.shape.ndims > 2:
-                    wt_output = tf.squeeze(wt_output)
-                wt_pred = float(wt_output)
-            else:
-                if self.task_index is not None:
-                    wt_output = wt_output[self.task_index]
-                # Skip reduction if output is already scalar
-                if wt_output.shape.ndims == 1:
-                    wt_pred = float(wt_output)
-                else:
-                    wt_pred = float(self.func(wt_output))
+            wt_output = self.pred_fun(tf.constant(x, dtype=tf.float32))
+            if self.task_index is not None:
+                wt_output = wt_output[self.task_index]
+            # Convert to tensor and compress to scalar
+            #wt_output = tf.convert_to_tensor(wt_output)
+            #if wt_output.shape.ndims > 2:
+            #    wt_output = tf.squeeze(wt_output)
+            wt_pred = float(self.compress_fun(wt_output))
             
             # Store all mutation predictions first
             mut_preds = np.empty((window_length * (A-1)), dtype=np.float32)
@@ -418,22 +431,14 @@ class Attributer:
                     mut_seq[0, pos] = np.roll(x[0, pos], b)
                     new_base = np.where(mut_seq[0, pos] == 1)[0][0]
                     
-                    mut_output = self.model(tf.constant(mut_seq))
-                    if isinstance(mut_output, list):
-                        if self.task_index is not None:
-                            mut_output = mut_output[self.task_index]
-                        mut_output = tf.convert_to_tensor(mut_output)
-                        if mut_output.shape.ndims > 2:
-                            mut_output = tf.squeeze(mut_output)
-                        mut_preds[idx] = float(mut_output)
-                    else:
-                        if self.task_index is not None:
-                            mut_output = mut_output[self.task_index]
-                        # Skip reduction if output is already scalar
-                        if mut_output.shape.ndims == 1:
-                            mut_preds[idx] = float(mut_output)
-                        else:
-                            mut_preds[idx] = float(self.func(mut_output))
+                    mut_output = self.pred_fun(tf.constant(mut_seq))
+                    if self.task_index is not None:
+                        mut_output = mut_output[self.task_index]
+                    # Convert to tensor and compress to scalar
+                    #mut_output = tf.convert_to_tensor(mut_output)
+                    #if mut_output.shape.ndims > 2:
+                    #    mut_output = tf.squeeze(mut_output)
+                    mut_preds[idx] = float(self.compress_fun(mut_output))
                     
                     mut_locs.append((pos, new_base))
                     idx += 1
@@ -485,6 +490,7 @@ class Attributer:
             log2fc: If True, compute log2 fold change instead of simple difference
             snv_window: Optional [start, end] positions to specifiy contiguous region over which variants are computed.
                        If None, compute for all positions.
+            pred_fun: Function to use for model predictions (default: self.model)
         
         Returns:
             numpy.ndarray: Attribution maps of shape (N, L, A) containing the effect
@@ -493,7 +499,7 @@ class Attributer:
         # Convert input to tensor if needed
         if not isinstance(X, tf.Tensor):
             X = tf.convert_to_tensor(X, dtype=tf.float32)
-        
+
         N, L, A = X.shape
         
         # Handle SNV window if provided
@@ -537,7 +543,7 @@ class Attributer:
         )
 
         # Get wild-type predictions
-        wt_preds = self.model(X)
+        wt_preds = self.pred_fun(X)
         
         if isinstance(wt_preds, list):
             if self.task_index is not None:
@@ -548,9 +554,9 @@ class Attributer:
                 wt_preds = tf.squeeze(wt_preds)  # Remove extra dims but keep batch
         elif self.task_index is not None:
             wt_preds = wt_preds[self.task_index]
-            # For non-list outputs, use the reduction function if needed
+            # For non-list outputs, use the compression function if needed
             if wt_preds.shape.ndims > 1:
-                wt_preds = self.func(wt_preds)
+                wt_preds = self.compress_fun(wt_preds)
                             
         # Find unique mutations
         flattened_mutations = tf.reshape(all_mutations, [-1, L * A])
@@ -574,7 +580,7 @@ class Attributer:
         for i in range(0, num_unique, self.batch_size):
             end_idx = min(i + self.batch_size, num_unique)
             batch = unique_mutations[i:end_idx]
-            batch_preds = self.model(batch)
+            batch_preds = self.pred_fun(batch)
             
             if self.task_index is not None:
                 batch_preds = batch_preds[self.task_index]
@@ -587,9 +593,9 @@ class Attributer:
                 elif batch_preds.shape[0] == end_idx - i:  # If first dim matches batch size
                     reduced_preds = tf.squeeze(batch_preds)  # Remove extra dims but keep batch
                 else:
-                    reduced_preds = self.func(batch_preds)
+                    reduced_preds = self.compress_fun(batch_preds)
             else:
-                reduced_preds = self.func(batch_preds)
+                reduced_preds = self.compress_fun(batch_preds)
             
             # Ensure reduced_preds is a 1D tensor
             reduced_preds = tf.reshape(reduced_preds, [-1])
@@ -989,7 +995,7 @@ class Attributer:
             'saliency': {
                 'gpu': 'bool, Whether to use GPU acceleration (default: True)',
                 'batch_size': 'int, Batch size for processing (default: 128)',
-                'func': ('callable, Function to reduce model output to scalar (default: tf.math.reduce_mean). '
+                'compress_fun': ('callable, Function to compress model output to scalar (default: tf.math.reduce_mean). '
                         'Required if model output is not already a scalar.')
             },
             'smoothgrad': {
@@ -998,7 +1004,7 @@ class Attributer:
                 'mean': 'float, Mean of noise distribution (default: 0.0)',
                 'stddev': 'float, Standard deviation of noise (default: 0.1)',
                 'batch_size': 'int, Batch size for processing (default: 64)',
-                'func': ('callable, Function to reduce model output to scalar (default: tf.math.reduce_mean). '
+                'compress_fun': ('callable, Function to compress model output to scalar (default: tf.math.reduce_mean). '
                         'Required if model output is not already a scalar.')
             },
             'intgrad': {
@@ -1011,7 +1017,7 @@ class Attributer:
                                '    - dinuc_shuffle: Dinucleotide-preserved shuffle'),
                 'seed': 'int, Random seed for reproducibility in shuffling methods (optional)',
                 'batch_size': 'int, Batch size for processing (default: 128)',
-                'func': ('callable, Function to reduce model output to scalar (default: tf.math.reduce_mean). '
+                'compress_fun': ('callable, Function to compress model output to scalar (default: tf.math.reduce_mean). '
                         'Required if model output is not already a scalar.')
             },
             'deepshap': {
@@ -1023,7 +1029,7 @@ class Attributer:
                 'gpu': 'bool, Whether to use GPU acceleration (default: True)',
                 'log2FC': 'bool, Whether to compute log2 fold change (default: False)',
                 'batch_size': 'int, Batch size for processing (default: 128)',
-                'func': ('callable, Function to reduce model output to scalar (default: tf.math.reduce_mean). '
+                'compress_fun': ('callable, Function to compress model output to scalar (default: tf.math.reduce_mean). '
                         'Required if model output is not already a scalar.')
             }
         }

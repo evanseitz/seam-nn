@@ -46,7 +46,7 @@ seq_index = 20647  # Example locus from DeepSTARR test set used in SEAM Figure 2
 task_index = 1  # Housekeeping (Hk) program
 
 mut_rate = 0.1 # mutation rate for in silico mutagenesis
-num_seqs = 10000 # number of sequences to generate
+num_seqs = 100000 # number of sequences to generate
 n_clusters = 30 # number of clusters for hierarchical clustering
 attribution_method = 'intgrad' # {saliency, smoothgrad, intgrad, deepshap, ism} # TODO: deepshap under construction
 
@@ -216,7 +216,9 @@ if load_previous_attributions is False:
     attributer = Attributer(
         model,
         method=attribution_method,
-        task_index=task_index
+        task_index=task_index,
+        compress_fun=lambda x: x, # identity
+        pred_fun=model.predict_on_batch,
     )
 
     # Show params for specific method
