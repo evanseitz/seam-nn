@@ -102,6 +102,7 @@ Documentation:
             - pytorch version?
             - no longer need sequence_utils.py?
             - dinuc shuffling vs training set option
+            - ChromBPNet profile mode with stop_gradient gives worse looking results than without stop_gradient, and vs. intgrad
         - IntGrad
             - Plot each map within a given int grad trajectory
             - Test that dinuc_shuffle is able to call the numpy version of batch_dinuc_shuffle

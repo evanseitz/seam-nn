@@ -63,33 +63,13 @@ from seam.logomaker_batch.batch_logo import BatchLogo
 # =============================================================================
 model_type = 'dnase_thp1' # {'dnase_thp1', 'dnase_thp1_nobias', 'dnase_k562', 'dnase_jurkat', 'dnase_jurkat_stim', 'atac_k562'}
 fold_index = 0  # Choose which fold to use (0-4)
-task_type = 'profile'  # {'profile', 'counts'} for logits_profile (0), logcount (1)
+task_type = 'counts'  # {'profile', 'counts'} for logits_profile (0), logcount (1)
 enhancer_or_promoter = 'promoter'  # {'promoter', 'enhancer'} of PPIF gene
 mut_rate = 0.1  # mutation rate for in silico mutagenesis
 num_seqs = 100000  # number of sequences to generate
 n_clusters = 200 # number of clusters for hierarchical clustering
-attribution_method = 'deepshap'  # {saliency, smoothgrad, intgrad, ism, deepshap}
+attribution_method = 'intgrad'  # {saliency, smoothgrad, intgrad, ism, deepshap}
 # Note: DeepSHAP is not optimized for batch processing of SEAM's in silico mutagenesis library, and may also not be calibrated for several modern TF2 operations.
-
-# Configure TensorFlow for DeepSHAP if needed
-if attribution_method == 'deepshap':
-    # Disable eager execution for DeepSHAP compatibility
-    try:
-        tf.compat.v1.disable_eager_execution()
-        tf.compat.v1.disable_v2_behavior()
-        print("TensorFlow eager execution disabled for DeepSHAP compatibility")
-        
-        # Import SHAP to configure handlers
-        import shap
-        # Handle AddV2 operation (element-wise addition) as a linear operation
-        shap.explainers.deep.deep_tf.op_handlers["AddV2"] = shap.explainers.deep.deep_tf.passthrough
-        # Note: Warnings about other modern TF2 operations can also be handled with the passthrough handler if they are purely linear operations;
-        # For warnings about nonlinear operations, implement a custom op_handler
-    except:
-        print("Warning: Could not disable TensorFlow eager execution. DeepSHAP may not work properly.")
-
-# Note: If using DeepSHAP (attribution_method = 'deepshap'), TensorFlow eager execution will be disabled
-# This is required by the SHAP library's TFDeepExplainer.
 
 # =============================================================================
 # Overhead user settings
@@ -602,6 +582,28 @@ print(mave_df)
 # =============================================================================
 if load_previous_attributions is False:
     if attribution_method == 'deepshap':
+        try:
+            # Disable eager execution first
+            tf.compat.v1.disable_eager_execution()
+            tf.compat.v1.disable_v2_behavior()
+            print("TensorFlow eager execution disabled for DeepSHAP compatibility")
+            
+            # Import SHAP to configure handlers
+            import shap
+            # Handle AddV2 operation (element-wise addition) as a linear operation
+            shap.explainers.deep.deep_tf.op_handlers["AddV2"] = shap.explainers.deep.deep_tf.passthrough
+            # Note: Warnings about other modern TF2 operations can also be handled with the passthrough handler if they are purely linear operations;
+            # For warnings about nonlinear operations, implement a custom op_handler
+
+            # Load the model after eager execution is disabled
+            model = tf.keras.models.load_model(model_path)
+            
+            # Rebuild model to ensure proper graph construction
+            _ = model(tf.keras.Input(shape=model.input_shape[1:]))
+            
+        except:
+            print("Warning: Could not disable TensorFlow eager execution. DeepSHAP may not work properly.")
+
         dinuc_shuffle_n = 20  # Number of dinucleotide shuffles for DeepSHAP
         use_dinuc_shuffle = True  # Whether to use dinucleotide shuffling (vs random) for DeepSHAP
         

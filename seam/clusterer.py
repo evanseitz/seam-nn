@@ -805,6 +805,12 @@ class Clusterer:
             return clusters, max_distance
             
         elif criterion == 'maxclust':
+            # Check if n_clusters is greater than number of sequences
+            n_sequences = len(linkage) + 1  # Number of sequences is rows in linkage + 1
+            if n_clusters > n_sequences:
+                raise ValueError(f"Requested {n_clusters} clusters but only have {n_sequences} sequences. "
+                               f"Number of clusters must be less than or equal to number of sequences.")
+            
             clusters = hierarchy.fcluster(linkage, n_clusters, criterion='maxclust')
             clusters = clusters - 1  # Zero-index clusters
             
