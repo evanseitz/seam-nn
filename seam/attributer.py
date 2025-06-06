@@ -544,7 +544,7 @@ class Attributer:
 
         # Get wild-type predictions
         wt_preds = self.pred_fun(X)
-        
+        '''
         if isinstance(wt_preds, list):
             if self.task_index is not None:
                 wt_preds = wt_preds[self.task_index]
@@ -557,6 +557,10 @@ class Attributer:
             # For non-list outputs, use the compression function if needed
             if wt_preds.shape.ndims > 1:
                 wt_preds = self.compress_fun(wt_preds)
+        '''
+        if self.task_index is not None:
+            wt_preds = wt_preds[self.task_index]
+        wt_preds = tf.cast(self.compress_fun(wt_preds), tf.float32)  # Apply compression to get scalar values
                             
         # Find unique mutations
         flattened_mutations = tf.reshape(all_mutations, [-1, L * A])
@@ -584,7 +588,7 @@ class Attributer:
             
             if self.task_index is not None:
                 batch_preds = batch_preds[self.task_index]
-            
+            '''
             if isinstance(batch_preds, list):
                 reduced_preds = tf.convert_to_tensor(batch_preds)
             elif hasattr(batch_preds, 'shape'):
@@ -596,15 +600,15 @@ class Attributer:
                     reduced_preds = self.compress_fun(batch_preds)
             else:
                 reduced_preds = self.compress_fun(batch_preds)
+            '''
+            # Apply compression function to get scalar values
+            batch_preds = tf.cast(self.compress_fun(batch_preds), tf.float32)
             
-            # Ensure reduced_preds is a 1D tensor
-            reduced_preds = tf.reshape(reduced_preds, [-1])
-            
-            # Update the pre-allocated tensor directly
+            # Update the pre-allocated tensor
             mut_preds = tf.tensor_scatter_nd_update(
                 mut_preds,
                 tf.reshape(tf.range(i, end_idx), [-1, 1]),  # Shape: [batch_size, 1]
-                reduced_preds  # Shape: [batch_size]
+                tf.reshape(batch_preds, [-1])  # Shape: [batch_size]
             )
         
         # Stack predictions and map back to full mutation set
