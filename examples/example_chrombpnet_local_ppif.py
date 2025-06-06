@@ -53,7 +53,7 @@ from urllib.request import urlretrieve
 np.random.seed(42)
 random.seed(42)
 
-if 1: # Use this for local install (must 'pip uninstall seam' first)
+if 0: # Use this for local install (must 'pip uninstall seam' first)
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) # TODO: turn this off
 from seam import Compiler, Attributer, Clusterer, MetaExplainer, Identifier
 from seam.logomaker_batch.batch_logo import BatchLogo
@@ -61,9 +61,9 @@ from seam.logomaker_batch.batch_logo import BatchLogo
 # =============================================================================
 # Key hyperparameters
 # =============================================================================
-model_type = 'dnase_jurkat' # {'dnase_thp1', 'dnase_thp1_nobias', 'dnase_k562', 'dnase_jurkat', 'dnase_jurkat_stim', 'atac_k562'}
+model_type = 'dnase_thp1' # {'dnase_thp1', 'dnase_thp1_nobias', 'dnase_k562', 'dnase_jurkat', 'dnase_jurkat_stim', 'atac_k562'}
 fold_index = 0  # Choose which fold to use (0-4)
-task_type = 'counts'  # {'profile', 'counts'} for logits_profile (0), logcount (1)
+task_type = 'profile'  # {'profile', 'counts'} for logits_profile (0), logcount (1)
 enhancer_or_promoter = 'promoter'  # {'promoter', 'enhancer'} of PPIF gene
 mut_rate = 0.1  # mutation rate for in silico mutagenesis
 num_seqs = 100000  # number of sequences to generate
@@ -178,26 +178,35 @@ def predict_tracks(model, sequence_one_hot):
     return profile_probs_predictions[0], counts_sum_predictions[0]
 
 class ChromBPNetPredictor(squid.predictor.BasePredictor):
-    def __init__(self, pred_fun, task_idx=0, batch_size=64, reduce_fun=np.sum, axis=1, save_dir=None, save_window=None, **kwargs):
+    def __init__(self, pred_fun, task_idx=0, batch_size=64, compress_fun=None, save_dir=None, save_window=None, **kwargs):
         self.pred_fun = pred_fun
         self.task_idx = task_idx
         self.batch_size = batch_size
-        self.reduce_fun = reduce_fun
-        self.axis = axis
+        # Default compression functions for each task type
+        self.compress_fun = compress_fun or {
+            0: lambda x: tf.reduce_sum(  # Profile task (index 0)
+                (x - tf.reduce_mean(x, axis=-1, keepdims=True)) * 
+                tf.nn.softmax(x - tf.reduce_mean(x, axis=-1, keepdims=True), axis=-1),
+                axis=-1
+            ),
+            1: lambda x: x  # Counts task (index 1)
+        }[task_idx]
         squid.predictor.BasePredictor.save_dir = save_dir
         self.kwargs = kwargs
 
     def __call__(self, x, x_ref, save_window):
-        # get model predictions
-        pred = self.predict_in_batches(x, x_ref, self.pred_fun, batch_size=self.batch_size, task_idx=self.task_idx, save_window=save_window)
-        return pred
-        
+        """Required by SQUID API to make predictions."""
+        return self.predict_in_batches(x, x_ref, self.pred_fun, batch_size=self.batch_size, task_idx=self.task_idx, save_window=save_window)
+
     def predict_in_batches(self, x, x_ref, model_pred_fun, batch_size=None, task_idx=None, save_window=None, **kwargs):
         if save_window is not None:
             x_ref = x_ref[np.newaxis,:].astype('uint8')
         N, L, A = x.shape
         num_batches = int(np.floor(N/batch_size))
         pred = []
+        
+        # Use instance task_idx if not provided
+        task_idx = task_idx or self.task_idx
         
         for i in tqdm(range(num_batches), desc="Inference"):
             x_batch = x[i*batch_size:(i+1)*batch_size]
@@ -206,19 +215,12 @@ class ChromBPNetPredictor(squid.predictor.BasePredictor):
                 x_ref_stop = np.broadcast_to(x_ref[:,save_window[1]:,:], (x_batch.shape[0],x_ref.shape[1]-save_window[1],x_ref.shape[2]))
                 x_batch = np.concatenate([x_ref_start, x_batch, x_ref_stop], axis=1)
             
-            pred_fold_ix = model_pred_fun(x_batch.astype(float))
-            if task_type == 'counts':
-                pred.append(pred_fold_ix[1][:,0])  # counts
-            else:  # profile
-                # Reshape logits to 2D (batch, profile_length)
-                logits = tf.reshape(pred_fold_ix[0], [pred_fold_ix[0].shape[0], -1])
-                # Mean normalize logits
-                mean_norm_logits = logits - tf.reduce_mean(logits, axis=-1, keepdims=True)
-                # Get softmax probabilities
-                softmax_probs = tf.nn.softmax(mean_norm_logits, axis=-1)
-                # Multiply and sum
-                profile_reduced = tf.reduce_sum(mean_norm_logits * softmax_probs, axis=-1)
-                pred.append(profile_reduced)
+            pred_ix = model_pred_fun(x_batch.astype(float))
+            
+            # Select task output and apply compression
+            task_output = pred_ix[task_idx]
+            compressed = self.compress_fun(task_output)
+            pred.append(compressed)
         
         # Handle remaining sequences
         if num_batches*batch_size < N:
@@ -228,19 +230,12 @@ class ChromBPNetPredictor(squid.predictor.BasePredictor):
                 x_ref_stop = np.broadcast_to(x_ref[:,save_window[1]:,:], (x_batch.shape[0],x_ref.shape[1]-save_window[1],x_ref.shape[2]))
                 x_batch = np.concatenate([x_ref_start, x_batch, x_ref_stop], axis=1)
             
-            pred_fold_ix = model_pred_fun(x_batch.astype(float))
-            if task_type == 'counts':
-                pred.append(pred_fold_ix[1][:,0])  # counts
-            else:  # profile
-                # Reshape logits to 2D (batch, profile_length)
-                logits = tf.reshape(pred_fold_ix[0], [pred_fold_ix[0].shape[0], -1])
-                # Mean normalize logits
-                mean_norm_logits = logits - tf.reduce_mean(logits, axis=-1, keepdims=True)
-                # Get softmax probabilities
-                softmax_probs = tf.nn.softmax(mean_norm_logits, axis=-1)
-                # Multiply and sum
-                profile_reduced = tf.reduce_sum(mean_norm_logits * softmax_probs, axis=-1)
-                pred.append(profile_reduced)
+            pred_ix = model_pred_fun(x_batch.astype(float))
+            
+            # Select task output and apply compression
+            task_output = pred_ix[task_idx]
+            compressed = self.compress_fun(task_output)
+            pred.append(compressed)
         
         preds = np.concatenate(pred, axis=0)
         return preds.reshape(-1, 1)  # Ensure 2D output for SQUID
@@ -644,7 +639,16 @@ if load_previous_attributions is False:
         attributer = Attributer(
             model,
             method=attribution_method,
-            task_index=task_index
+            task_index=task_index,
+            compress_fun={
+                0: lambda x: tf.reduce_sum(  # Profile task (index 0)
+                    (x - tf.reduce_mean(x, axis=-1, keepdims=True)) * 
+                    tf.nn.softmax(x - tf.reduce_mean(x, axis=-1, keepdims=True), axis=-1),
+                    axis=-1,
+                    keepdims=True  # Keep batch dimension to avoid scalar output
+                ),
+                1: lambda x: x  # Counts task (index 1)
+            }[task_index]  # Select compression function based on task_index
         )
 
         t1 = time.time()
