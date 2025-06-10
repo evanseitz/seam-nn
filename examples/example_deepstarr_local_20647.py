@@ -516,7 +516,7 @@ if render_logos is True:
     fig, ax = average_background_logo.draw_single(
         0,
         fixed_ylim=False,
-        figsize=(20,1.5),
+        figsize=(10,2.5),
         border=False,
         view_window=view_window
         )
