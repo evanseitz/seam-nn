@@ -25,7 +25,7 @@ A bioRxiv preprint is also currently underway.
 With [Anaconda](https://docs.anaconda.com/free/anaconda/install/index.html) sourced, create a new environment via the command line:
 
 ```bash
-conda create --name seam
+conda create --name seam python>=3.7.2
 ```
 
 Next, activate this environment via `conda activate seam`, and install the following packages:

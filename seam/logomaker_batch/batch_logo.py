@@ -69,8 +69,9 @@ class BatchLogo:
         # Set figure size
         self.figsize = figsize
         
-        # Get font name
+        # Get font name and weight
         self.font_name = font_name
+        self.font_weight = self.kwargs.pop('font_weight', 'normal')
         
         # Get stack order
         self.stack_order = self.kwargs.pop('stack_order', 'big_on_top')
@@ -101,13 +102,14 @@ class BatchLogo:
 
     def _get_font_props(self):
         """Get cached font properties with fallback to sans if font not found"""
-        if self.font_name not in self._font_cache:
+        cache_key = f"{self.font_name}_{self.font_weight}"
+        if cache_key not in self._font_cache:
             try:
-                self._font_cache[self.font_name] = fm.FontProperties(family=self.font_name)
+                self._font_cache[cache_key] = fm.FontProperties(family=self.font_name, weight=self.font_weight)
             except:
-                print(f"Warning: Font '{self.font_name}' not found, falling back to 'sans'")
-                self._font_cache[self.font_name] = fm.FontProperties(family='sans')
-        return self._font_cache[self.font_name]
+                print(f"Warning: Font '{self.font_name}' with weight '{self.font_weight}' not found, falling back to 'sans'")
+                self._font_cache[cache_key] = fm.FontProperties(family='sans')
+        return self._font_cache[cache_key]
 
     def process_all(self):
         """Process all logos in batches"""
