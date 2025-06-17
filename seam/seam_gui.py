@@ -39,15 +39,14 @@ from tqdm import tqdm
 if 1:
     sys.path.insert(0, os.path.abspath('.'))
     from logomaker_batch.batch_logo import BatchLogo
-    from seam import Clusterer  # Add Clusterer import
-    from seam import MetaExplainer
-    from seam import utils  # Add utils import
+    from clusterer import Clusterer
+    from meta_explainer import MetaExplainer
+    import utils
 else:
     from seam.logomaker_batch.batch_logo import BatchLogo
-    from seam import Clusterer  # Add Clusterer import
+    from seam import Clusterer
     from seam import MetaExplainer
-    from seam import utils  # Add utils import
-import impress # TODO: seam.impress
+    from seam import utils
 
 from matplotlib.patches import PathPatch
 from matplotlib.colors import Normalize, TwoSlopeNorm
@@ -108,7 +107,7 @@ class Imports(QtWidgets.QWidget):
     hamming_orig = ''
     current_tab = 0
     cluster_col = 'Cluster'
-    cluster_sort_method = 'Default ordering'  # Store selected cluster sorting method
+    cluster_sort_method = 'Median activity'  # Store selected cluster sorting method
     linkage = None  # Store linkage matrix if loaded
     batch_logo_instances = {}  # Store BatchLogo instances for each cluster and scale type
     batch_logo_type = 'average'  # Type of logo to generate: 'average', 'pwm', 'enrichment'
@@ -233,8 +232,8 @@ class Imports(QtWidgets.QWidget):
         self.label_sort_method.setFont(font_standard)
         self.label_sort_method.setMargin(20)
         self.combo_sort_method = QComboBox(self)
-        self.combo_sort_method.addItem('Default ordering')
         self.combo_sort_method.addItem('Median activity')
+        self.combo_sort_method.addItem('No reordering')
         self.combo_sort_method.setCurrentIndex(0)
         self.combo_sort_method.setToolTip('Choose how to sort clusters in summary matrix visualizations.')
         def set_sort_method(value):
@@ -691,10 +690,6 @@ class Custom(QtWidgets.QWidget):
             Custom.btn_reset.click()
             if Imports.clusters_dir != '': # need to also update tab 3: 
                 Predef.cluster_colors = Imports.clusters[Imports.cluster_col][::Custom.plt_step]
-                if Imports.cluster_col == 'Cluster_sort': # randomize ordering of cluster colors (needed for vizualization only if clusters are sorted)
-                    unique_clusters = np.unique(Predef.cluster_colors) # get unique clusters and create a randomized mapping
-                    randomized_mapping = {cluster: i for i, cluster in enumerate(np.random.permutation(unique_clusters))}
-                    Predef.cluster_colors = [randomized_mapping[cluster] for cluster in Predef.cluster_colors] # map cluster labels to randomized indices
 
         def choose_markersize():
             Custom.plt_marker = Custom.entry_markersize.value()
@@ -1788,6 +1783,8 @@ class Predef(QtWidgets.QWidget):
     batch_logo = None  # Store BatchLogo instance for cluster logos
     initial_logo_size = None  # Store initial logo size
     widget_bot_ref = None  # Store reference to widget_bot for splitter sizing
+    original_logo_xlim = None  # Store original x-axis limits for home button
+    original_logo_ylim = None  # Store original y-axis limits for home button
 
     def update_logo(self):
         """Update the logo display based on current cluster and settings"""
@@ -1796,6 +1793,20 @@ class Predef(QtWidgets.QWidget):
             self.logo_ax.axis('off')
             self.logo_canvas.draw()
             return
+
+        # Store current view limits if they exist
+        current_xlim = None
+        current_ylim = None
+        had_previous_view = False
+        if hasattr(self, 'logo_ax') and self.logo_ax is not None:
+            try:
+                current_xlim = self.logo_ax.get_xlim()
+                current_ylim = self.logo_ax.get_ylim()
+                # Check if we actually had a meaningful x-axis view (not just default 0-1 range)
+                if current_xlim[0] != 0 or current_xlim[1] != 1:
+                    had_previous_view = True
+            except:
+                pass
 
         cluster_id = int(self.cluster_idx)
         logo_type_map = {
@@ -1849,14 +1860,53 @@ class Predef(QtWidgets.QWidget):
         
         ax.set_ylabel('Cluster avg.')
         
+        # Add coordinate tracking to the logo axis
+        def logo_format_coord(x, y):
+            return f'x={x:.1f}, y={y:.3f}'
+        
+        ax.format_coord = logo_format_coord
+        
+        # Restore previous view limits if they exist
+        if had_previous_view and current_xlim is not None:
+            ax.set_xlim(current_xlim)
+        
         new_canvas = FigureCanvas(fig)
         new_canvas.setMinimumSize(self.logo_canvas.minimumSize())
         new_canvas.setMaximumSize(self.logo_canvas.maximumSize())
 
-        # Add the new canvas to the layout
+        # Create toolbar for the logo canvas
+        logo_toolbar = NavigationToolbar(new_canvas, self)
+        unwanted_buttons = ['Subplots', 'Zoom', 'Pan']
+        for x in logo_toolbar.actions():
+            if x.text() in unwanted_buttons:
+                logo_toolbar.removeAction(x)
+
+        # Add the new canvas and toolbar to the layout
+        parent_layout.addWidget(logo_toolbar, 50, 0, 1, 12)
         parent_layout.addWidget(new_canvas, 51, 0, 1, 12)
         self.logo_canvas = new_canvas
         self.logo_ax = ax
+
+        # Store original view limits for home button functionality
+        if Predef.original_logo_xlim is None:
+            # First time creating a logo - store the original limits
+            Predef.original_logo_xlim = ax.get_xlim()
+            Predef.original_logo_ylim = ax.get_ylim()
+
+        # Override the home button action to restore original view
+        for action in logo_toolbar.actions():
+            if action.text() == 'Home':
+                # Disconnect any existing connections to avoid multiple connections
+                try:
+                    action.triggered.disconnect()
+                except:
+                    pass
+                
+                def restore_original_view():
+                    ax.set_xlim(Predef.original_logo_xlim)
+                    new_canvas.draw()
+                action.triggered.connect(restore_original_view)
+                break
 
     def __init__(self, parent=None):
         super(Predef, self).__init__(parent)
@@ -1920,7 +1970,7 @@ class Predef(QtWidgets.QWidget):
                 predef_stats_window.setMinimumSize(10, 10)
                 predef_stats_window.show()
 
-        def open_all_stats_window(self):
+        def open_all_stats_window():
             if not isinstance(self.df, pd.DataFrame):            
                 box = QMessageBox(self)
                 box.setIcon(QMessageBox.Warning)
@@ -1977,7 +2027,7 @@ class Predef(QtWidgets.QWidget):
                 
                 self.update_logo()  # Update logo with new scale type
 
-        def highlight_cluster():
+        def highlight_cluster(): # TODO is this needed?
             Predef.cluster_idx = int(Predef.choose_cluster.value())
             Predef.k_idxs = np.array(Imports.clusters[Imports.cluster_col].loc[Imports.clusters[Imports.cluster_col] == Predef.cluster_idx].index)
             Predef.num_seqs = len(Predef.k_idxs)
@@ -2176,10 +2226,9 @@ class AllStats(QtWidgets.QMainWindow):
     row = 0
     col = 0
     val = 0
-    sort = False#True
     threshold = 100
     delta = False
-    mut_rate = 10
+    mut_rate = 0.10
 
     def __init__(self):
         super(AllStats, self).__init__()
@@ -2216,7 +2265,6 @@ class AllStats(QtWidgets.QMainWindow):
         self.label_compare = QLabel('Metric: ')
         AllStats.combo_compare = QComboBox(self)
         AllStats.combo_compare.addItem('Entropy')
-        AllStats.combo_compare.addItem('Entropy difference')
         AllStats.combo_compare.addItem('Reference sequence')
         AllStats.combo_compare.addItem('Consensus per cluster')
         AllStats.combo_compare.currentTextChanged.connect(self.reset)
@@ -2227,22 +2275,6 @@ class AllStats(QtWidgets.QMainWindow):
         if Predef.df['Reference'].isnull().all():
             AllStats.combo_compare.setItemData(1, False, QtCore.Qt.UserRole - 1)
 
-        AllStats.checkbox_sort = QCheckBox('Aesthetic sorting', self)
-        AllStats.checkbox_sort.setChecked(AllStats.sort)
-        AllStats.checkbox_sort.stateChanged.connect(self.sort_matrix)
-        AllStats.checkbox_sort.setToolTip('Check to visually sort the clusters in the table based on the chosen metric.')
-
-        self.label_mut_rate = QLabel('Mutation rate: ')
-        AllStats.spin_mut_rate = QDoubleSpinBox(self)
-        AllStats.spin_mut_rate.setDisabled(True)
-        AllStats.spin_mut_rate.setMinimum(0.1)
-        AllStats.spin_mut_rate.setMaximum(100)
-        AllStats.spin_mut_rate.setDecimals(1)
-        AllStats.spin_mut_rate.setSuffix('%')
-        AllStats.spin_mut_rate.setValue(AllStats.mut_rate)
-        AllStats.spin_mut_rate.valueChanged.connect(self.choose_mut_rate)
-        AllStats.spin_mut_rate.setToolTip('Set the mutation rate used for generating the sequences in the current ensemble.')
-
         self.btn_marginals = QPushButton('       Marginal distributions       ')
         self.btn_marginals.setDisabled(False)
         self.btn_marginals.setDefault(False)
@@ -2252,9 +2284,6 @@ class AllStats(QtWidgets.QMainWindow):
         
         layout.addWidget(self.label_compare, 51, 0, 1, 1, QtCore.Qt.AlignRight)
         layout.addWidget(AllStats.combo_compare, 51, 1, 1, 1, QtCore.Qt.AlignLeft)
-        layout.addWidget(AllStats.checkbox_sort, 51, 2, 1, 1, QtCore.Qt.AlignRight)
-        layout.addWidget(self.label_mut_rate, 51, 3, 1, 1, QtCore.Qt.AlignRight)
-        layout.addWidget(AllStats.spin_mut_rate, 51, 4, 1, 1, QtCore.Qt.AlignLeft)
         layout.addWidget(self.btn_marginals, 51, 8, 1, 1, QtCore.Qt.AlignLeft)
 
         tabs.setTabEnabled(0, False) #freezes out 1st tab
@@ -2269,15 +2298,13 @@ class AllStats(QtWidgets.QMainWindow):
         self.setWindowTitle('Sensitivity of clusters to sequence elements')
         self.show()
       
-        if AllStats.sort is True:
-            sort = 'visual'
-        else:
-            if Imports.cluster_col == 'Cluster_sort':
-                sort = 'predefined'
-            else:
-                sort = None
-
-        AllStats.ax, AllStats.cax, AllStats.reordered_ind, AllStats.revels = impress.plot_clusters_matches_2d_gui(Predef.df, AllStats.figure, column=Predef.df_col, sort=sort, delta=AllStats.delta, mut_rate=AllStats.mut_rate, sort_index=Predef.cluster_sorted_indices)#np.array(Imports.clusters[Imports.cluster_col]))
+        AllStats.ax, AllStats.cax, AllStats.reordered_ind, AllStats.revels = Imports.meta_explainer.plot_msm(
+            column=Predef.df_col,
+            delta_entropy=AllStats.delta,
+            square_cells=False,
+            gui=True,
+            gui_figure=AllStats.figure
+        )
         AllStats.canvas.mpl_connect('button_press_event', self.onclick)
         AllStats.ax.format_coord = self.format_coord
         AllStats.canvas.draw()
@@ -2291,17 +2318,6 @@ class AllStats(QtWidgets.QMainWindow):
         elif Predef.df_col == 'Entropy':
             return f'cluster={row:1.0f}, position={col:1.0f}, value={val:1.2f} bits'
         
-    def choose_mut_rate(self):
-        AllStats.mut_rate = self.spin_mut_rate.value()
-        self.reset()
-
-    def sort_matrix(self):
-        if AllStats.checkbox_sort.isChecked():
-            AllStats.sort = True
-        else:
-            AllStats.sort = False
-        self.reset()
-
     def reset(self):
         try:
             marginals_window.close()
@@ -2310,31 +2326,23 @@ class AllStats(QtWidgets.QMainWindow):
         if AllStats.combo_compare.currentText() == 'Reference sequence':
             Predef.df_col = 'Reference'
             AllStats.delta = False
-            AllStats.spin_mut_rate.setDisabled(True)
         elif AllStats.combo_compare.currentText() == 'Consensus per cluster':
             Predef.df_col = 'Consensus'
             AllStats.delta = False
-            AllStats.spin_mut_rate.setDisabled(True)
         elif AllStats.combo_compare.currentText() == 'Entropy':
             Predef.df_col = 'Entropy'
             AllStats.delta = False
-            AllStats.spin_mut_rate.setDisabled(True)
-        elif AllStats.combo_compare.currentText() == 'Entropy difference':
-            Predef.df_col = 'Entropy'
-            AllStats.delta = True
-            AllStats.spin_mut_rate.setDisabled(False)
 
         AllStats.ax.clear()
         AllStats.cax.cla()
         AllStats.figure.clear()
-        if AllStats.sort is True:
-            sort = 'visual'
-        else:
-            if Imports.cluster_col == 'Cluster_sort':
-                sort = 'predefined'
-            else:
-                sort = None
-        AllStats.ax, AllStats.cax, AllStats.reordered_ind, AllStats.revels = impress.plot_clusters_matches_2d_gui(Predef.df, AllStats.figure, column=Predef.df_col, sort=sort, delta=AllStats.delta, mut_rate=AllStats.mut_rate, sort_index=Predef.cluster_sorted_indices)#np.array(Imports.clusters[Imports.cluster_col]))
+        AllStats.ax, AllStats.cax, AllStats.reordered_ind, AllStats.revels = Imports.meta_explainer.plot_msm(
+            column=Predef.df_col,
+            delta_entropy=AllStats.delta,
+            square_cells=False,
+            gui=True,
+            gui_figure=AllStats.figure
+        )
         AllStats.ax.format_coord = self.format_coord
         AllStats.canvas.draw()
 
@@ -2413,7 +2421,6 @@ class Cell(QtWidgets.QMainWindow):
         self.ax.tick_params(axis="y", labelsize=4)
         self.ax.xaxis.set_major_locator(MaxNLocator(integer=True))
 
-        #k_idxs =  np.array(Imports.clusters[Imports.cluster_col].loc[Imports.clusters[Imports.cluster_col] == AllStats.row].index)
         for k in Predef.clusters_idx:
             k_idxs =  Imports.mave.loc[Imports.mave['Cluster'] == AllStats.row].index
 
@@ -2931,17 +2938,6 @@ class MainWindow(QtWidgets.QMainWindow):
                         Imports.clusters = pd.DataFrame({'Cluster': cluster_assignments})
                         Imports.cluster_col = 'Cluster'
                         
-                        # Apply cluster sorting based on stored method
-                        if Imports.cluster_sort_method == 'Median activity':
-                            Imports.cluster_col = 'Cluster_sort'
-                            boxplot_data = []
-                            Imports.mave['Cluster'] = Imports.clusters['Cluster']
-                            for k in range(Imports.clusters['Cluster'].max() + 1):
-                                k_idxs = Imports.mave.loc[Imports.mave['Cluster'] == k].index
-                                boxplot_data.append(Imports.mave['DNN'][k_idxs])
-                            cluster_medians = [np.median(sublist) for sublist in boxplot_data]
-                            Predef.cluster_sorted_indices = sorted(range(len(cluster_medians)), key=lambda i: cluster_medians[i])
-                            Imports.clusters['Cluster_sort'] = Imports.clusters['Cluster'].map(dict(zip(range(len(cluster_medians)), Predef.cluster_sorted_indices)))
                     else:  # This is cluster labels
                         Imports.clusters = pd.DataFrame({'Cluster': linkage_matrix})
                         Imports.cluster_col = 'Cluster'
@@ -2974,7 +2970,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     # Create MetaExplainer instance
                     if Imports.cluster_sort_method == 'Median activity':
                         meta_sort_method = 'median'
-                    else:  # Default ordering
+                    else:  # No reordering
                         meta_sort_method = None
                     
                     meta = MetaExplainer(
@@ -3021,6 +3017,23 @@ class MainWindow(QtWidgets.QMainWindow):
                     
                     print("Logo preprocessing complete.")
                     
+                    # Generate Mechanism Summary Matrix (MSM) for AllStats
+                    print("Generating Mechanism Summary Matrix...")
+                    Predef.df = meta.generate_msm(gpu=False)
+                    
+                    # If "No reordering" is selected, reorder MSM to preserve natural cluster order
+                    if Imports.cluster_sort_method == 'No reordering':
+                        # Get the natural order of clusters as they appear in the data
+                        natural_order = pd.Series(Imports.clusters['Cluster'].values).drop_duplicates().values
+                        # Create a mapping from cluster to desired position
+                        order_mapping = {cluster: idx for idx, cluster in enumerate(natural_order)}
+                        # Add a temporary column for sorting
+                        Predef.df['_sort_order'] = Predef.df['Cluster'].map(order_mapping)
+                        # Sort by this temporary column
+                        Predef.df = Predef.df.sort_values('_sort_order').drop('_sort_order', axis=1)
+                    
+                    print("MSM generation complete.")
+                    
                 finally:
                     # Always reshape maps back to original shape, even if an error occurs
                     Imports.maps = Imports.maps.reshape(original_shape)
@@ -3048,24 +3061,16 @@ class MainWindow(QtWidgets.QMainWindow):
                 tab2.pts_origX = x
                 tab2.pts_origY = y
 
-                tab2.clusters_idx = np.arange(Imports.clusters[Imports.cluster_col].max()+1)
-                if Imports.cluster_col == 'Cluster_sort':
-                    boxplot_data = []
-                    Imports.mave['Cluster'] = Imports.clusters['Cluster']
-                    for k in tab2.clusters_idx:
-                        k_idxs = Imports.mave.loc[Imports.mave['Cluster'] == k].index
-                        boxplot_data.append(Imports.mave['DNN'][k_idxs])
-                    cluster_medians = [np.median(sublist) for sublist in boxplot_data]
-                    tab2.cluster_sorted_indices = sorted(range(len(cluster_medians)), key=lambda i: cluster_medians[i])
-                else:
-                    tab2.cluster_sorted_indices = np.arange(Imports.clusters[Imports.cluster_col].max()+1)
-                    Imports.mave['Cluster'] = Imports.clusters['Cluster']
+                tab2.clusters_idx = np.arange(Imports.clusters[Imports.cluster_col].max()+1) # TODO: is this needed below or can we use Predef version?
+                Predef.clusters_idx = np.arange(Imports.clusters[Imports.cluster_col].max()+1)
+                tab2.cluster_sorted_indices = np.arange(Imports.clusters[Imports.cluster_col].max()+1)
+                Imports.mave['Cluster'] = Imports.clusters['Cluster']
 
                 tab2.cluster_colors = Imports.clusters[Imports.cluster_col][::Custom.plt_step]
-                if Imports.cluster_col == 'Cluster_sort':
-                    unique_clusters = np.unique(tab2.cluster_colors)
-                    randomized_mapping = {cluster: i for i, cluster in enumerate(np.random.permutation(unique_clusters))}
-                    tab2.cluster_colors = [randomized_mapping[cluster] for cluster in tab2.cluster_colors]
+                #if Imports.cluster_col == 'Cluster_sort': #TODO: is this needed?
+                #    unique_clusters = np.unique(tab2.cluster_colors)
+                #    randomized_mapping = {cluster: i for i, cluster in enumerate(np.random.permutation(unique_clusters))}
+                #    tab2.cluster_colors = [randomized_mapping[cluster] for cluster in tab2.cluster_colors]
 
                 tab2.scatter = tab2.ax.scatter(tab2.pts_origX[::Custom.plt_step],
                                                tab2.pts_origY[::Custom.plt_step],

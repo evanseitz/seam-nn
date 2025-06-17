@@ -215,6 +215,10 @@ Documentation:
     - marginals() --> x_skip, y_skip; c_skip missing positional skip...
 
 
+- Wrapper:
+    - add .npz as acceptable format
+    - (N, L, A)
+
 
 - Old code:
     - speed up all processes with new backend, and add readme

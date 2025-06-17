@@ -433,11 +433,11 @@ class MetaExplainer:
         return self.msm
     
     def plot_msm(self, column='Entropy', delta_entropy=False, 
-                square_cells=False, view_window=None, gui=False,
+                square_cells=False, view_window=None,
                 show_tfbs_clusters=False, tfbs_clusters=None,
                 entropy_multiplier=0.5, cov_matrix=None, row_order=None,
                 revels=None, save_path=None, dpi=200, figsize=None,
-                file_format='png'):
+                file_format='png', gui=False, gui_figure=None):
         """Visualize the Mechanism Summary Matrix (MSM) as a heatmap.
         
         Parameters
@@ -454,8 +454,6 @@ class MetaExplainer:
             If True, set cells in MSM to be perfectly square
         view_window : list of [start, end], optional
             If provided, crop the x-axis to this window of positions
-        gui : bool
-            If True, return data for GUI processing without plotting
         show_tfbs_clusters : bool
             Whether to show TFBS cluster rectangles (default: False)
         tfbs_clusters : dict, optional
@@ -477,6 +475,10 @@ class MetaExplainer:
             Figure size (width, height) in inches (default: None, uses matplotlib default)
         file_format : str, optional
             Format for saved figure (default: 'png'). Common formats: 'png', 'pdf', 'svg', 'eps'
+        gui : bool
+            If True, return data for GUI processing without plotting
+        gui_figure : matplotlib.figure.Figure, optional
+            Existing figure to plot on when gui=True. If None, creates a new figure.
         """
         if show_tfbs_clusters:
             if not hasattr(self, 'msm') or self.msm is None:
@@ -504,7 +506,46 @@ class MetaExplainer:
         matrix_data = matrix_data.reindex(cluster_order)
         
         if gui:
-            return None, None, cluster_order, matrix_data
+            # Use existing figure if provided, otherwise create new one
+            if gui_figure is not None:
+                fig = gui_figure
+                # Clear the figure first
+                fig.clear()
+            else:
+                if figsize is not None:
+                    fig = plt.figure(figsize=figsize)
+                else:
+                    fig = plt.figure(figsize=(10, 6))
+            
+            main_ax = fig.add_subplot(111)
+            cmap_settings = self._get_colormap_settings(column, delta_entropy, matrix_data)
+            if delta_entropy and column == 'Entropy':
+                matrix_data -= cmap_settings.pop('bg_entropy', 0)
+            heatmap = main_ax.pcolormesh(matrix_data, 
+                                         cmap=cmap_settings['cmap'],
+                                         norm=cmap_settings['norm'])
+            # Ensure consistent color scaling
+            if column in ['Reference', 'Consensus']:
+                heatmap.set_clim(0, 100)
+            elif column == 'Entropy' and not delta_entropy:
+                heatmap.set_clim(0, 2)
+            from mpl_toolkits.axes_grid1 import make_axes_locatable
+            divider = make_axes_locatable(main_ax)
+            cbar_ax = divider.append_axes('right', size='2%', pad=0.05)
+            cbar = fig.colorbar(heatmap, cax=cbar_ax, orientation='vertical')
+            main_ax.set_xlabel('Position', fontsize=8)
+            main_ax.set_ylabel('Cluster', fontsize=8)
+            main_ax.invert_yaxis()
+            self._configure_matrix_ticks(main_ax, n_positions, n_clusters, cluster_order)
+            cbar.ax.set_ylabel(cmap_settings['label'], rotation=270, fontsize=8, labelpad=10)
+            cbar.ax.tick_params(labelsize=6)
+            
+            # Set square cells if requested
+            if square_cells:
+                main_ax.set_aspect('equal')
+            
+            plt.tight_layout()
+            return main_ax, cbar_ax, cluster_order, matrix_data
         
         # Setup plot
         if figsize is not None:
@@ -523,6 +564,12 @@ class MetaExplainer:
         heatmap = main_ax.pcolormesh(matrix_data, 
                                     cmap=cmap_settings['cmap'],
                                     norm=cmap_settings['norm'])
+        
+        # Ensure consistent color scaling
+        if column in ['Reference', 'Consensus']:
+            heatmap.set_clim(0, 100)
+        elif column == 'Entropy' and not delta_entropy:
+            heatmap.set_clim(0, 2)
         
         # Add TFBS cluster rectangles if requested
         if show_tfbs_clusters and tfbs_clusters is not None:            
@@ -701,7 +748,7 @@ class MetaExplainer:
             return {'cmap': 'rocket_r', 'norm': None, 'label': 'Entropy (bits)'}
         
         return {
-            'cmap': 'Blues' if column == 'Reference' else 'rocket', #Blues_r for dark blue background
+            'cmap': 'viridis_r' if column == 'Reference' else 'rocket', #Blues_r for dark blue background
             'norm': None,
             'label': 'Percent mismatch' if column == 'Reference' else 'Percent match'
         }
