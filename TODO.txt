@@ -164,9 +164,6 @@ Documentation:
 
 - GUI Class:
     - GUI requires 'matplotlib==3.6.0', which is in conflict with scipy dendrogram plot
-    - update for latest repository
-        - new logomaker (remove old logo versions)
-    - if adaptive logos not pre-generated, automatically show fixed
     - PWM bits are not correct (should be max 2, not 4)
     - MSM window: boxplots of y values in margin or separate window
     - P1: if no manifold, n/a plots on P2 and P3
@@ -189,12 +186,7 @@ Documentation:
     - Plot_clusters_matches_2d_gui:
         - Impress: delta=True in GUI; alphabet; “r” (mutation rate)
     - GUI marginal window needs “Entropy difference” option
-    - P2: button to save indices of encircled points (and print)
-    - P2: show occupancy of encircled region in toolbar
-    - GUI crash on P3 for UMAP and hierarchical logos
-    - Slightly larger black points on P3 of GUI
     - MSM: option to map SEAM coordinates to new number (e.g., chr1:A-B)
-    - P3: resize logo as window is made larger
     - Save mismatch table in Marginal Window of GUI; popup window showing location of saved file
     - Option to rank MSM by median y value (if pre-sort is not selected)
     - “Show boxplots” button
@@ -213,8 +205,14 @@ Documentation:
     - remove all old logo methods and replace with BatchLogo
     - input alphabet: DNA, RNA, Protein, Custom, Automate?
     - youtube tutorial
-    - demo data (orig slides with 3-way mutation; crop and no crop)
     - inputs need to be straight from local script; i.e., no crop params in gui
+    - CLI agruments for bypassing first page, or load last project option
+    - help menu (link to tutorial, github, readthedocs)
+    - copy rows in Tables to clipboard
+    - P2: adaptive, fixed, custom y-axis
+    - P3: All clusters tab --> clusters vs. attribution errors
+    - load GUI without embedding (just cluster); show N/A on embedding plots, etc.
+    - marginals() --> x_skip, y_skip; c_skip missing positional skip...
 
 
 

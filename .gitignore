@@ -120,3 +120,9 @@ examples/outputs_pbm_combinatorial_zfp187
 examples/outputs_pbm_combinatorial_hnf4a
 
 examples_manuscript
+
+seam/seam_gui_original_version.py
+seam/seam_gui_demo/embedding_deepshap_umap.npy
+seam/seam_gui_demo/hierarchical_linkage_ward_deepshap.npy
+seam/seam_gui_demo/maps_deepshap.npy
+seam/seam_gui_demo/mave.csv

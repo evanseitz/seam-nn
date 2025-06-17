@@ -16,6 +16,7 @@ from logomaker_batch.error_handling import handle_errors, check
 from matplotlib.textpath import TextPath
 from matplotlib.transforms import Affine2D, Bbox
 from logomaker_batch.matrix import transform_matrix
+from matplotlib.colors import to_rgb
 
 
 class TimingContext:
@@ -37,7 +38,7 @@ class BatchLogo:
     _transform_cache = {}
     _font_cache = {}
     
-    def __init__(self, values, alphabet=None, figsize=[10,2.5], batch_size=50, gpu=False, font_name='sans', y_min_max=None, **kwargs):
+    def __init__(self, values, alphabet=None, figsize=[10,2.5], batch_size=50, gpu=False, font_name='sans', y_min_max=None, ref_seq=None, show_progress=True, **kwargs):
         """Initialize BatchLogo processor"""
         if gpu:
             print("Warning: GPU acceleration not yet implemented, falling back to CPU")
@@ -100,6 +101,11 @@ class BatchLogo:
 
         self.y_min_max = y_min_max
 
+        # Store reference sequence if provided
+        self.ref_seq = ref_seq
+
+        self.show_progress = show_progress
+
     def _get_font_props(self):
         """Get cached font properties with fallback to sans if font not found"""
         cache_key = f"{self.font_name}_{self.font_weight}"
@@ -115,26 +121,31 @@ class BatchLogo:
         """Process all logos in batches"""
         timing = {}
         with TimingContext('total_processing', timing):
-            with tqdm(total=self.N, desc="Processing logos") as pbar:
+            if self.show_progress:
+                from tqdm import tqdm
+                with tqdm(total=self.N, desc="Processing logos") as pbar:
+                    for start_idx in range(0, self.N, self.batch_size):
+                        end_idx = min(start_idx + self.batch_size, self.N)
+                        with TimingContext(f'batch_{start_idx}_{end_idx}', timing):
+                            self._process_batch(start_idx, end_idx)
+                        pbar.update(end_idx - start_idx)
+            else:
                 for start_idx in range(0, self.N, self.batch_size):
                     end_idx = min(start_idx + self.batch_size, self.N)
                     with TimingContext(f'batch_{start_idx}_{end_idx}', timing):
                         self._process_batch(start_idx, end_idx)
-                    pbar.update(end_idx - start_idx)
-        #print("Processing times:", timing)
         return self
     
     def _process_batch(self, start_idx, end_idx):
-        """Process a batch of logos and store their data"""
+        """Process a batch of logos"""
         batch_timing = {}
+        
         with TimingContext('batch_total', batch_timing):
-            # Create font properties once
-            font_prop = self._get_font_props()
+            font_props = self._get_font_props()
             
-            # Pre-compute paths and their extents
-            if not self._path_cache:
-                # Cache M path first
-                m_path = TextPath((0, 0), 'M', size=1, prop=font_prop)
+            # Cache M path first (for width reference)
+            if not self._m_path_cache:
+                m_path = TextPath((0, 0), 'M', size=1, prop=font_props)
                 m_extents = m_path.get_extents()
                 self._m_path_cache = {
                     'path': m_path,
@@ -144,12 +155,14 @@ class BatchLogo:
                 
                 # Then cache alphabet paths
                 for char in self.alphabet:
-                    base_path = TextPath((0, 0), char, size=1, prop=font_prop)
-                    flipped_path = Affine2D().scale(sx=1, sy=-1).transform_path(base_path)
-                    self._path_cache[char] = {
-                        'normal': {'path': base_path, 'extents': base_path.get_extents()},
-                        'flipped': {'path': flipped_path, 'extents': flipped_path.get_extents()}
-                    }
+                    if char not in self._path_cache:
+                        base_path = TextPath((0, 0), char, size=1, prop=font_props)
+                        flipped_path = TextPath((0, 0), char, size=1, prop=font_props)
+                        flipped_path = flipped_path.transformed(Affine2D().scale(1, -1))
+                        self._path_cache[char] = {
+                            'normal': {'path': base_path, 'extents': base_path.get_extents()},
+                            'flipped': {'path': flipped_path, 'extents': flipped_path.get_extents()}
+                        }
             
             for idx in range(start_idx, end_idx):
                 with TimingContext(f'logo_{idx}', batch_timing):
@@ -184,7 +197,9 @@ class BatchLogo:
                                     'edgewidth': 0,
                                     'alpha': self.kwargs['alpha'],
                                     'floor': floor,
-                                    'ceiling': ceiling
+                                    'ceiling': ceiling,
+                                    'char': char,
+                                    'pos': pos
                                 })
                                 floor = ceiling + self.kwargs['vsep']
                         
@@ -206,9 +221,7 @@ class BatchLogo:
                                     if value < 0:
                                         alpha *= (1 - self.kwargs['fade_below'])
                                         if self.kwargs['shade_below'] > 0:
-                                            color = self.rgb_dict[char]
-                                            # Darken the color by shade_below amount
-                                            color = tuple(c * (1 - self.kwargs['shade_below']) for c in color)
+                                            color = tuple(c * (1 - self.kwargs['shade_below']) for c in self.rgb_dict[char])
                                         else:
                                             color = self.rgb_dict[char]
                                     else:
@@ -221,7 +234,9 @@ class BatchLogo:
                                         'edgewidth': 0,
                                         'alpha': alpha,
                                         'floor': floor,
-                                        'ceiling': ceiling
+                                        'ceiling': ceiling,
+                                        'char': char,
+                                        'pos': pos
                                     })
                                     floor = ceiling + self.kwargs['vsep']
                     
@@ -571,6 +586,27 @@ class BatchLogo:
         
         plt.tight_layout()
         return fig, ax
+
+    def style_glyphs_in_sequence(self, sequence, color='darkorange'):
+        """Style glyphs that match the reference sequence in the specified color, all others dark gray. Disables shade/fade below."""
+        if not isinstance(sequence, str):
+            raise TypeError('sequence must be a string')
+        if len(sequence) != self.L:
+            raise ValueError(f'sequence length {len(sequence)} must match logo length {self.L}')
+        ref_rgb = to_rgb(color)
+        dark_gray = (0.4, 0.4, 0.4)
+        for pos in range(self.L):
+            ref_char = sequence[pos]
+            for logo_idx in self.processed_logos:
+                for glyph in self.processed_logos[logo_idx]['glyphs']:
+                    if glyph['pos'] == pos:
+                        # Disable shade/fade below
+                        glyph['alpha'] = 1.0
+                        # (if you want to be extra robust, also set any custom keys)
+                        if glyph['char'] == ref_char:
+                            glyph['color'] = ref_rgb  # Reference glyph
+                        else:
+                            glyph['color'] = dark_gray  # Non-reference glyph
 
 """
 ARCHITECTURAL DIFFERENCES BETWEEN BATCH_LOGO AND GLYPH_ORIG IMPLEMENTATIONS
