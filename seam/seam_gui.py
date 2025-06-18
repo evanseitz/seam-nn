@@ -4,7 +4,29 @@ Copyright Evan Seitz 2023-2025
 Cold Spring Harbor Laboratory
 Contact: evan.e.seitz@gmail.com
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Minimum installation:
+    conda create --name seam-gui python==3.8*
+    pip install --upgrade pip
+    pip install PyQt5
+    pip3 install --user psutil
+    pip install biopython
+    pip install scipy
+    pip install seaborn
+    pip install -U scikit-learn
+    pip install pysam
+    pip install seam-nn
+    pip install matplotlib==3.6
+
+Notes:
+    - Make sure matplotlib==3.6 is the last package installed
+    - The seam-gui environment should be separate from the seam-nn environment due to matplotlib version conflicts
+    - The seam-gui environment should be activated before installing packages and running the GUI
 '''
+
+# TODO - data structure checks; e.g:
+# linkage_matrix = np.load(Imports.linkage_fname)
+# if linkage_matrix.shape[1] == 4:  # This is a linkage matrix
 
 
 import sys, os
@@ -22,57 +44,40 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
 import matplotlib.path as pltPath
-import matplotlib as mpl
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
-import matplotlib.patches as mpatches
+#import matplotlib as mpl
+#import matplotlib.gridspec as gridspec
+#import matplotlib.patches as mpatches
+#from matplotlib.patches import PathPatch
+#from matplotlib.colors import Normalize, TwoSlopeNorm
 from matplotlib.ticker import MaxNLocator # integer ticks
-from pylab import loadtxt
+#from pylab import loadtxt
 import pandas as pd
 from Bio import motifs # 'pip install biopython'
 from scipy import spatial # 'pip install scipy'
-from scipy.spatial import distance
-from scipy.cluster import hierarchy
-import seaborn as sns # pip install seaborn
-#import squid.utils as squid_utils # 'pip install squid-nn'
+#from scipy.spatial import distance
+#from scipy.cluster import hierarchy
+#import seaborn as sns # pip install seaborn
 from tqdm import tqdm
-if 1:
+if 1: # enable local SEAM imports
     sys.path.insert(0, os.path.abspath('.'))
     from logomaker_batch.batch_logo import BatchLogo
     from clusterer import Clusterer
     from meta_explainer import MetaExplainer
     import utils
-else:
+else: # enable SEAM imports from pip install
     from seam.logomaker_batch.batch_logo import BatchLogo
     from seam import Clusterer
     from seam import MetaExplainer
     from seam import utils
-
-from matplotlib.patches import PathPatch
-from matplotlib.colors import Normalize, TwoSlopeNorm
-
-def warn(*args, **kwargs): # ignore matplotlib deprecation warnings:
+def warn(*args, **kwargs): # ignore matplotlib deprecation warnings
     pass
 import warnings
 warnings.warn = warn
 
 
-# minimum installation (make sure matplotlib==3.6 is the last package installed):
-    # conda create --name seam python==3.8*
-    # pip install --upgrade pip
-    # pip install PyQt5
-    # pip3 install --user psutil
-    # pip install biopython
-    # pip install scipy
-    # pip install seaborn
-    # pip install -U scikit-learn
-    # pip install pysam
-    # pip install seam-nn
-    # pip install matplotlib==3.6
-
-
 ################################################################################
-# global assets:
+# Global assets
 
 py_dir = os.path.dirname(os.path.realpath(__file__)) # python file location
 parent_dir = os.path.dirname(py_dir)
@@ -81,11 +86,10 @@ icon_dir = os.path.join(parent_dir, 'docs/_static/gui_icons')
 progname = 'SEAM Interactive Interpretability Tool'
 font_standard = QtGui.QFont('Arial', 12)
 
-verbose = 0
 dpi = 200 # or: plt.rcParams['savefig.dpi'] = dpi
 
 ################################################################################
-# global widgets:
+# Global widgets
 
 class QVLine(QFrame):
     def __init__(self):
@@ -93,13 +97,13 @@ class QVLine(QFrame):
         self.setFrameShape(QFrame.VLine)
 
 ################################################################################
-# file imports tab:
+# File imports tab
 
 class Imports(QtWidgets.QWidget):
     mave_fname = ''
     maps_fname = ''
-    manifold_fname = ''
-    clusters_fname = ''
+    embedding_fname = ''
+    linkage_fname = ''
     clusters = ''
     mave_col_names = ''
     ref_full = ''
@@ -123,11 +127,10 @@ class Imports(QtWidgets.QWidget):
         self.grid.setSpacing(10)
 
         # Track required file states
-        self.has_manifold = False
+        self.has_embedding = False
         self.has_clusters = False
 
         # --- Widget creation section ---
-        # (leave as is, create all widgets first)
         self.label_mave = QLabel('MAVE dataset')
         self.label_mave.setFont(font_standard)
         self.label_mave.setMargin(20)
@@ -142,6 +145,7 @@ class Imports(QtWidgets.QWidget):
         self.label_ref.setMargin(20)
         Imports.entry_ref = QLineEdit('')
         Imports.entry_ref.setReadOnly(True)
+        Imports.entry_ref.setDisabled(True)
         Imports.combo_ref = QComboBox(self)
         Imports.combo_ref.setDisabled(True)
         Imports.combo_ref.addItem('First row')
@@ -190,25 +194,31 @@ class Imports(QtWidgets.QWidget):
         Imports.stopbox_cropped.valueChanged.connect(self.cropped_signal)
         Imports.stopbox_cropped.setToolTip('Provide the new stop position with respect to MAVE sequences.')
    
-        self.label_manifold = QLabel('Embedding (optional)')
-        self.label_manifold.setFont(font_standard)
-        self.label_manifold.setMargin(20)
-        self.entry_manifold = QLineEdit('Filename')
-        self.entry_manifold.setDisabled(True)
-        self.browse_manifold = QPushButton('          Browse          ', self)
-        self.browse_manifold.clicked.connect(self.load_manifold)
-        self.browse_manifold.setToolTip('Accepted formats: <i>.npy</i>')
+        self.label_embedding = QLabel('Embedding')
+        self.label_embedding.setFont(font_standard)
+        self.label_embedding.setMargin(20)
+        Imports.checkbox_embedding = QCheckBox(self)
+        Imports.checkbox_embedding.setToolTip('Check to enable embedding file import for clustering.')
+        Imports.checkbox_embedding.stateChanged.connect(self.toggle_embedding)
+        self.entry_embedding = QLineEdit('Filename')
+        self.entry_embedding.setDisabled(True)
+        self.browse_embedding = QPushButton('          Browse          ', self)
+        self.browse_embedding.clicked.connect(self.load_embedding)
+        self.browse_embedding.setToolTip('Accepted formats: <i>.npy</i>')
 
-        self.label_clusters = QLabel('Clusters/Linkage')
-        self.label_clusters.setFont(font_standard)
-        self.label_clusters.setMargin(20)
-        self.entry_clusters = QLineEdit('Filename')
-        self.entry_clusters.setDisabled(True)
-        self.browse_clusters = QPushButton('          Browse          ', self)
-        self.browse_clusters.clicked.connect(self.load_clusters_or_linkage)
-        self.browse_clusters.setToolTip('Accepted formats: .csv, .npy (labels or linkage)')
+        self.label_linkage = QLabel('Linkage')
+        self.label_linkage.setFont(font_standard)
+        self.label_linkage.setMargin(20)
+        Imports.checkbox_linkage = QCheckBox(self)
+        Imports.checkbox_linkage.setToolTip('Check to enable linkage file import for clustering.')
+        Imports.checkbox_linkage.stateChanged.connect(self.toggle_linkage)
+        self.entry_linkage = QLineEdit('Filename')
+        self.entry_linkage.setDisabled(True)
+        self.browse_linkage = QPushButton('          Browse          ', self)
+        self.browse_linkage.clicked.connect(self.load_clusters_or_linkage)
+        self.browse_linkage.setToolTip('Accepted formats: <i>.npy</i>')
 
-        # Add linkage cutting controls (visible by default)
+        # Add linkage cutting controls
         self.label_cut_criterion = QLabel('Cut criterion:')
         self.label_cut_criterion.setFont(font_standard)
         self.label_cut_criterion.setMargin(20)
@@ -223,24 +233,64 @@ class Imports(QtWidgets.QWidget):
 
         Imports.spin_cut_param = QtWidgets.QSpinBox(self)
         Imports.spin_cut_param.setMinimum(2)
-        Imports.spin_cut_param.setMaximum(100)
         Imports.spin_cut_param.setValue(30)
         Imports.spin_cut_param.valueChanged.connect(lambda: self.mark_imports_changed())
 
-        # Cluster sorting dropdown (always visible, after cut controls)
-        self.label_sort_method = QLabel('Cluster sorting:')
-        self.label_sort_method.setFont(font_standard)
-        self.label_sort_method.setMargin(20)
-        self.combo_sort_method = QComboBox(self)
-        self.combo_sort_method.addItem('Median activity')
-        self.combo_sort_method.addItem('No reordering')
-        self.combo_sort_method.setCurrentIndex(0)
-        self.combo_sort_method.setToolTip('Choose how to sort clusters in summary matrix visualizations.')
+        # Cluster sorting dropdown
+        self.label_linkage_sort_method = QLabel('Cluster sorting:')
+        self.label_linkage_sort_method.setFont(font_standard)
+        self.label_linkage_sort_method.setMargin(20)
+        self.combo_linkage_sort_method = QComboBox(self)
+        self.combo_linkage_sort_method.addItem('Median activity')
+        self.combo_linkage_sort_method.addItem('No reordering')
+        self.combo_linkage_sort_method.setCurrentIndex(0)
+        self.combo_linkage_sort_method.setToolTip('Choose how to sort clusters in summary matrix visualizations.')
         def set_sort_method(value):
             Imports.cluster_sort_method = value
-            # Mark imports as changed
             self.mark_imports_changed()
-        self.combo_sort_method.currentTextChanged.connect(set_sort_method)
+        self.combo_linkage_sort_method.currentTextChanged.connect(set_sort_method)
+
+        # Add embedding clustering controls (mirroring linkage controls)
+        self.label_embedding_method = QLabel('Clustering method:')
+        self.label_embedding_method.setFont(font_standard)
+        self.label_embedding_method.setMargin(20)
+
+        Imports.combo_embedding_method = QComboBox(self)
+        Imports.combo_embedding_method.addItem('kmeans')
+        Imports.combo_embedding_method.addItem('dbscan')
+
+        def toggle_cluster_spinbox():
+            method = Imports.combo_embedding_method.currentText()
+            if method == 'kmeans':
+                self.label_embedding_clusters.setVisible(True)
+                Imports.spin_embedding_clusters.setVisible(True)
+            elif method == 'dbscan':
+                self.label_embedding_clusters.setVisible(False)
+                Imports.spin_embedding_clusters.setVisible(False)
+            self.mark_imports_changed()
+
+        Imports.combo_embedding_method.currentTextChanged.connect(toggle_cluster_spinbox)
+
+        self.label_embedding_clusters = QLabel('Number of clusters:')
+        self.label_embedding_clusters.setFont(font_standard)
+        self.label_embedding_clusters.setMargin(20)
+
+        Imports.spin_embedding_clusters = QtWidgets.QSpinBox(self)
+        Imports.spin_embedding_clusters.setMinimum(2)
+        Imports.spin_embedding_clusters.setMaximum(1000)
+        Imports.spin_embedding_clusters.setValue(200)
+        Imports.spin_embedding_clusters.valueChanged.connect(lambda: self.mark_imports_changed())
+
+        # Add embedding cluster sorting dropdown (separate widget but same functionality)
+        self.label_embedding_sort_method = QLabel('Cluster sorting:')
+        self.label_embedding_sort_method.setFont(font_standard)
+        self.label_embedding_sort_method.setMargin(20)
+        self.combo_embedding_sort_method = QComboBox(self)
+        self.combo_embedding_sort_method.addItem('Median activity')
+        self.combo_embedding_sort_method.addItem('No reordering')
+        self.combo_embedding_sort_method.setCurrentIndex(0)
+        self.combo_embedding_sort_method.setToolTip('Choose how to sort clusters in summary matrix visualizations.')
+        self.combo_embedding_sort_method.currentTextChanged.connect(set_sort_method)
 
         # Update cut parameter label and spinbox when criterion changes
         def update_cut_param():
@@ -252,12 +302,9 @@ class Imports(QtWidgets.QWidget):
                     val = self.spin_cut_param.value()
                     self.spin_cut_param = QtWidgets.QSpinBox(self)
                     self.spin_cut_param.setMinimum(2)
-                    self.spin_cut_param.setMaximum(100)
                     self.spin_cut_param.setValue(int(val))
                     self.spin_cut_param.setSingleStep(1)
-                    # Add connection for change detection
                     self.spin_cut_param.valueChanged.connect(lambda: self.mark_imports_changed())
-                    # Update the grid to use the new widget
                     self.grid.addWidget(self.spin_cut_param, 6, 4, 1, 1, QtCore.Qt.AlignLeft)
             else:
                 self.label_cut_param.setText('Distance threshold:')
@@ -266,23 +313,15 @@ class Imports(QtWidgets.QWidget):
                     val = self.spin_cut_param.value()
                     self.spin_cut_param = QtWidgets.QDoubleSpinBox(self)
                     self.spin_cut_param.setMinimum(0.0)
-                    self.spin_cut_param.setMaximum(100.0)
                     self.spin_cut_param.setDecimals(3)
                     self.spin_cut_param.setSingleStep(0.01)
                     self.spin_cut_param.setValue(float(val))
-                    # Add connection for change detection
                     self.spin_cut_param.valueChanged.connect(lambda: self.mark_imports_changed())
-                    # Update the grid to use the new widget
-                    self.grid.addWidget(self.spin_cut_param, 6, 4, 1, 1, QtCore.Qt.AlignLeft)
-            
-            # Mark imports as changed
+                    self.grid.addWidget(self.spin_cut_param, 6, 4, 1, 1, QtCore.Qt.AlignLeft)            
             self.mark_imports_changed()
         self.combo_cut_criterion.currentTextChanged.connect(update_cut_param)
 
-        # --- Now hide all subtask widgets by default ---
-        # All widgets are now visible by default - no hiding needed
-
-        # end-of-tab completion:
+        # End of tab completion
         self.label_empty = QLabel('')
         self.line_L = QLabel('') # aesthetic line left
         self.line_L.setFont(font_standard)
@@ -292,56 +331,89 @@ class Imports(QtWidgets.QWidget):
         self.line_R.setFont(font_standard)
         self.line_R.setMargin(0)
         self.line_R.setFrameStyle(QFrame.HLine | QFrame.Sunken)
-        Imports.btn_toP2 = QPushButton('Confirm Imports', self)
-        Imports.btn_toP2.setToolTip('All entries must be complete.')
+        Imports.btn_process_imports = QPushButton('Confirm Imports', self)
+        Imports.btn_process_imports.setToolTip('Either Embedding OR Linkage must be selected (but not both).')
         
         # Track if imports have been initially confirmed
         self.imports_confirmed = False
 
-        # first row
-        self.grid.addWidget(self.label_mave, 0, 0, 1, 1, QtCore.Qt.AlignRight)
-        self.grid.addWidget(self.entry_mave, 0, 1, 1, 6)
-        self.grid.addWidget(self.browse_mave, 0, 7, 1, 1, QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
-        # first row, subrow
-        self.grid.addWidget(self.label_ref, 1, 1, 1, 1, QtCore.Qt.AlignRight)
-        self.grid.addWidget(Imports.entry_ref, 1, 2, 1, 4)
-        self.grid.addWidget(Imports.combo_ref, 1, 6, 1, 1, QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
-        # second row
-        self.grid.addWidget(self.label_maps, 2, 0, 1, 1, QtCore.Qt.AlignRight)
-        self.grid.addWidget(self.entry_maps, 2, 1, 1, 6)
-        self.grid.addWidget(self.browse_maps, 2, 7, 1, 1, QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
-        # second row, subrow
-        self.grid.addWidget(self.label_start, 3, 1, 1, 1, QtCore.Qt.AlignRight)
-        self.grid.addWidget(Imports.startbox_cropped, 3, 2, 1, 1, QtCore.Qt.AlignLeft)
-        self.grid.addWidget(self.label_stop, 3, 3, 1, 1, QtCore.Qt.AlignRight)
-        self.grid.addWidget(Imports.stopbox_cropped, 3, 4, 1, 1, QtCore.Qt.AlignLeft)
-        # third row
-        self.grid.addWidget(self.label_manifold, 4, 0, 1, 1, QtCore.Qt.AlignRight)
-        self.grid.addWidget(self.entry_manifold, 4, 1, 1, 6)
-        self.grid.addWidget(self.browse_manifold, 4, 7, 1, 1, QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
-        # fourth row: Clusters/Linkage and all subwidgets, compact and grouped
-        self.grid.addWidget(self.label_clusters, 5, 0, 1, 1, QtCore.Qt.AlignRight)
-        self.grid.addWidget(self.entry_clusters, 5, 1, 1, 6)
-        self.grid.addWidget(self.browse_clusters, 5, 7, 1, 1, QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
-        self.grid.addWidget(self.label_cut_criterion, 6, 1, 1, 1, QtCore.Qt.AlignRight)
-        self.grid.addWidget(Imports.combo_cut_criterion, 6, 2, 1, 1, QtCore.Qt.AlignLeft)
-        self.grid.addWidget(self.label_cut_param, 6, 3, 1, 1, QtCore.Qt.AlignRight)
-        self.grid.addWidget(Imports.spin_cut_param, 6, 4, 1, 1, QtCore.Qt.AlignLeft)
-        self.grid.addWidget(self.label_sort_method, 6, 5, 1, 1, QtCore.Qt.AlignRight)
-        self.grid.addWidget(self.combo_sort_method, 6, 6, 1, 1, QtCore.Qt.AlignLeft)
-        # final section
-        self.grid.addWidget(self.label_empty, 7, 1, 1, 1, QtCore.Qt.AlignRight)
-        self.grid.addWidget(self.line_L, 8, 0, 1, 3, QtCore.Qt.AlignVCenter)
-        self.grid.addWidget(self.line_R, 8, 5, 1, 3, QtCore.Qt.AlignVCenter)
-        self.grid.addWidget(Imports.btn_toP2, 8, 3, 1, 2)
+        # First row
+        self.grid.addWidget(self.label_mave, 0, 1, 1, 1, QtCore.Qt.AlignLeft)
+        self.grid.addWidget(self.entry_mave, 0, 2, 1, 6)
+        self.grid.addWidget(self.browse_mave, 0, 8, 1, 1, QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
+        # First row, subrow
+        self.grid.addWidget(self.label_ref, 1, 2, 1, 1, QtCore.Qt.AlignRight)
+        self.grid.addWidget(Imports.entry_ref, 1, 3, 1, 4)
+        self.grid.addWidget(Imports.combo_ref, 1, 7, 1, 1, QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
+        # Second row
+        self.grid.addWidget(self.label_maps, 2, 1, 1, 1, QtCore.Qt.AlignLeft)
+        self.grid.addWidget(self.entry_maps, 2, 2, 1, 6)
+        self.grid.addWidget(self.browse_maps, 2, 8, 1, 1, QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
+        # Second row, subrow
+        self.grid.addWidget(self.label_start, 3, 2, 1, 1, QtCore.Qt.AlignRight)
+        self.grid.addWidget(Imports.startbox_cropped, 3, 3, 1, 1, QtCore.Qt.AlignLeft)
+        self.grid.addWidget(self.label_stop, 3, 4, 1, 1, QtCore.Qt.AlignRight)
+        self.grid.addWidget(Imports.stopbox_cropped, 3, 5, 1, 1, QtCore.Qt.AlignLeft)
+        # Third row: Embedding
+        self.grid.addWidget(Imports.checkbox_embedding, 4, 0, 1, 1, QtCore.Qt.AlignRight)
+        self.grid.addWidget(self.label_embedding, 4, 1, 1, 1, QtCore.Qt.AlignLeft)
+        self.grid.addWidget(self.entry_embedding, 4, 2, 1, 6)
+        self.grid.addWidget(self.browse_embedding, 4, 8, 1, 1, QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
+        # Fourth row: Embedding sub-widgets (indented under embedding row)
+        self.grid.addWidget(self.label_embedding_method, 5, 2, 1, 1, QtCore.Qt.AlignRight)
+        self.grid.addWidget(Imports.combo_embedding_method, 5, 3, 1, 1, QtCore.Qt.AlignLeft)
+        self.grid.addWidget(self.label_embedding_clusters, 5, 4, 1, 1, QtCore.Qt.AlignRight)
+        self.grid.addWidget(Imports.spin_embedding_clusters, 5, 5, 1, 1, QtCore.Qt.AlignLeft)
+        self.grid.addWidget(self.label_embedding_sort_method, 5, 6, 1, 1, QtCore.Qt.AlignRight)
+        self.grid.addWidget(self.combo_embedding_sort_method, 5, 7, 1, 1, QtCore.Qt.AlignLeft)
+        # Fifth row: Linkage
+        self.grid.addWidget(Imports.checkbox_linkage, 6, 0, 1, 1, QtCore.Qt.AlignRight)
+        self.grid.addWidget(self.label_linkage, 6, 1, 1, 1, QtCore.Qt.AlignLeft)
+        self.grid.addWidget(self.entry_linkage, 6, 2, 1, 6)
+        self.grid.addWidget(self.browse_linkage, 6, 8, 1, 1, QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
+        # Sixth row: Linkage sub-widgets (indented under linkage row)
+        self.grid.addWidget(self.label_cut_criterion, 7, 2, 1, 1, QtCore.Qt.AlignRight)
+        self.grid.addWidget(Imports.combo_cut_criterion, 7, 3, 1, 1, QtCore.Qt.AlignLeft)
+        self.grid.addWidget(self.label_cut_param, 7, 4, 1, 1, QtCore.Qt.AlignRight)
+        self.grid.addWidget(Imports.spin_cut_param, 7, 5, 1, 1, QtCore.Qt.AlignLeft)
+        self.grid.addWidget(self.label_linkage_sort_method, 7, 6, 1, 1, QtCore.Qt.AlignRight)
+        self.grid.addWidget(self.combo_linkage_sort_method, 7, 7, 1, 1, QtCore.Qt.AlignLeft)
+        # Final section
+        self.grid.addWidget(self.label_empty, 8, 2, 1, 8, QtCore.Qt.AlignRight)
+        self.grid.addWidget(self.line_L, 9, 0, 1, 4, QtCore.Qt.AlignVCenter)
+        self.grid.addWidget(self.line_R, 9, 6, 1, 4, QtCore.Qt.AlignVCenter)
+        self.grid.addWidget(Imports.btn_process_imports, 9, 4, 1, 2)
 
         self.setLayout(self.grid)
 
         # Initialize all subwidgets in disabled state (except browse buttons)
         self.update_mave_subwidgets_state(False)
         self.update_maps_subwidgets_state(False)
-        self.update_manifold_subwidgets_state(False)
         self.update_cluster_subwidgets_state(False)
+        
+        # Initialize embedding sub-widgets as disabled (following same pattern as MAVE/maps)
+        self.entry_embedding.setDisabled(True)
+        self.label_embedding_method.setEnabled(False)
+        self.combo_embedding_method.setEnabled(False)
+        self.label_embedding_clusters.setEnabled(False)
+        self.spin_embedding_clusters.setEnabled(False)
+        self.label_embedding_sort_method.setEnabled(False)
+        self.combo_embedding_sort_method.setEnabled(False)
+
+        # Set embedding as default checked option
+        Imports.checkbox_embedding.setChecked(True)
+        Imports.checkbox_linkage.setChecked(False)
+        
+        # Enable embedding browse button by default (since embedding is checked)
+        self.browse_embedding.setEnabled(True)
+        
+        # Ensure linkage widgets are disabled
+        self.entry_linkage.setEnabled(False)
+        self.browse_linkage.setEnabled(False)
+        self.update_cluster_subwidgets_state(False)
+
+        # Set initial state for embedding clustering method
+        toggle_cluster_spinbox()
 
         if 0: # developer shortcut TODO
             data_dir = os.path.join(py_dir, 'seam_gui_demo')
@@ -357,8 +429,8 @@ class Imports(QtWidgets.QWidget):
             Imports.stopbox_cropped.setMaximum(len(Imports.ref_full))
             Imports.startbox_cropped.setValue(0)
             Imports.stopbox_cropped.setValue(len(Imports.ref_full))
-            Imports.manifold_fname = os.path.join(data_dir, 'embedding_deepshap_umap.npy')
-            #Imports.clusters_fname = os.path.join(data_dir, 'hierarchical_linkage_ward_deepshap.npy')
+            Imports.embedding_fname = os.path.join(data_dir, 'embedding_deepshap_umap.npy')
+            #Imports.linkage_fname = os.path.join(data_dir, 'hierarchical_linkage_ward_deepshap.npy')
 
     def update_mave_subwidgets_state(self, enabled):
         """Enable or disable MAVE subwidgets based on whether MAVE file is loaded"""
@@ -376,32 +448,63 @@ class Imports(QtWidgets.QWidget):
     def update_maps_subwidgets_state(self, enabled):
         """Enable or disable maps subwidgets based on whether maps file is loaded"""
         # Don't disable start/stop position widgets - they should be controlled by MAVE file
-        # Only enable/disable manifold widgets since they depend on maps
+        # Only enable/disable embedding widgets since they depend on maps
         if not enabled:
-            self.entry_manifold.setText('Filename')
-            self.entry_manifold.setDisabled(True)
-            self.has_manifold = False
-
-    def update_manifold_subwidgets_state(self, enabled):
-        """Enable or disable manifold subwidgets based on whether manifold file is loaded"""
-        # Enable/disable cluster widgets since they depend on manifold
-        if not enabled:
-            self.entry_clusters.setText('Filename')
-            self.entry_clusters.setDisabled(True)
-            self.has_clusters = False
+            self.entry_embedding.setText('Filename')
+            self.entry_embedding.setDisabled(True)
+            self.has_embedding = False
+            self.mark_imports_changed()
 
     def update_cluster_subwidgets_state(self, enabled):
         """Enable or disable cluster subwidgets based on whether cluster file is loaded"""
         self.combo_cut_criterion.setEnabled(enabled)
         self.spin_cut_param.setEnabled(enabled)
-        self.combo_sort_method.setEnabled(enabled)
+        self.combo_linkage_sort_method.setEnabled(enabled)
+
+    def toggle_embedding(self):
+        """Handle embedding checkbox state change"""
+        if Imports.checkbox_embedding.isChecked():
+            # Uncheck linkage checkbox if embedding is checked
+            Imports.checkbox_linkage.setChecked(False)
+            # Enable embedding browse button only (entry widget should always be disabled)
+            self.browse_embedding.setEnabled(True)
+            # Disable linkage widgets
+            self.browse_linkage.setEnabled(False)
+            self.update_cluster_subwidgets_state(False)
+        else:
+            # When embedding is unchecked, automatically check linkage
+            Imports.checkbox_linkage.setChecked(True)
+        self.mark_imports_changed()
+
+    def toggle_linkage(self):
+        """Handle linkage checkbox state change"""
+        if Imports.checkbox_linkage.isChecked():
+            # Uncheck embedding checkbox if linkage is checked
+            Imports.checkbox_embedding.setChecked(False)
+            # Enable linkage browse button only (entry widget should always be disabled)
+            self.browse_linkage.setEnabled(True)
+            # Disable embedding widgets
+            self.browse_embedding.setEnabled(False)
+            self.entry_embedding.setText('Filename')
+            self.has_embedding = False
+            # Disable embedding subwidgets when checkbox is unchecked
+            self.label_embedding_method.setEnabled(False)
+            self.combo_embedding_method.setEnabled(False)
+            self.label_embedding_clusters.setEnabled(False)
+            self.spin_embedding_clusters.setEnabled(False)
+            self.label_embedding_sort_method.setEnabled(False)
+            self.combo_embedding_sort_method.setEnabled(False)
+        else:
+            # When linkage is unchecked, automatically check embedding
+            Imports.checkbox_embedding.setChecked(True)
+        self.mark_imports_changed()
 
     def mark_imports_changed(self):
         """Mark that imports have been changed since last confirmation"""
         if Imports.imports_confirmed:
             Imports.imports_changed = True
-            Imports.btn_toP2.setText('Update Imports')
-            Imports.btn_toP2.setToolTip('Apply changes to imports before proceeding to analysis.')
+            Imports.btn_process_imports.setText('Update Imports')
+            Imports.btn_process_imports.setToolTip('Apply changes to imports before proceeding to analysis.')
 
     def load_mave(self):
         Imports.mave_fname = QFileDialog.getOpenFileName(self, 'Choose data file', '', ('Data files (*.csv)'))[0]
@@ -425,18 +528,14 @@ class Imports(QtWidgets.QWidget):
                 
                 Imports.combo_ref.setDisabled(False)
                 Imports.combo_ref.setCurrentIndex(0)
-                Imports.entry_ref.setReadOnly(False)
+                Imports.entry_ref.setEnabled(False)
                 Imports.entry_ref.setText(Imports.ref_full)
                 Imports.entry_ref.setReadOnly(True)
-                
                 # Enable MAVE subwidgets
                 self.update_mave_subwidgets_state(True)
-                
                 tabs.setTabEnabled(1, False)
                 tabs.setTabEnabled(2, False)
-                Imports.btn_toP2.setDisabled(False)
-                
-                # Mark imports as changed
+                Imports.btn_process_imports.setDisabled(False)
                 self.mark_imports_changed()
                 
             except Exception as e:
@@ -447,39 +546,32 @@ class Imports(QtWidgets.QWidget):
             self.entry_mave.setDisabled(False)
             self.entry_mave.setText('Filename')
             self.entry_mave.setDisabled(True)
-            
             # Reset reference sequence fields
             Imports.entry_ref.setText('')
             Imports.combo_ref.setCurrentIndex(0)
-            
             # Disable MAVE subwidgets (this will also reset start/stop positions)
-            self.update_mave_subwidgets_state(False)
-            
-            # Mark imports as changed
+            self.update_mave_subwidgets_state(False)            
             self.mark_imports_changed()
 
     def select_ref(self):
         if Imports.combo_ref.currentText() == 'First row':
             Imports.ref_full = Imports.mave['Sequence'][0]
-            Imports.entry_ref.setReadOnly(False)
+            Imports.entry_ref.setEnabled(False)
             Imports.entry_ref.setText(Imports.ref_full)
-            Imports.entry_ref.setReadOnly(True)
         elif Imports.combo_ref.currentText() == 'Custom':
             Imports.combo_ref.setDisabled(False)
             Imports.entry_ref.setText('')
-            Imports.entry_ref.setReadOnly(False)
+            Imports.entry_ref.setEnabled(True)
         elif Imports.combo_ref.currentText() == 'None':
             Imports.entry_ref.setText('')
-            Imports.entry_ref.setReadOnly(True)
+            Imports.entry_ref.setEnabled(False)
             Imports.ref_full = ''
         try:
             tabs.setTabEnabled(1, False)
             tabs.setTabEnabled(2, False)
-            Imports.btn_toP2.setDisabled(False)
+            Imports.btn_process_imports.setDisabled(False)
         except:
             pass
-        
-        # Mark imports as changed
         self.mark_imports_changed()
 
     def load_maps(self):
@@ -507,13 +599,10 @@ class Imports(QtWidgets.QWidget):
             self.entry_maps.setDisabled(False)
             self.entry_maps.setText('Filename')
             self.entry_maps.setDisabled(True)
-            self.update_maps_subwidgets_state(False)
-        
-        # Mark imports as changed
+            self.update_maps_subwidgets_state(False)        
         self.mark_imports_changed()
 
     def apply_linkage_cut(self): # TODO why is this happening on P1?
-        from seam.clusterer import Clusterer
         criterion = self.combo_cut_criterion.currentText()
         param = self.spin_cut_param.value()
         if not hasattr(Imports, 'maps') or Imports.maps is None:
@@ -529,28 +618,32 @@ class Imports(QtWidgets.QWidget):
         Imports.clusters = labels
 
     def cropped_signal(self):
-        Imports.btn_toP2.setDisabled(False)
-        
-        # Mark imports as changed
+        Imports.btn_process_imports.setDisabled(False)
         self.mark_imports_changed()
 
-    def load_manifold(self):
-        Imports.manifold_fname = QFileDialog.getOpenFileName(self, 'Choose data file', '', ('Data files (*.npy)'))[0]
-        if Imports.manifold_fname:
-            self.entry_manifold.setDisabled(False)
-            self.entry_manifold.setText(Imports.manifold_fname)
-            self.entry_manifold.setDisabled(True)
+    def load_embedding(self):
+        Imports.embedding_fname = QFileDialog.getOpenFileName(self, 'Choose data file', '', ('Data files (*.npy)'))[0]
+        if Imports.embedding_fname:
+            self.entry_embedding.setDisabled(False)
+            self.entry_embedding.setText(Imports.embedding_fname)
+            self.entry_embedding.setDisabled(True)
             
-            self.has_manifold = True
-            # Enable manifold subwidgets
-            self.update_manifold_subwidgets_state(True)
+            # Enable embedding subwidgets when file is loaded
+            self.label_embedding_method.setEnabled(True)
+            self.combo_embedding_method.setEnabled(True)
+            self.label_embedding_clusters.setEnabled(True)
+            self.spin_embedding_clusters.setEnabled(True)
+            self.label_embedding_sort_method.setEnabled(True)
+            self.combo_embedding_sort_method.setEnabled(True)
             
-            # Only enable button if both manifold and clusters are loaded
-            Imports.btn_toP2.setDisabled(False)
+            self.has_embedding = True
+            
+            # Only enable button if both embedding and linkage are loaded
+            Imports.btn_process_imports.setDisabled(False)
             fname_contains = 'crop_'
-            if Imports.manifold_fname.__contains__('_crop_'):
+            if Imports.embedding_fname.__contains__('_crop_'):
                 try:
-                    fname_end = Imports.manifold_fname.split(fname_contains, 1)[1]
+                    fname_end = Imports.embedding_fname.split(fname_contains, 1)[1]
                     fname_start, fname_stop = fname_end.split('_', 1)
                     fname_stop = fname_stop.split('.', 1)[0]
                     msg = "<span style='font-weight:normal;'>\
@@ -572,42 +665,52 @@ class Imports(QtWidgets.QWidget):
                 except:
                     pass
         else:
-            # User cancelled - disable manifold subwidgets only
-            self.entry_manifold.setDisabled(False)
-            self.entry_manifold.setText('Filename')
-            self.entry_manifold.setDisabled(True)
-            self.has_manifold = False
-            Imports.btn_toP2.setDisabled(False)
-        tabs.setTabEnabled(1, False)
-        tabs.setTabEnabled(2, False)
+            # User cancelled - reset entry widget and disable subwidgets
+            self.entry_embedding.setDisabled(False)
+            self.entry_embedding.setText('Filename')
+            self.entry_embedding.setDisabled(True)
+            
+            # Disable embedding subwidgets when browse is cancelled
+            self.label_embedding_method.setEnabled(False)
+            self.combo_embedding_method.setEnabled(False)
+            self.label_embedding_clusters.setEnabled(False)
+            self.spin_embedding_clusters.setEnabled(False)
+            self.label_embedding_sort_method.setEnabled(False)
+            self.combo_embedding_sort_method.setEnabled(False)
+            
+            self.has_embedding = False
+            Imports.btn_process_imports.setDisabled(False)
         
-        # Mark imports as changed
+        tabs.setTabEnabled(1, False)
+        tabs.setTabEnabled(2, False)        
         self.mark_imports_changed()
 
     def load_clusters_or_linkage(self):
-        Imports.clusters_fname = QFileDialog.getOpenFileName(self, 'Choose cluster or linkage file', '', 'All files (*.npy)')[0]
-        if not Imports.clusters_fname:
-            # User cancelled - reset entry widget and disable cluster subwidgets
-            self.entry_clusters.setDisabled(False)
-            self.entry_clusters.setText('Filename')
-            self.entry_clusters.setDisabled(True)
+        Imports.linkage_fname = QFileDialog.getOpenFileName(self, 'Choose cluster or linkage file', '', 'All files (*.npy)')[0]
+        if not Imports.linkage_fname:
+            # User cancelled - reset entry widget
+            self.entry_linkage.setDisabled(False)
+            self.entry_linkage.setText('Filename')
+            self.entry_linkage.setDisabled(True)
             self.has_clusters = False
             self.update_cluster_subwidgets_state(False)
-            Imports.btn_toP2.setDisabled(True)
+            Imports.btn_process_imports.setDisabled(True)
             self.mark_imports_changed()
             return
-        self.entry_clusters.setText(Imports.clusters_fname)
         
-        # Load the numpy array
-        arr = np.load(Imports.clusters_fname, allow_pickle=True)
+        self.entry_linkage.setDisabled(False)
+        self.entry_linkage.setText(Imports.linkage_fname)
+        self.entry_linkage.setDisabled(True)
         
-        # Check if it's a linkage matrix (2D array with 4 columns)
+        arr = np.load(Imports.linkage_fname, allow_pickle=True)
+        
+        # Check if array is linkage matrix (2D array with 4 columns)
         if arr.ndim == 2 and arr.shape[1] == 4:
             Imports.linkage = arr
             self.has_clusters = True
             # Enable cluster subwidgets for linkage matrix
             self.update_cluster_subwidgets_state(True)
-        # Otherwise it's a cluster labels array
+        # Otherwise array is a cluster labels array # TODO
         else:
             Imports.linkage = None
             Imports.clusters = pd.DataFrame({'Cluster': arr})
@@ -617,15 +720,15 @@ class Imports(QtWidgets.QWidget):
             self.combo_cut_criterion.setEnabled(False)
             self.label_cut_param.setEnabled(False)
             self.spin_cut_param.setEnabled(False)
-            self.label_sort_method.setEnabled(True)
-            self.combo_sort_method.setEnabled(True)
+            self.label_linkage_sort_method.setEnabled(True)
+            self.combo_linkage_sort_method.setEnabled(True)
 
         # Mark imports as changed
         self.mark_imports_changed()
 
 
 ################################################################################
-# custom clustering tab:    
+# Custom clustering tab 
 
 class Custom(QtWidgets.QWidget):
     # for changing views based on embedding coordinates chosen:
@@ -664,8 +767,7 @@ class Custom(QtWidgets.QWidget):
     logos_start = 0
     logos_stop = 1
     plot_ref = False
-
-    clusters = '' #ZULU remove and set up properly
+    clusters = '' # TODO - remove and set up properly
 
     def __init__(self, parent=None):
         super(Custom, self).__init__(parent)
@@ -732,7 +834,7 @@ class Custom(QtWidgets.QWidget):
             Custom.btn_reset.click()
 
         def plot_reference():
-            if Imports.ref_idx != '': #ZULU, add warning or disable
+            if Imports.ref_idx != '': # TODO -add warning or disable
                 if Custom.checkbox_ref.isChecked():
                     Custom.plot_ref = True 
                 else:
@@ -757,7 +859,7 @@ class Custom(QtWidgets.QWidget):
         #    tick.label.set_fontsize(4)
         #for tick in Custom.ax.yaxis.get_major_ticks():
         #    tick.label.set_fontsize(4)
-        Custom.ax.tick_params(axis='both', which='major', labelsize=10) #NEW
+        Custom.ax.tick_params(axis='both', which='major', labelsize=10)
         Custom.ax.get_xaxis().set_ticks([])
         Custom.ax.get_yaxis().set_ticks([])
         Custom.ax.set_title('Place points on the plot to encircle cluster(s)', fontsize=5)
@@ -849,7 +951,7 @@ class Custom(QtWidgets.QWidget):
         Custom.entry_theme.setToolTip('Select the theme mode for the scatter plot.')
 
         self.label_ref = QLabel('Plot reference:')
-        Custom.checkbox_ref = QCheckBox(self)#'Plot reference', self)
+        Custom.checkbox_ref = QCheckBox(self)
         Custom.checkbox_ref.stateChanged.connect(plot_reference)
         Custom.checkbox_ref.setToolTip('Check to show the reference sequence on plot.')
 
@@ -864,7 +966,7 @@ class Custom(QtWidgets.QWidget):
 
         layout = QGridLayout()
         layout.setSizeConstraint(QGridLayout.SetMinimumSize)
-        # main path and clustering buttons:
+        # Main path and clustering buttons
         grid_top = QGridLayout()
         grid_top.addWidget(self.toolbar, 0, 0, 1, 10)
         grid_top.addWidget(self.canvas, 1, 0, 50, 10)
@@ -873,7 +975,7 @@ class Custom(QtWidgets.QWidget):
         grid_top.addWidget(self.btn_connect, 51, 4, 1, 2)
         grid_top.addWidget(self.btn_view, 51, 6, 1, 2)
         grid_top.addWidget(self.line_R, 51, 8, 1, 2, QtCore.Qt.AlignVCenter)
-        # movable divider for user settings:
+        # Movable divider for user settings
         grid_bot = QGridLayout()
         grid_bot.addWidget(Custom.entry_eig1, 52, 1, 1, 1)
         grid_bot.addWidget(self.label_cmap, 52, 2, 1, 1, QtCore.Qt.AlignRight)
@@ -912,8 +1014,8 @@ class Custom(QtWidgets.QWidget):
         Custom.entry_markersize.setDisabled(False)
         Custom.checkbox_ref.setDisabled(False)
 
-        x = Imports.manifold[:,Custom.eig1_choice]
-        y = Imports.manifold[:,Custom.eig2_choice]
+        x = Imports.embedding[:,Custom.eig1_choice]
+        y = Imports.embedding[:,Custom.eig2_choice]
         Custom.pts_orig = zip(x,y)
         Custom.pts_origX = x
         Custom.pts_origY = y
@@ -929,7 +1031,7 @@ class Custom(QtWidgets.QWidget):
         self.coordsX = []
         self.coordsY = []
 
-        # redraw and resize figure:
+        # Redraw and resize figure
         Custom.ax.clear()
         Custom.cax.cla()
         if Custom.cmap == 'Histogram':
@@ -956,12 +1058,8 @@ class Custom(QtWidgets.QWidget):
 
             if Custom.plot_ref == True:
                 Custom.ax.scatter(Custom.pts_origX[Imports.ref_idx], Custom.pts_origY[Imports.ref_idx], marker='*', c='k', zorder=100)
-        #for tick in Custom.ax.xaxis.get_major_ticks():
-            #tick.label.set_fontsize(4)
-        #for tick in Custom.ax.yaxis.get_major_ticks():
-            #tick.label.set_fontsize(4)
 
-        Custom.ax.tick_params(axis='both', which='major', labelsize=4) #NEW
+        Custom.ax.tick_params(axis='both', which='major', labelsize=4)
         Custom.ax.get_xaxis().set_ticks([])
         Custom.ax.get_yaxis().set_ticks([])
         Custom.ax.set_xlabel(r'$\mathrm{\Psi}$%s' % (Custom.eig1_choice+1), fontsize=6)
@@ -969,7 +1067,7 @@ class Custom(QtWidgets.QWidget):
         Custom.ax.autoscale()
         Custom.ax.margins(x=0)
         Custom.ax.margins(y=0)
-        # update colorbar:
+        # Update colorbar
         Custom.cbar.update_normal(Custom.scatter)
         Custom.cbar.ax.set_ylabel(Custom.cbar_label, rotation=270, fontsize=6, labelpad=9)
         Custom.cbar.ax.tick_params(labelsize=6)
@@ -987,7 +1085,7 @@ class Custom(QtWidgets.QWidget):
         Custom.checkbox_ref.setDisabled(True)
 
         if len(self.coordsX) > 2:
-            # hack to get better sensitivity of readouts from polygon:
+            # Hack to get better sensitivity of readouts from polygon
             self.coordsX.append(self.coordsX[-1])
             self.coordsY.append(self.coordsY[-1])
 
@@ -1017,7 +1115,7 @@ class Custom(QtWidgets.QWidget):
                     Custom.pts_encircled = zip(Custom.pts_encircledX, Custom.pts_encircledY)
                     Custom.idx_encircled.append(index-1)
 
-            # redraw and resize figure:
+            # Redraw and resize figure
             Custom.scatter.remove()
             if Custom.cmap == 'Histogram':
                 H, edges = np.histogramdd(np.vstack((Custom.pts_origX, Custom.pts_origY)).T,
@@ -1032,7 +1130,7 @@ class Custom(QtWidgets.QWidget):
                     [self.coordsY[0],self.coordsY[-1]],
                     color=Custom.theme_color1, linestyle='solid', linewidth=.5, zorder=1)
 
-            # update colorbar:
+            # Update colorbar
             Custom.cbar.update_normal(Custom.scatter)
             Custom.cbar.ax.set_ylabel(Custom.cbar_label, rotation=270, fontsize=6, labelpad=9)
             Custom.cbar.ax.tick_params(labelsize=6)
@@ -1058,18 +1156,16 @@ class Custom(QtWidgets.QWidget):
                 idxs.append(idx)
         Custom.seqs_cluster = seqs[idxs]
         map_avg /= bin_count
-        #map_avg = np.reshape(map_avg, (Imports.seq_length, len(''.join(Imports.alphabet))))
-        map_avg = np.reshape(map_avg, (Imports.seq_length, Imports.maps_shape[2])) # NEW
-        try: # NEW
+        map_avg = np.reshape(map_avg, (Imports.seq_length, Imports.maps_shape[2]))
+        try: # TODO - see below
             Custom.imgAvg = utils.arr2pd(map_avg, Imports.alphabet)
-        except: # NEW, ZULU: may need a separate option for this to deal with two-hot encodings (e.g., CLIPNET)
-            Custom.imgAvg = utils.arr2pd(map_avg) # NEW
+        except: # TODO - may need a separate option for this to deal with two-hot encodings (e.g., CLIPNET)
+            Custom.imgAvg = utils.arr2pd(map_avg)
         return idxs
 
 
     def view(self): # view average of all attribution maps in encircled region
         idxs = Custom.average_maps()   
-
         if not idxs: # if user selected area on canvas contains no data points
             box = QMessageBox(self)
             box.setIcon(QMessageBox.Warning)
@@ -1079,31 +1175,24 @@ class Custom(QtWidgets.QWidget):
             box.setStandardButtons(QMessageBox.Ok)
             box.setInformativeText(msg)
             reply = box.exec_()
-
             Custom.btn_reset.click()
-
         else:
-            # create matrix based on positional frequencies:
+            # Create matrix based on positional frequencies
             seq_array_cluster = motifs.create(Custom.seqs_cluster, alphabet=Imports.alphabet)
             Custom.pfm_cluster = seq_array_cluster.counts # position frequency matrix
             pseudocounts = 0.5
-
-            # standard PWM
+            # Standard PWM
             pwm_cluster = Custom.pfm_cluster.normalize(pseudocounts=pseudocounts) #https://biopython-tutorial.readthedocs.io/en/latest/notebooks/14%20-%20Sequence%20motif%20analysis%20using%20Bio.motifs.html
             Custom.seq_logo_pwm = pd.DataFrame(pwm_cluster)
-
-            # enrichment logo (see https://logomaker.readthedocs.io/en/latest/examples.html#ars-enrichment-logo)
+            # Enrichment logo (see https://logomaker.readthedocs.io/en/latest/examples.html#ars-enrichment-logo)
             enrichment_ratio = (pd.DataFrame(Custom.pfm_cluster) + pseudocounts) / (pd.DataFrame(Custom.pfm_background) + pseudocounts)
             Custom.seq_logo_enrich = np.log2(enrichment_ratio)
-
             if Custom.logo_label == 'Enrichment   ':
                 Cluster.seq_logo = Custom.seq_logo_enrich
             else:
                 Cluster.seq_logo = Custom.seq_logo_pwm
-
             self.open_cluster_window()
 
-    
     def open_cluster_window(self):
         global cluster_window
         try:
@@ -1113,7 +1202,6 @@ class Custom(QtWidgets.QWidget):
         cluster_window = Cluster()
         cluster_window.setMinimumSize(10, 10)
         cluster_window.show()
-
 
     def onclick(self, event):
         if Custom.cmap == 'Histogram':
@@ -1125,7 +1213,6 @@ class Custom(QtWidgets.QWidget):
             box.setStandardButtons(QMessageBox.Ok)
             box.setInformativeText(msg)
             reply = box.exec_()
-
         else:
             if self.connected == 0:
                 zooming_panning = (self.figure.canvas.cursor().shape() != 0) # arrow is 0 when not zooming (2) or panning (9)
@@ -1348,7 +1435,7 @@ class Cluster(QtWidgets.QMainWindow):
         self.show()
         self.draw()
 
-    def draw(self): # draw logos for the given cluster
+    def draw(self): # Draw logos for the given cluster
         self.ax1 = self.figure.add_subplot(211)
         
         # Get reference sequence if needed
@@ -1381,14 +1468,14 @@ class Cluster(QtWidgets.QMainWindow):
                 shade_below=0.5,
                 width=0.9,
                 center_values=not Custom.contributions,
-                                                ref_seq=ref_seq,
+                ref_seq=ref_seq,
                 show_progress=False
             )
             Cluster.batch_logo_attribution.process_all()
             if ref_seq is not None:
                 Cluster.batch_logo_attribution.style_glyphs_in_sequence(ref_seq)
         
-        # Draw to temporary figure and copy to our subplot
+        # Draw to temporary figure and copy to subplot
         fig1, ax1 = Cluster.batch_logo_attribution.draw_single(
             0,  # Only one logo in batch
             fixed_ylim=False,
@@ -1532,7 +1619,7 @@ class Cluster(QtWidgets.QMainWindow):
         except:
             pass
         tabs.setTabEnabled(0, True)
-        if Imports.clusters_fname != '':
+        if Imports.embedding_fname != '' or Imports.linkage_fname != '':
             tabs.setTabEnabled(2, True)
         tabs.setTabEnabled(1, True)
 
@@ -1641,7 +1728,7 @@ class Stats(QtWidgets.QMainWindow):
             total = Custom.index_enc # total number of sequences in cluster
         elif Imports.current_tab == 2:
             total = self.predef.num_seqs
-        # matches of sequence positional features in cluster to reference
+        # Matches of sequence positional features in cluster to reference
         self.ax1 = self.figure.add_subplot(231)
         if Imports.combo_ref.currentText() != 'None':
             ref_crop = Imports.ref_full[Imports.seq_start:Imports.seq_stop]
@@ -1667,7 +1754,7 @@ class Stats(QtWidgets.QMainWindow):
                             '\n'
                             r'matches ($\%$)',
                             fontsize=4)
-        # matches of sequence positional features in cluster to cluster's consensus
+        # Matches of sequence positional features in cluster to cluster's consensus
         self.ax4 = self.figure.add_subplot(234)
         if Imports.current_tab == 1:
             consensus_seq = Custom.pfm_cluster.consensus
@@ -1689,7 +1776,7 @@ class Stats(QtWidgets.QMainWindow):
         if total > 0:  # Avoid divide by zero
             self.ax4.bar(range(len(consensus_seq)), (pos_freqs/total)*100, width=1.0)
         self.ax4.xaxis.set_major_locator(MaxNLocator(integer=True))
-        # distribution of scores in background
+        # Distribution of scores in background
         self.ax3 = self.figure.add_subplot(235)
         self.ax3.set_title('Background', fontsize=6)
         self.ax3.set_xlabel('DNN scores', fontsize=4)
@@ -1703,7 +1790,7 @@ class Stats(QtWidgets.QMainWindow):
                 self.ax3.legend(loc='upper right', fontsize=4, frameon=False)
             except:
                 pass
-        # frequency of scores in cluster
+        # Frequency of scores in cluster
         self.ax2 = self.figure.add_subplot(232)
         self.ax2.set_title('Cluster', fontsize=6)
         self.ax2.set_xlabel('DNN scores', fontsize=4)
@@ -1715,7 +1802,7 @@ class Stats(QtWidgets.QMainWindow):
         elif Imports.current_tab == 2:
             self.ax2.hist(Imports.mave['DNN'][self.predef.k_idxs], bins=100)    
         self.ax2.set_xlim(self.ax3.get_xlim())
-        # attribution error analysis:
+        # Attribution error analysis
         self.ax5 = self.figure.add_subplot(233)
         self.ax5.set_ylabel('Attribution errors', fontsize=4)
         self.ax5.tick_params(axis="x", labelsize=4)
@@ -1733,11 +1820,10 @@ class Stats(QtWidgets.QMainWindow):
                     map_avg += Imports.maps[idx,:]
                     bin_count += 1
             map_avg /= bin_count
-            #map_avg = np.reshape(map_avg, (Imports.seq_length, len(''.join(Imports.alphabet))))
-            map_avg = np.reshape(map_avg, (Imports.seq_length, Imports.maps_shape[2])) # NEW
-            try: # NEW
+            map_avg = np.reshape(map_avg, (Imports.seq_length, Imports.maps_shape[2]))
+            try: # TODO - see below
                 Predef.imgAvg = utils.arr2pd(map_avg, Imports.alphabet)
-            except: # NEW, ZULU: may need a separate option for this to deal with two-hot encodings (e.g., CLIPNET)
+            except: # TODO - may need a separate option for this to deal with two-hot encodings (e.g., CLIPNET)
                 Predef.imgAvg = utils.arr2pd(map_avg)
 
 
@@ -1764,6 +1850,9 @@ class Stats(QtWidgets.QMainWindow):
         self.ax5.set_ylim(0, self.ax5.get_ylim()[1])
         self.canvas.draw()
 
+
+################################################################################
+# Predefined clustering tab 
 
 class Predef(QtWidgets.QWidget):
     pixmap = ''
@@ -1802,7 +1891,7 @@ class Predef(QtWidgets.QWidget):
             try:
                 current_xlim = self.logo_ax.get_xlim()
                 current_ylim = self.logo_ax.get_ylim()
-                # Check if we actually had a meaningful x-axis view (not just default 0-1 range)
+                # Check if user had a meaningful x-axis view (not just default 0-1 range)
                 if current_xlim[0] != 0 or current_xlim[1] != 1:
                     had_previous_view = True
             except:
@@ -1844,8 +1933,6 @@ class Predef(QtWidgets.QWidget):
             width, height = Predef.initial_logo_size
 
         # Create a new figure and canvas for the logo
-        from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-        from matplotlib.figure import Figure
         fig, ax = batch_logo.draw_single(
             0,
             fixed_ylim=False,
@@ -1858,7 +1945,7 @@ class Predef(QtWidgets.QWidget):
         if len(yticks) > 0:
             ax.set_yticks([yticks[-1]])  # Only show the maximum value
         
-        ax.set_ylabel('Cluster avg.')
+        ax.set_ylabel('Cluster avg.  ')
         
         # Add coordinate tracking to the logo axis
         def logo_format_coord(x, y):
@@ -1910,16 +1997,11 @@ class Predef(QtWidgets.QWidget):
 
     def __init__(self, parent=None):
         super(Predef, self).__init__(parent)
-
-        # --- Always create logo canvas and axes first ---
-        from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-        from matplotlib.figure import Figure
         self.logo_fig = Figure(figsize=(8, 1.25), dpi=200)
         self.logo_canvas = FigureCanvas(self.logo_fig)
         self.logo_ax = self.logo_fig.add_subplot(111)
         self.logo_ax.axis('off')
 
-        # Main scatter plot canvas and axes (was Predef.figure, Predef.ax, Predef.canvas)
         self.figure = Figure(dpi=dpi)
         self.ax = self.figure.add_subplot(111)
         self.ax.set_aspect('equal')
@@ -2040,7 +2122,7 @@ class Predef(QtWidgets.QWidget):
         self.width = self.canvas.size().width()
         self.ax.format_coord = format_coord
 
-        # canvas widgets:
+        # Canvas widgets
         Predef.label_pixmap = QLabel()
         # Initialize with blank pixmap instead of trying to load from clusters_dir
         Predef.pixmap = QtGui.QPixmap()
@@ -2133,23 +2215,21 @@ class Predef(QtWidgets.QWidget):
         grid_bot.addWidget(self.label_display, 0, 10, 1, 1, QtCore.Qt.AlignRight)
         grid_bot.addWidget(self.entry_logostyle, 0, 11, 1, 1, QtCore.Qt.AlignCenter)
         grid_bot.addWidget(self.entry_yscale, 0, 12, 1, 1, QtCore.Qt.AlignLeft)
-        #grid_bot.addWidget(QVLine(), 0, 12, 1, 2, QtCore.Qt.AlignCenter)
         
         widget_top = QWidget()
         widget_top.setLayout(grid_top)
         widget_bot = QWidget()
         widget_bot.setLayout(grid_bot)
-        # Remove QSplitter: stack top and bottom widgets directly
         layout.addWidget(widget_top)
         layout.addWidget(widget_bot)
         self.setLayout(layout)
 
-        # Initialize with cluster 0
-        if Imports.clusters_fname != '':
-            Predef.cluster_idx = 0  # Use integer 0
+        # Initialize with first cluster
+        if Imports.embedding_fname != '' or Imports.linkage_fname != '':
+            Predef.cluster_idx = 0
             Predef.k_idxs = np.array(Imports.clusters[Imports.cluster_col].loc[Imports.clusters[Imports.cluster_col] == 0].index)
             Predef.num_seqs = len(Predef.k_idxs)
-            self.update_logo()  # Show initial logo for cluster 0
+            self.update_logo()  # Show initial logo for first cluster
 
     def onclick(self, event):
         try:
@@ -2167,15 +2247,15 @@ class Predef(QtWidgets.QWidget):
                 if ix != None and iy != None:
                     self.coordsX = float(ix)
                     self.coordsY = float(iy)
-                self.dist, idx = spatial.KDTree(self.manifold).query(np.array([self.coordsX, self.coordsY]))
+                self.dist, idx = spatial.KDTree(self.embedding).query(np.array([self.coordsX, self.coordsY]))
             if self.dist < .01 or self.clicked == False:
-                # locate all members in dataframe that belong to cluster:
+                # Locate all members in dataframe that belong to cluster
                 if self.clicked == True:
                     self.cluster_idx = Imports.clusters[Imports.cluster_col][idx]
                     self.k_idxs =  np.array(Imports.clusters[Imports.cluster_col].loc[Imports.clusters[Imports.cluster_col] == self.cluster_idx].index)
                     self.num_seqs = len(self.k_idxs)
                     self.choose_cluster.setValue(self.cluster_idx)
-                # redraw and resize figure:
+                # Redraw and resize figure
                 self.ax.clear()
                 self.scatter = self.ax.scatter(self.pts_origX[::Custom.plt_step],
                                                 self.pts_origY[::Custom.plt_step],
@@ -2186,7 +2266,7 @@ class Predef(QtWidgets.QWidget):
                                                 self.pts_origY[self.k_idxs][::Custom.plt_step],
                                                 c='black', 
                                                 s=Custom.plt_marker, cmap='jet', linewidth=Custom.plt_lw, zorder=10)
-                self.ax.tick_params(axis='both', which='major', labelsize=4) #NEW
+                self.ax.tick_params(axis='both', which='major', labelsize=4)
                 self.ax.get_xaxis().set_ticks([])
                 self.ax.get_yaxis().set_ticks([])
                 self.ax.set_title('Click on a cluster to view its logo', fontsize=5)
@@ -2199,13 +2279,13 @@ class Predef(QtWidgets.QWidget):
                 self.ax.autoscale()
                 self.ax.margins(x=0)
                 self.ax.margins(y=0)
-                # update sequence logo:
+                # Update sequence logo
                 self.update_logo()
-                # force the matplotlib toolbar to update its status:
+                # Force the matplotlib toolbar to update its status
                 if self.clicked == True:
                     self.canvas.motion_notify_event(*self.ax.transAxes.transform([0,0]))
                     self.canvas.motion_notify_event(*self.ax.transAxes.transform([ix,iy]))
-                # save sequences in cluster
+                # Save sequences in cluster
                 seqs = Imports.mave['Sequence'].str.slice(Imports.seq_start, Imports.seq_stop)
                 self.seqs_cluster = seqs[self.k_idxs]
                 seq_array_cluster = motifs.create(self.seqs_cluster, alphabet=Imports.alphabet)
@@ -2522,7 +2602,6 @@ class Marginals(QtWidgets.QMainWindow):
         self.resize(int(self.width*(9./10.)), int(self.height*(5/10.)))
         self.show()
 
-        # ZULU: put this in impress.py _gui()
         df = AllStats.revels.copy()
         self.nP = Predef.df['Position'].max()+1
         self.nC = Predef.df['Cluster'].max()+1
@@ -2589,12 +2668,11 @@ class Marginals(QtWidgets.QMainWindow):
         self.ax2.clear()
         self.figure.clear()
 
-        # ZULU: put this in impress.py _gui()
         df = AllStats.revels.copy()
         self.nP = Predef.df['Position'].max()+1
         self.nC = Predef.df['Cluster'].max()+1
 
-        # apply binary mask (counts)
+        # Apply binary mask (counts)
         if self.combo_inequality.currentText() == ('%s' % u"\u2265"):
             df = (df >= AllStats.threshold).astype(int)
         elif self.combo_inequality.currentText() == ('%s' % u"\u2264"):
@@ -2651,7 +2729,7 @@ class Marginals(QtWidgets.QMainWindow):
     
 
 ################################################################################
-# main window
+# Main window
 
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, parent=None):
@@ -2700,7 +2778,7 @@ class MainWindow(QtWidgets.QMainWindow):
         tab1 = Custom(self)
         tab2 = Predef(self)
 
-        tab0.btn_toP2.clicked.connect(self.gotoP2)
+        tab0.btn_process_imports.clicked.connect(self.process_imports)
 
         global tabs
         tabs = QtWidgets.QTabWidget(self)
@@ -2746,17 +2824,24 @@ class MainWindow(QtWidgets.QMainWindow):
             predef_stats_window.close()
         except:
             pass
+        # tabs.setTabEnabled(2, False) #freezes out 3rd tab # TODO - why was this here?
 
-
-    def gotoP2(self):
-        if (Imports.mave_fname != '' and Imports.maps_fname != '' and Imports.manifold_fname != '' and Imports.clusters_fname != ''):
+    def process_imports(self):
+        # Check that either embedding OR linkage is selected (but not both)
+        embedding_selected = Imports.checkbox_embedding.isChecked() and Imports.embedding_fname != ''
+        linkage_selected = Imports.checkbox_linkage.isChecked() and Imports.linkage_fname != ''
+        
+        if (Imports.mave_fname != '' and Imports.maps_fname != '' and 
+            (embedding_selected or linkage_selected) and 
+            not (embedding_selected and linkage_selected)):
+            
             Imports.imports_changed = False
             Imports.imports_confirmed = True
             Imports.imports_warning_acknowledged = False
-            Imports.btn_toP2.setText('Update Imports')
-            Imports.btn_toP2.setToolTip('Apply changes to imports before proceeding to analysis.')
+            Imports.btn_process_imports.setText('Update Imports')
+            Imports.btn_process_imports.setToolTip('Apply changes to imports before proceeding to analysis.')
             
-            # load in silico mave and (optionally) reference seqence:
+            # Load in silico mave and (optionally) reference seqence
             Imports.mave = pd.read_csv(Imports.mave_fname)
             Imports.mave_col_names = list(Imports.mave)
             if 'GIA' not in Imports.mave_col_names:
@@ -2792,7 +2877,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 box.setStandardButtons(QMessageBox.Ok)
                 box.setDefaultButton(QMessageBox.Ok)
                 ret = box.exec_()
-                Imports.btn_toP2.setDisabled(False)
+                Imports.process_imports.setDisabled(False)
                 return
 
             Imports.ref_full = Imports.entry_ref.text()
@@ -2806,7 +2891,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 Cluster.checkbox_ref.setChecked(True)
             Custom.checkbox_ref.setDisabled(False)
 
-            # reset all widgets on page 2 (if altered before change to Imports page):
+            # Reset all widgets on page 2 (if altered before change to Imports page)
             Custom.entry_cmap.setCurrentIndex(0)
             Custom.entry_theme.setCurrentIndex(0)
             Custom.entry_zorder.setCurrentIndex(0)
@@ -2824,14 +2909,14 @@ class MainWindow(QtWidgets.QMainWindow):
                 Imports.dim = (Imports.seq_length)*Imports.maps.shape[2]
                 Imports.maps = Imports.maps[:,Imports.seq_start:Imports.seq_stop,:]
                 Imports.maps = Imports.maps.reshape((Imports.nS, Imports.dim))
-                # update Hamming distances based on sequence cropping:
+                # Update Hamming distances based on sequence cropping
                 ref_short = Imports.ref_full[Imports.seq_start:Imports.seq_stop]
                 if 'Hamming' in Imports.mave_col_names and Imports.combo_ref.currentText() != 'None':
                     hamming_new = []
                     for x in tqdm(Imports.mave['Sequence'], desc='Hamming update'):
                         hamming_new.append(round(spatial.distance.hamming(list(ref_short), list(x[Imports.seq_start:Imports.seq_stop])) * len(ref_short)))
                     Imports.mave['Hamming'] = hamming_new
-                # identify reference sequence (cropped) in mave dataset if present:
+                # Identify reference sequence (cropped) in mave dataset if present
                 if Imports.combo_ref.currentText() == 'Custom':
                     Imports.ref_idx = ''
                     for idx, x in enumerate(Imports.mave['Sequence']):
@@ -2845,7 +2930,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 Imports.maps = Imports.maps.reshape((Imports.nS, Imports.dim))
                 if 'Hamming' in Imports.mave_col_names:
                     Imports.mave['Hamming'] = Imports.hamming_orig
-                # identify reference sequence in mave dataset if present:
+                # Identify reference sequence in mave dataset if present
                 if Imports.combo_ref.currentText() == 'Custom':
                     Imports.ref_idx = ''
                     for idx, x in enumerate(Imports.mave['Sequence']):
@@ -2858,40 +2943,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if Imports.combo_ref.currentText() == 'None':
                 Imports.ref_idx = ''
 
-            # load in manifold
-            def normalize(_d, to_sum=False, copy=True):
-                d = _d if not copy else np.copy(_d)
-                d -= np.min(d, axis=0)
-                d /= (np.sum(d, axis=0) if to_sum else np.ptp(d, axis=0))
-                return d
-
-            Imports.manifold = np.load(Imports.manifold_fname)
-            Imports.manifold = normalize(Imports.manifold)
-            x = Imports.manifold[:,Custom.eig1_choice]
-            y = Imports.manifold[:,Custom.eig2_choice]
-            Custom.pts_orig = zip(x,y)
-            Custom.pts_origX = x
-            Custom.pts_origY = y
-
-            # Create initial scatter plot
-            Custom.scatter = Custom.ax.scatter(Custom.pts_origX[::Custom.plt_step],
-                                            Custom.pts_origY[::Custom.plt_step],
-                                            s=Custom.plt_marker,
-                                            c=Imports.mave[Custom.cmap][::Custom.plt_step],
-                                            cmap='jet', linewidth=Custom.plt_lw)
-
-            # Create initial colorbar
-            divider = make_axes_locatable(Custom.ax)
-            Custom.cax = divider.append_axes('right', size='5%', pad=0.05)
-            Custom.cbar = Custom.figure.colorbar(Custom.scatter, cax=Custom.cax, orientation='vertical')
-            Custom.cbar.ax.set_ylabel('DNN score', rotation=270, fontsize=6, labelpad=9)
-            Custom.cbar.ax.tick_params(labelsize=6)
-
-            Custom.entry_eig1.setMaximum(Imports.manifold.shape[1])
-            Custom.entry_eig2.setMaximum(Imports.manifold.shape[1])
-            Custom.entry_stepsize.setMaximum(Imports.nS-1)
-
-            # position frequency matrix of background:
+            # Position frequency matrix of background
             print('Calculating PFM of background...')
             seq_array_background = motifs.create(Imports.mave['Sequence'].str.slice(Imports.seq_start, Imports.seq_stop), alphabet=Imports.alphabet)
             Custom.pfm_background = seq_array_background.counts
@@ -2902,161 +2954,91 @@ class MainWindow(QtWidgets.QMainWindow):
             Custom.logos_start = 0
             Custom.logos_stop = Imports.seq_length
 
-            if 0:
+            if 0: # TODO - is this needed?
                 print('Calculating attribution errors of background...')
                 Imports.maps_bg_on = True
                 maps_background = Imports.maps.reshape((Imports.maps.shape[0], Imports.seq_length, Imports.maps_shape[2]))
                 Imports.errors_background = np.linalg.norm(maps_background - np.mean(maps_background, axis=0), axis=(1,2))
             else:
                 Imports.maps_bg_on = False
-
-            tabs.setTabEnabled(2, True)
-            tabs.setTabEnabled(1, True)
-            tabs.setCurrentIndex(1)
-            Custom.btn_reset.click()
             
-            # Set splitter so bottom panel is at its minimum size before collapsing
-            if hasattr(Predef, 'splitter') and hasattr(Predef, 'widget_bot_ref'):
-                min_bot = Predef.widget_bot_ref.sizeHint().height()
-                total_height = Predef.splitter.height()
-                Predef.splitter.setSizes([max(total_height - min_bot, 0), min_bot])
+            # Set splitter so bottom panel is at its minimum size before collapsing TODO - is this needed?
+            #if hasattr(Predef, 'splitter') and hasattr(Predef, 'widget_bot_ref'):
+            #    min_bot = Predef.widget_bot_ref.sizeHint().height()
+            #    total_height = Predef.splitter.height()
+            #    Predef.splitter.setSizes([max(total_height - min_bot, 0), min_bot])
 
-            # Handle clusters if present
-            if Imports.clusters_fname != '':
-                tab2 = self.findChild(QtWidgets.QTabWidget).widget(2)
-                tab2.ax.clear()
-                if Imports.clusters_fname.endswith('.npy'):
-                    linkage_matrix = np.load(Imports.clusters_fname)
-                    if linkage_matrix.shape[1] == 4:  # This is a linkage matrix
-                        Imports.linkage = linkage_matrix
-                        # Create cluster assignments using Clusterer
-                        clusterer = Clusterer(Imports.maps, gpu=False)
-                        # Use values from UI instead of hardcoding
-                        n_clusters = Imports.spin_cut_param.value()
-                        criterion = Imports.combo_cut_criterion.currentText().lower()
-                        cluster_assignments, _ = clusterer.get_cluster_labels(Imports.linkage, criterion=criterion, n_clusters=n_clusters)
-                        Imports.clusters = pd.DataFrame({'Cluster': cluster_assignments})
-                        Imports.cluster_col = 'Cluster'
+
+            tab2 = self.findChild(QtWidgets.QTabWidget).widget(2) # moved from within linkage_selected below
+            tab2.ax.clear()
+
+            if embedding_selected:
+                def normalize(_d, to_sum=False, copy=True):
+                    d = _d if not copy else np.copy(_d)
+                    d -= np.min(d, axis=0)
+                    d /= (np.sum(d, axis=0) if to_sum else np.ptp(d, axis=0))
+                    return d
+                
+                Imports.embedding = np.load(Imports.embedding_fname)
+                Imports.embedding = normalize(Imports.embedding)
+                x = Imports.embedding[:,Custom.eig1_choice]
+                y = Imports.embedding[:,Custom.eig2_choice]
+                Custom.pts_orig = zip(x,y)
+                Custom.pts_origX = x
+                Custom.pts_origY = y
+
+                # Create initial scatter plot
+                Custom.scatter = Custom.ax.scatter(Custom.pts_origX[::Custom.plt_step],
+                                                Custom.pts_origY[::Custom.plt_step],
+                                                s=Custom.plt_marker,
+                                                c=Imports.mave[Custom.cmap][::Custom.plt_step],
+                                                cmap='jet', linewidth=Custom.plt_lw)
+
+                # Create initial colorbar
+                divider = make_axes_locatable(Custom.ax)
+                Custom.cax = divider.append_axes('right', size='5%', pad=0.05)
+                Custom.cbar = Custom.figure.colorbar(Custom.scatter, cax=Custom.cax, orientation='vertical')
+                Custom.cbar.ax.set_ylabel('DNN score', rotation=270, fontsize=6, labelpad=9)
+                Custom.cbar.ax.tick_params(labelsize=6)
+
+                Custom.entry_eig1.setMaximum(Imports.embedding.shape[1])
+                Custom.entry_eig2.setMaximum(Imports.embedding.shape[1])
+                Custom.entry_stepsize.setMaximum(Imports.nS-1)
+
+                # Create cluster assignments using embedding clustering methods
+                clusterer = Clusterer(Imports.maps, gpu=False)
+                
+                # Get clustering method and parameters from UI
+                clustering_method = Imports.combo_embedding_method.currentText()
+                n_clusters = Imports.spin_embedding_clusters.value()
+                
+                if clustering_method == 'kmeans':
+                    cluster_assignments = clusterer.cluster(
+                        embedding=Imports.embedding, 
+                        method='kmeans', 
+                        n_clusters=n_clusters
+                    )
+                elif clustering_method == 'dbscan':
+                    cluster_assignments = clusterer.cluster(
+                        embedding=Imports.embedding, 
+                        method='dbscan'
+                    )
+  
+                Imports.clusters = pd.DataFrame({'Cluster': cluster_assignments})
+                Imports.cluster_col = 'Cluster'
                         
-                    else:  # This is cluster labels
-                        Imports.clusters = pd.DataFrame({'Cluster': linkage_matrix})
-                        Imports.cluster_col = 'Cluster'
-                else:
-                    Imports.clusters = pd.read_csv(Imports.clusters_fname)
-
                 # Preprocess all cluster logos
                 print("Preprocessing cluster logos...")
                 Imports.batch_logo_instances.clear()  # Clear any existing instances
                 
                 # Get unique clusters
                 unique_clusters = Imports.clusters[Imports.cluster_col].unique()
-                
-                # Store original shape and reshape maps to 3D for logo processing
-                original_shape = Imports.maps.shape
-                if len(Imports.maps.shape) == 2:
-                    N = Imports.maps.shape[0]
-                    L = Imports.seq_length
-                    C = Imports.maps_shape[2] if hasattr(Imports, 'maps_shape') else len(Imports.alphabet)
-                    Imports.maps = Imports.maps.reshape(N, L, C)
-                
-                try:
-                    # Create Clusterer instance
-                    clusterer = Clusterer(
-                        attribution_maps=Imports.maps,
-                        gpu=False
-                    )
-                    clusterer.cluster_labels = Imports.clusters[Imports.cluster_col].values
-                    
-                    # Create MetaExplainer instance
-                    if Imports.cluster_sort_method == 'Median activity':
-                        meta_sort_method = 'median'
-                    else:  # No reordering
-                        meta_sort_method = None
-                    
-                    meta = MetaExplainer(
-                        clusterer=clusterer,
-                        mave_df=Imports.mave,
-                        attributions=Imports.maps,
-                        ref_idx=Imports.ref_idx,
-                        background_separation=False, #TODO: update
-                        mut_rate=0.10, #TODO: update
-                        sort_method=meta_sort_method,
-                        alphabet=Imports.alphabet
-                    )
-                    
-                    # Generate logos for all clusters at once
-                    meta_logos = meta.generate_logos(
-                        logo_type=Imports.batch_logo_type,
-                        background_separation=False,
-                        figsize=(10, 2.5)
-                    )
-                    
-                    # Store MetaExplainer instance and generated logos
-                    Imports.meta_explainer = meta
-                    Imports.meta_logos = meta_logos
-                    
-                    # Create BatchLogo instances for each cluster from meta logos
-                    for cluster_idx in range(len(unique_clusters)):
-                        for scale_type in ['adaptive', 'fixed']:
-                            logo_key = (cluster_idx, Imports.batch_logo_type, scale_type)
-                            batch_logo = BatchLogo(
-                                values=meta_logos.values[cluster_idx:cluster_idx+1],
-                                alphabet=Imports.alphabet,
-                                figsize=(10, 2.5),
-                                batch_size=1,
-                                font_name='Arial Rounded MT Bold',
-                                fade_below=0.5,
-                                shade_below=0.5,
-                                width=0.9,
-                                center_values=True,
-                                show_progress=False,
-                                y_min_max=None if scale_type == 'adaptive' else [-2, 2]
-                            )
-                            batch_logo.process_all()
-                            Imports.batch_logo_instances[logo_key] = batch_logo
-                    
-                    print("Logo preprocessing complete.")
-                    
-                    # Generate Mechanism Summary Matrix (MSM) for AllStats
-                    print("Generating Mechanism Summary Matrix...")
-                    Predef.df = meta.generate_msm(gpu=False)
-                    
-                    # If "No reordering" is selected, reorder MSM to preserve natural cluster order
-                    if Imports.cluster_sort_method == 'No reordering':
-                        # Get the natural order of clusters as they appear in the data
-                        natural_order = pd.Series(Imports.clusters['Cluster'].values).drop_duplicates().values
-                        # Create a mapping from cluster to desired position
-                        order_mapping = {cluster: idx for idx, cluster in enumerate(natural_order)}
-                        # Add a temporary column for sorting
-                        Predef.df['_sort_order'] = Predef.df['Cluster'].map(order_mapping)
-                        # Sort by this temporary column
-                        Predef.df = Predef.df.sort_values('_sort_order').drop('_sort_order', axis=1)
-                    
-                    print("MSM generation complete.")
-                    
-                finally:
-                    # Always reshape maps back to original shape, even if an error occurs
-                    Imports.maps = Imports.maps.reshape(original_shape)
-                    # Clean up any remaining figures
-                    plt.close('all')
-                
-                # Enable tab 2
-                tabs.setTabEnabled(1, True)
-                tabs.setCurrentIndex(1)
 
-                #Predef.choose_cluster.setMaximum(Imports.clusters[Imports.cluster_col].max())
-                #Predef.choose_cluster.setSuffix(' / %s' % Imports.clusters[Imports.cluster_col].max())
-                tab2.choose_cluster.setMaximum(Imports.clusters[Imports.cluster_col].max())
-                tab2.choose_cluster.setSuffix(' / %s' % Imports.clusters[Imports.cluster_col].max())
+                # Use first two dimensions of embedding for visualization
+                x = Imports.embedding[:,0]
+                y = Imports.embedding[:,1]
 
-                try:
-                    x = Imports.manifold[:,int(Imports.clusters['Psi1'][0])]
-                    y = Imports.manifold[:,int(Imports.clusters['Psi2'][0])]
-                except:
-                    x = Imports.manifold[:,0]
-                    y = Imports.manifold[:,1]
-
-                tab2.manifold = np.array([x, y]).T
+                tab2.embedding = np.array([x, y]).T
                 tab2.pts_orig = zip(x,y)
                 tab2.pts_origX = x
                 tab2.pts_origY = y
@@ -3067,7 +3049,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 Imports.mave['Cluster'] = Imports.clusters['Cluster']
 
                 tab2.cluster_colors = Imports.clusters[Imports.cluster_col][::Custom.plt_step]
-                #if Imports.cluster_col == 'Cluster_sort': #TODO: is this needed?
+                #if Imports.cluster_col == 'Cluster_sort': # TODO - is this still needed?
                 #    unique_clusters = np.unique(tab2.cluster_colors)
                 #    randomized_mapping = {cluster: i for i, cluster in enumerate(np.random.permutation(unique_clusters))}
                 #    tab2.cluster_colors = [randomized_mapping[cluster] for cluster in tab2.cluster_colors]
@@ -3089,19 +3071,147 @@ class MainWindow(QtWidgets.QMainWindow):
                 tab2.ax.margins(x=0)
                 tab2.ax.margins(y=0)
                 tab2.canvas.draw()
-                # Initialize logo display with blank image
-                # (logo handled by logo_canvas)
-                tab2.k_idxs = ''
 
-                # Show initial logo for cluster 0
-                tab2.update_logo()
-
-                # Set cluster 0 in the spinbox and trigger the View button
-                tab2.choose_cluster.setValue(0)
-                tab2.btn_view_cluster.click()
+            elif linkage_selected:
+                Imports.linkage = np.load(Imports.linkage_fname)
+                # Create cluster assignments using Clusterer
+                clusterer = Clusterer(Imports.maps, gpu=False)
+                # Use values from UI instead of hardcoding
+                n_clusters = Imports.spin_cut_param.value()
+                criterion = Imports.combo_cut_criterion.currentText().lower()
+                cluster_assignments, _ = clusterer.get_cluster_labels(Imports.linkage, criterion=criterion, n_clusters=n_clusters)
+                Imports.clusters = pd.DataFrame({'Cluster': cluster_assignments})
+                Imports.cluster_col = 'Cluster'
+                        
+                # Preprocess all cluster logos
+                print("Preprocessing cluster logos...")
+                Imports.batch_logo_instances.clear()  # Clear any existing instances
                 
-                # Update title to reflect cluster 0 is selected
-                tab2.canvas.draw()
+                # Get unique clusters
+                unique_clusters = Imports.clusters[Imports.cluster_col].unique()
+
+                tab2.pts_origX = np.zeros(Imports.nS) # dummy values
+                tab2.pts_origY = np.zeros(Imports.nS) # dummy values
+
+                tab2.clusters_idx = np.arange(Imports.clusters[Imports.cluster_col].max()+1) # TODO: is this needed below or can we use Predef version?
+                Predef.clusters_idx = np.arange(Imports.clusters[Imports.cluster_col].max()+1)
+                tab2.cluster_sorted_indices = np.arange(Imports.clusters[Imports.cluster_col].max()+1)
+                Imports.mave['Cluster'] = Imports.clusters['Cluster']
+                
+            # Store original shape and reshape maps to 3D for logo processing
+            original_shape = Imports.maps.shape
+            if len(Imports.maps.shape) == 2:
+                N = Imports.maps.shape[0]
+                L = Imports.seq_length
+                C = Imports.maps_shape[2] if hasattr(Imports, 'maps_shape') else len(Imports.alphabet)
+                Imports.maps = Imports.maps.reshape(N, L, C)
+            
+            # Create Clusterer instance
+            clusterer = Clusterer(
+                attribution_maps=Imports.maps,
+                gpu=False
+            )
+            clusterer.cluster_labels = Imports.clusters[Imports.cluster_col].values
+            
+            # Create MetaExplainer instance
+            if Imports.cluster_sort_method == 'Median activity':
+                meta_sort_method = 'median'
+            else:  # No reordering
+                meta_sort_method = None
+            
+            meta = MetaExplainer(
+                clusterer=clusterer,
+                mave_df=Imports.mave,
+                attributions=Imports.maps,
+                ref_idx=Imports.ref_idx,
+                background_separation=False, # TODO
+                mut_rate=0.10, # TODO
+                sort_method=meta_sort_method,
+                alphabet=Imports.alphabet
+            )
+            
+            # Generate logos for all clusters at once
+            meta_logos = meta.generate_logos(
+                logo_type=Imports.batch_logo_type,
+                background_separation=False,
+                figsize=(10, 2.5)
+            )
+            
+            # Store MetaExplainer instance and generated logos
+            Imports.meta_explainer = meta
+            Imports.meta_logos = meta_logos
+            
+            # Update cluster assignments to match MetaExplainer's sorting
+            if meta.cluster_order is not None:
+                # Create mapping from original cluster indices to sorted positions
+                cluster_mapping = {old_idx: new_idx for new_idx, old_idx in enumerate(meta.cluster_order)}
+                # Remap cluster assignments
+                Imports.clusters[Imports.cluster_col] = Imports.clusters[Imports.cluster_col].map(cluster_mapping)
+                # Update mave DataFrame cluster assignments
+                Imports.mave['Cluster'] = Imports.mave['Cluster'].map(cluster_mapping)
+            
+            # Create BatchLogo instances for each cluster from meta logos
+            for cluster_idx in range(len(unique_clusters)):
+                for scale_type in ['adaptive', 'fixed']:
+                    logo_key = (cluster_idx, Imports.batch_logo_type, scale_type)
+                    batch_logo = BatchLogo(
+                        values=meta_logos.values[cluster_idx:cluster_idx+1],
+                        alphabet=Imports.alphabet,
+                        figsize=(10, 2.5),
+                        batch_size=1,
+                        font_name='Arial Rounded MT Bold',
+                        fade_below=0.5,
+                        shade_below=0.5,
+                        width=0.9,
+                        center_values=True,
+                        show_progress=False,
+                        y_min_max=None if scale_type == 'adaptive' else [-2, 2]
+                    )
+                    batch_logo.process_all()
+                    Imports.batch_logo_instances[logo_key] = batch_logo            
+            # Generate Mechanism Summary Matrix (MSM) for AllStats
+            print("Generating Mechanism Summary Matrix...")
+            Predef.df = meta.generate_msm(gpu=False)
+            
+            # If "No reordering" is selected, preserve natural cluster order
+            if Imports.cluster_sort_method == 'No reordering':
+                # Get the natural order of clusters as they appear in the data
+                natural_order = pd.Series(Imports.clusters['Cluster'].values).drop_duplicates().values
+                # Create a mapping from cluster to desired position
+                order_mapping = {cluster: idx for idx, cluster in enumerate(natural_order)}
+                # Add a temporary column for sorting
+                Predef.df['_sort_order'] = Predef.df['Cluster'].map(order_mapping)
+                # Sort by this temporary column
+                Predef.df = Predef.df.sort_values('_sort_order').drop('_sort_order', axis=1)
+                            
+            # Always reshape maps back to original shape, even if an error occurs
+            Imports.maps = Imports.maps.reshape(original_shape)
+            # Clean up any remaining figures
+            plt.close('all')
+
+            # Enable appropriate tabs based on what's loaded
+            if embedding_selected:
+                tabs.setTabEnabled(1, True)  # Custom Clusters tab
+                tabs.setTabEnabled(2, True)  # Predefined Clusters tab
+                tabs.setCurrentIndex(1)
+                Custom.btn_reset.click()
+            elif linkage_selected:
+                tabs.setTabEnabled(1, False)  # Custom Clusters tab
+                tabs.setTabEnabled(2, True)   # Predefined Clusters tab
+                tabs.setCurrentIndex(2)
+                
+            tab2.choose_cluster.setMaximum(Imports.clusters[Imports.cluster_col].max())
+            tab2.choose_cluster.setSuffix(' / %s' % Imports.clusters[Imports.cluster_col].max())
+
+            # Initialize logo display with blank image
+            tab2.k_idxs = ''
+            # Show initial logo for cluster 0
+            tab2.update_logo()
+            # Set cluster 0 in the spinbox and trigger the View button
+            tab2.choose_cluster.setValue(0)
+            tab2.btn_view_cluster.click()
+            # Update embedding plot to reflect cluster 0 is selected
+            tab2.canvas.draw() # TODO - only if embedding selected?
 
         else:
             box = QMessageBox(self)
@@ -3189,7 +3299,7 @@ class MainWindow(QtWidgets.QMainWindow):
         box.setStandardButtons(QMessageBox.Ok)        
         ret = box.exec_()
 
-    #TODO: ensure that DNN, Hamming, GIAtext automatically propagated on tab 2 based on what's in the data file?
+    # TODO - ensure that DNN, Hamming, GIAtext automatically propagated on tab 2 based on what's in the data file
 
     def show_import_help(self):
         """Show help dialog for Import Files tab"""
@@ -3324,17 +3434,23 @@ if __name__ == '__main__':
     QApplication.setStyle(QStyleFactory.create('Fusion'))
     
     # Force light theme
-    app.setStyleSheet("QWidget { background-color: white; color: black; }")
     app.setStyleSheet("""
-
+        QWidget { background-color: white; color: black; }
         QLineEdit:disabled { background-color: #f0f0f0; color: #808080; }
-    """) # add disabled state styling to the global stylesheet
-        #QPushButton:disabled { background-color: #f0f0f0; color: #808080; border: 1px solid #c0c0c0; }
-
-            #QWidget { background-color: white; color: black; }
-        #QWidget:disabled { background-color: #f0f0f0; color: #808080; }
+        QComboBox:disabled { background-color: #f0f0f0; color: #808080; }
+        QSpinBox:disabled { background-color: #f0f0f0; color: #808080; }
+        QDoubleSpinBox:disabled { background-color: #f0f0f0; color: #808080; }
+        QPushButton:disabled { background-color: #f0f0f0; color: #808080; }
+        QCheckBox:disabled { color: #808080; }
+        QTableWidget:disabled { background-color: #f0f0f0; color: #808080; }
+        QMainWindow:disabled { background-color: #f0f0f0; color: #808080; }
+        QDialog:disabled { background-color: #f0f0f0; color: #808080; }
+        QTextBrowser:disabled { background-color: #f0f0f0; color: #808080; }
+        QDialogButtonBox:disabled { background-color: #f0f0f0; color: #808080; }
+        QSplitter:disabled { background-color: #f0f0f0; color: #808080; }
+    """) # Add disabled state styling for all common widgets
         
-    # set app icon for tray:
+    # Set app icon for tray
     app_icon = QtGui.QIcon()
     app_icon.addFile(os.path.join(icon_dir, '256x256.png'), QtCore.QSize(256,256))
     app.setWindowIcon(app_icon)

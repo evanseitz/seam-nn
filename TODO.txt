@@ -165,52 +165,25 @@ Documentation:
 - GUI Class:
     - GUI requires 'matplotlib==3.6.0', which is in conflict with scipy dendrogram plot
     - PWM bits are not correct (should be max 2, not 4)
-    - MSM window: boxplots of y values in margin or separate window
-    - P1: if no manifold, n/a plots on P2 and P3
     - Save a page of individual logos to figure from a given cluster (popup window with start/stop option)
     - if no points selected, clear and show warning box
-    - P2: “adaptive” and “fixed”
     - P2/P3: statistics window needs correct toolbar readouts
     - P1: “First row”, “consensus”, “custom”, “None”
-    - All axes: just show 0,25,50,75,100%
     - Redoing cluster folder on P1 (while hist shown on P2) results in overlapping plots on P2
-    - Drop duplicates
-    - Put {attribution method} (e.g., DeepSHAP) in all /clusters filenames
     - Box plots for y vs clusters in MSM margin or sub-window
-    - P3 logos still vertically squished
-    - Disable dark mode
     - Re-assert “Drawing order” after changing “Color Map” on P2
     - Toolbars: save with tight layout
     - Go to WT cluster (i.e., first row of ‘all clusters.csv’)
-    - Check accuracy of delta H calculation (error?)
-    - Plot_clusters_matches_2d_gui:
-        - Impress: delta=True in GUI; alphabet; “r” (mutation rate)
-    - GUI marginal window needs “Entropy difference” option
     - MSM: option to map SEAM coordinates to new number (e.g., chr1:A-B)
     - Save mismatch table in Marginal Window of GUI; popup window showing location of saved file
-    - Option to rank MSM by median y value (if pre-sort is not selected)
-    - “Show boxplots” button
-    - P3: up and down toggle arrows for “choose cluster”
-    - P3: render and save logo on the fly (if missing)
-    - Ability to switch between hierarchical cut levels on the fly
-    - For public release, make sure all examples have all logos (fixed, etc.)
     - Update P3 UMAP when Custom.plt_step is changed on P2 (needs to update Predef.cluster_colors)
     - New tab to merge clusters and label them (e.g., AP-1, etc)
         - Visualize state vs. TFBS presence graph
     - Instructions to install Matplotlib==3.6 (or fix errors)
-    - Write .md manual
-    - inputs: linkage and dropdown: {number of clusters, cut level}
-    - sort: {None, median} with tooltip
     - pop up box to view dendrogram
-    - remove all old logo methods and replace with BatchLogo
-    - input alphabet: DNA, RNA, Protein, Custom, Automate?
     - youtube tutorial
-    - inputs need to be straight from local script; i.e., no crop params in gui
-    - CLI agruments for bypassing first page, or load last project option
-    - help menu (link to tutorial, github, readthedocs)
+    - Write .md manual
     - copy rows in Tables to clipboard
-    - P2: adaptive, fixed, custom y-axis
-    - P3: All clusters tab --> clusters vs. attribution errors
     - load GUI without embedding (just cluster); show N/A on embedding plots, etc.
     - marginals() --> x_skip, y_skip; c_skip missing positional skip...
 
@@ -222,6 +195,7 @@ Documentation:
 
 - Old code:
     - speed up all processes with new backend, and add readme
+    - remove unneeded code from logomaker_batch folder
 
 
 - Other:
