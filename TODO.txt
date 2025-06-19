@@ -164,7 +164,6 @@ Documentation:
 
 - GUI Class:
     - GUI requires 'matplotlib==3.6.0', which is in conflict with scipy dendrogram plot
-    - PWM bits are not correct (should be max 2, not 4)
     - Save a page of individual logos to figure from a given cluster (popup window with start/stop option)
     - if no points selected, clear and show warning box
     - P2/P3: statistics window needs correct toolbar readouts
@@ -179,13 +178,15 @@ Documentation:
     - Update P3 UMAP when Custom.plt_step is changed on P2 (needs to update Predef.cluster_colors)
     - New tab to merge clusters and label them (e.g., AP-1, etc)
         - Visualize state vs. TFBS presence graph
-    - Instructions to install Matplotlib==3.6 (or fix errors)
     - pop up box to view dendrogram
     - youtube tutorial
     - Write .md manual
     - copy rows in Tables to clipboard
     - load GUI without embedding (just cluster); show N/A on embedding plots, etc.
     - marginals() --> x_skip, y_skip; c_skip missing positional skip...
+    - add option to plot embedding (from other method) with labels defined by linkage-based clusters
+    - allow option to preprocess Enrichment and PWM logos on the fly (P3 dialog box)
+    - Imports widget for Psi 1 and Psi 2?
 
 
 - Wrapper:

@@ -45,21 +45,12 @@ from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as Navigatio
 from matplotlib.figure import Figure
 import matplotlib.path as pltPath
 import matplotlib.pyplot as plt
-#import matplotlib as mpl
-#import matplotlib.gridspec as gridspec
-#import matplotlib.patches as mpatches
-#from matplotlib.patches import PathPatch
-#from matplotlib.colors import Normalize, TwoSlopeNorm
 from matplotlib.ticker import MaxNLocator # integer ticks
-#from pylab import loadtxt
 import pandas as pd
 from Bio import motifs # 'pip install biopython'
 from scipy import spatial # 'pip install scipy'
-#from scipy.spatial import distance
-#from scipy.cluster import hierarchy
-#import seaborn as sns # pip install seaborn
 from tqdm import tqdm
-if 1: # enable local SEAM imports
+if 1: # enable local SEAM imports TODO
     sys.path.insert(0, os.path.abspath('.'))
     from logomaker_batch.batch_logo import BatchLogo
     from clusterer import Clusterer
@@ -112,6 +103,8 @@ class Imports(QtWidgets.QWidget):
     current_tab = 0
     cluster_col = 'Cluster'
     cluster_sort_method = 'Median activity'  # Store selected cluster sorting method
+    psi_1 = 0
+    psi_2 = 1
     linkage = None  # Store linkage matrix if loaded
     batch_logo_instances = {}  # Store BatchLogo instances for each cluster and scale type
     batch_logo_type = 'average'  # Type of logo to generate: 'average', 'pwm', 'enrichment'
@@ -1804,7 +1797,9 @@ class Stats(QtWidgets.QMainWindow):
         self.ax2.set_xlim(self.ax3.get_xlim())
         # Attribution error analysis
         self.ax5 = self.figure.add_subplot(233)
-        self.ax5.set_ylabel('Attribution errors', fontsize=4)
+        self.ax5.set_ylabel('Individual attribution map'
+                            '\n'
+                            'deviationfrom cluster average', fontsize=4)
         self.ax5.tick_params(axis="x", labelsize=4)
         self.ax5.tick_params(axis="y", labelsize=4)
 
@@ -1905,47 +1900,66 @@ class Predef(QtWidgets.QWidget):
         }
         gui_type = self.entry_logostyle.currentText().lower()
         logo_type = logo_type_map.get(gui_type, 'average')
-        scale_type = 'adaptive' if self.entry_yscale.currentText() == 'Adaptive y-axis' else 'fixed'
-        logo_key = (cluster_id, logo_type, scale_type)
+        logo_key = (cluster_id, logo_type)
 
         if logo_key not in Imports.batch_logo_instances:
-            print(f"Warning: No preprocessed logo found for cluster {cluster_id} with type {logo_type} and scale {scale_type}")
+            print(f"Warning: No preprocessed logo found for cluster {cluster_id} with type {logo_type}")
             self.logo_ax.clear()
             self.logo_ax.axis('off')
             self.logo_canvas.draw()
             return
 
         batch_logo = Imports.batch_logo_instances[logo_key]
+        
+        # Determine if we should use fixed y-axis limits
+        use_fixed_ylim = self.entry_yscale.currentText() == 'Fixed y-axis'
 
         # Remove the old logo_canvas from the layout
         parent_layout = self.logo_canvas.parent().layout()
         parent_layout.removeWidget(self.logo_canvas)
         self.logo_canvas.setParent(None)
 
-        # Use stored initial size or get it from the canvas if not set
-        if Predef.initial_logo_size is None:
-            width = self.logo_canvas.width() / self.logo_canvas.devicePixelRatioF()
-            height = self.logo_canvas.height() / self.logo_canvas.devicePixelRatioF()
-            # Make the logo wider by increasing width by 50%
-            width = width * 1.5
-            Predef.initial_logo_size = (width, height)
-        else:
-            width, height = Predef.initial_logo_size
+        # Use consistent figure size to prevent layout shifting
+        figsize = (20, 1.5)  # Use a wider, shorter size for better proportions
 
-        # Create a new figure and canvas for the logo
-        fig, ax = batch_logo.draw_single(
-            0,
-            fixed_ylim=False,
-            border=False,
-            figsize=(max(width / 100, 2), max(height / 100, 0.5))  # 100 dpi, with minimums
-        )
+        # Create figure manually to avoid tight_layout
+        fig, ax = plt.subplots(figsize=figsize)
         
-        # Modify y-axis to only show maximum value
-        yticks = ax.get_yticks()
-        if len(yticks) > 0:
-            ax.set_yticks([yticks[-1]])  # Only show the maximum value
+        # Draw the logo directly without calling draw_single (which calls tight_layout)
+        batch_logo._draw_single_logo(ax, batch_logo.processed_logos[0], fixed_ylim=use_fixed_ylim, border=False)
         
-        ax.set_ylabel('Cluster avg.  ')
+        # Enable tight_layout now that we've removed problematic y-axis labels
+        fig.set_tight_layout(True)
+        
+        # Set y-axis limits based on user selection
+        if use_fixed_ylim:
+            # Use pre-calculated global y-axis limits
+            if hasattr(Imports, 'global_y_min') and hasattr(Imports, 'global_y_max'):
+                ax.set_ylim(Imports.global_y_min, Imports.global_y_max)
+                # Set single tick at the top with the value
+                ax.set_yticks([Imports.global_y_max])
+                ax.set_yticklabels([f'{Imports.global_y_max:.2f}'])
+            else:
+                # Fallback to default limits if not calculated
+                ax.set_ylim(-1.0, 1.0)
+                # Set single tick at the top with the value
+                ax.set_yticks([1.0])
+                ax.set_yticklabels(['1.00'])
+        else:
+            # For adaptive scaling, calculate the max value from the current logo
+            yticks = ax.get_yticks()
+            if len(yticks) > 0:
+                adaptive_max = yticks[-1]
+                # Set single tick at the top with the value
+                ax.set_yticks([adaptive_max])
+                ax.set_yticklabels([f'{adaptive_max:.2f}'])
+            else:
+                # Fallback if no ticks available
+                ax.set_yticks([])
+                ax.set_yticklabels([])
+        
+        # Remove y-axis label since we're using tick labels
+        ax.set_ylabel('Cluster avg.    ')
         
         # Add coordinate tracking to the logo axis
         def logo_format_coord(x, y):
@@ -2083,30 +2097,15 @@ class Predef(QtWidgets.QWidget):
             gui_type = Predef.entry_logostyle.currentText().lower()
             Imports.batch_logo_type = logo_type_map.get(gui_type, 'average')
             
-            # Clear logo cache for this cluster if it exists
-            if Predef.cluster_idx != '':
-                # Remove all cached logos for this cluster
-                keys_to_remove = [k for k in Imports.batch_logo_instances.keys() 
-                                if k[0] == int(Predef.cluster_idx)]
-                for k in keys_to_remove:
-                    del Imports.batch_logo_instances[k]
-                
-                # Update logo display
-                self.update_logo()
+            # The update_logo() function will handle missing logos gracefully
+            self.update_logo()
 
         def choose_yscale():
             """Handle changes in y-axis scale selection"""
             scale_type = 'adaptive' if Predef.entry_yscale.currentText() == 'Adaptive y-axis' else 'fixed'
-            if scale_type != Predef.batch_logo_yscale:
-                Predef.batch_logo_yscale = scale_type
-                # Clear logo cache for this cluster if it exists
-                if Predef.cluster_idx != '':
-                    # Remove all cached logos for this cluster
-                    keys_to_remove = [k for k in Imports.batch_logo_instances.keys() 
-                                    if k[0] == int(Predef.cluster_idx)]
-                    for k in keys_to_remove:
-                        del Imports.batch_logo_instances[k]
-                
+            if scale_type != Imports.batch_logo_yscale:
+                Imports.batch_logo_yscale = scale_type
+                # No need to clear cache since logos are pre-generated for both scale types
                 self.update_logo()  # Update logo with new scale type
 
         def highlight_cluster(): # TODO is this needed?
@@ -2270,12 +2269,8 @@ class Predef(QtWidgets.QWidget):
                 self.ax.get_xaxis().set_ticks([])
                 self.ax.get_yaxis().set_ticks([])
                 self.ax.set_title('Click on a cluster to view its logo', fontsize=5)
-                try:
-                    self.ax.set_xlabel(r'$\mathrm{\Psi}$%s' % int(Imports.clusters['Psi1'][0]+1), fontsize=6)
-                    self.ax.set_ylabel(r'$\mathrm{\Psi}$%s' % int(Imports.clusters['Psi2'][0]+1), fontsize=6)
-                except:
-                    self.ax.set_xlabel(r'$\mathrm{\Psi}$%s' % 0, fontsize=6)
-                    self.ax.set_ylabel(r'$\mathrm{\Psi}$%s' % 1, fontsize=6)
+                #self.ax.set_xlabel(r'$\mathrm{\Psi}$%s' % int(Imports.psi_1+1), fontsize=6) TODO - weird cropping
+                #self.ax.set_ylabel(r'$\mathrm{\Psi}$%s' % int(Imports.psi_2+1), fontsize=6) TODO
                 self.ax.autoscale()
                 self.ax.margins(x=0)
                 self.ax.margins(y=0)
@@ -2393,10 +2388,26 @@ class AllStats(QtWidgets.QMainWindow):
         col = int(np.floor(x))
         row = AllStats.reordered_ind[int(np.floor(y))]
         val = AllStats.revels.iloc[int(np.floor(y))][col]
+        
+        # Calculate median activity for the cluster
+        if hasattr(Imports, 'meta_explainer') and Imports.meta_explainer is not None:
+            # Get the original cluster index if sorting is used
+            if Imports.meta_explainer.cluster_order is not None:
+                original_cluster_idx = Imports.meta_explainer.cluster_order[int(np.floor(y))]
+            else:
+                original_cluster_idx = int(np.floor(y))
+            
+            # Get sequences in this cluster and calculate median DNN score
+            cluster_seqs = Imports.meta_explainer.mave[Imports.meta_explainer.mave['Cluster'] == original_cluster_idx]
+            median_activity = cluster_seqs['DNN'].median()
+            median_str = f', median activity={median_activity:.2f}'
+        else:
+            median_str = ''
+        
         if Predef.df_col == 'Reference' or Predef.df_col == 'Consensus':
-            return f'cluster={row:1.0f}, position={col:1.0f}, value={val:1.1f}%'
+            return f'cluster={row:1.0f}, position={col:1.0f}, value={abs(val):1.1f}%{median_str}'
         elif Predef.df_col == 'Entropy':
-            return f'cluster={row:1.0f}, position={col:1.0f}, value={val:1.2f} bits'
+            return f'cluster={row:1.0f}, position={col:1.0f}, value={abs(val):1.2f} bits{median_str}'
         
     def reset(self):
         try:
@@ -2444,7 +2455,7 @@ class AllStats(QtWidgets.QMainWindow):
                 AllStats.col = int(np.floor(float(ix)))
                 AllStats.row = AllStats.reordered_ind[int(np.floor(float(iy)))]
                 val = AllStats.revels.iloc[int(np.floor(iy))][AllStats.col]
-                AllStats.val = f'{val:1.1f}%'
+                AllStats.val = f'{abs(val):1.1f}%'
                 self.open_cell_window()
 
     def closeEvent(self, ce): # activated when user clicks to exit via subwindow button
@@ -2502,7 +2513,12 @@ class Cell(QtWidgets.QMainWindow):
         self.ax.xaxis.set_major_locator(MaxNLocator(integer=True))
 
         for k in Predef.clusters_idx:
-            k_idxs =  Imports.mave.loc[Imports.mave['Cluster'] == AllStats.row].index
+            # Use reverse mapping to convert original cluster index to remapped index
+            if Imports.cluster_reverse_mapping is not None:
+                remapped_cluster_idx = Imports.cluster_reverse_mapping[AllStats.row]
+            else:
+                remapped_cluster_idx = AllStats.row
+            k_idxs = Imports.mave.loc[Imports.mave['Cluster'] == remapped_cluster_idx].index
 
         seqs = Imports.mave['Sequence'].str.slice(Imports.seq_start, Imports.seq_stop)
         seqs_cluster = seqs[k_idxs]
@@ -2968,7 +2984,6 @@ class MainWindow(QtWidgets.QMainWindow):
             #    total_height = Predef.splitter.height()
             #    Predef.splitter.setSizes([max(total_height - min_bot, 0), min_bot])
 
-
             tab2 = self.findChild(QtWidgets.QTabWidget).widget(2) # moved from within linkage_selected below
             tab2.ax.clear()
 
@@ -3061,8 +3076,8 @@ class MainWindow(QtWidgets.QMainWindow):
                                                cmap='tab10',
                                                linewidth=Custom.plt_lw)
 
-                tab2.ax.set_xlabel(r'$\mathrm{\Psi}$%s' % 0, fontsize=6)
-                tab2.ax.set_ylabel(r'$\mathrm{\Psi}$%s' % 1, fontsize=6)
+                #tab2.ax.set_xlabel(r'$\mathrm{\Psi}$%s' % int(Imports.psi_1+1), fontsize=6) TODO - weird cropping
+                #tab2.ax.set_ylabel(r'$\mathrm{\Psi}$%s' % int(Imports.psi_2+1), fontsize=6) TODO
                 tab2.ax.tick_params(axis='both', which='major', labelsize=4)
                 tab2.ax.get_xaxis().set_ticks([])
                 tab2.ax.get_yaxis().set_ticks([])
@@ -3145,30 +3160,63 @@ class MainWindow(QtWidgets.QMainWindow):
             if meta.cluster_order is not None:
                 # Create mapping from original cluster indices to sorted positions
                 cluster_mapping = {old_idx: new_idx for new_idx, old_idx in enumerate(meta.cluster_order)}
+                # Store reverse mapping for Cell class lookup (original -> remapped)
+                Imports.cluster_reverse_mapping = cluster_mapping
                 # Remap cluster assignments
                 Imports.clusters[Imports.cluster_col] = Imports.clusters[Imports.cluster_col].map(cluster_mapping)
                 # Update mave DataFrame cluster assignments
                 Imports.mave['Cluster'] = Imports.mave['Cluster'].map(cluster_mapping)
+            else:
+                # No sorting, so no mapping needed
+                Imports.cluster_reverse_mapping = None
             
             # Create BatchLogo instances for each cluster from meta logos
             for cluster_idx in range(len(unique_clusters)):
-                for scale_type in ['adaptive', 'fixed']:
-                    logo_key = (cluster_idx, Imports.batch_logo_type, scale_type)
-                    batch_logo = BatchLogo(
-                        values=meta_logos.values[cluster_idx:cluster_idx+1],
-                        alphabet=Imports.alphabet,
-                        figsize=(10, 2.5),
-                        batch_size=1,
-                        font_name='Arial Rounded MT Bold',
-                        fade_below=0.5,
-                        shade_below=0.5,
-                        width=0.9,
-                        center_values=True,
-                        show_progress=False,
-                        y_min_max=None if scale_type == 'adaptive' else [-2, 2]
-                    )
-                    batch_logo.process_all()
-                    Imports.batch_logo_instances[logo_key] = batch_logo            
+                logo_key = (cluster_idx, Imports.batch_logo_type)
+                batch_logo = BatchLogo(
+                    values=meta_logos.values[cluster_idx:cluster_idx+1],
+                    alphabet=Imports.alphabet,
+                    figsize=(10, 2.5),
+                    batch_size=1,
+                    font_name='Arial Rounded MT Bold',
+                    fade_below=0.5,
+                    shade_below=0.5,
+                    width=0.9,
+                    center_values=True,
+                    show_progress=False
+                )
+                batch_logo.process_all()
+                Imports.batch_logo_instances[logo_key] = batch_logo
+            
+            # Calculate global y-axis limits for fixed scaling
+            y_mins = []
+            y_maxs = []
+            
+            for cluster_idx in range(len(unique_clusters)):
+                logo_key = (cluster_idx, Imports.batch_logo_type)
+                if logo_key in Imports.batch_logo_instances:
+                    batch_logo = Imports.batch_logo_instances[logo_key]
+                    matrix = batch_logo.values[0]  # Shape: (seq_length, alphabet_size)
+                    
+                    # Calculate positive and negative sums at each position
+                    positive_mask = matrix > 0
+                    positive_matrix = matrix * positive_mask
+                    positive_sums = positive_matrix.sum(axis=1)
+                    
+                    negative_mask = matrix < 0
+                    negative_matrix = matrix * negative_mask
+                    negative_sums = negative_matrix.sum(axis=1)
+                    
+                    y_mins.append(negative_sums.min())
+                    y_maxs.append(positive_sums.max())
+            
+            if y_mins and y_maxs:
+                Imports.global_y_min = min(y_mins)
+                Imports.global_y_max = max(y_maxs)
+            else: # TODO - will this ever happen?
+                Imports.global_y_min = -1.0
+                Imports.global_y_max = 1.0
+            
             # Generate Mechanism Summary Matrix (MSM) for AllStats
             print("Generating Mechanism Summary Matrix...")
             Predef.df = meta.generate_msm(gpu=False)
@@ -3212,6 +3260,8 @@ class MainWindow(QtWidgets.QMainWindow):
             tab2.btn_view_cluster.click()
             # Update embedding plot to reflect cluster 0 is selected
             tab2.canvas.draw() # TODO - only if embedding selected?
+
+            print('Processing complete.')
 
         else:
             box = QMessageBox(self)
