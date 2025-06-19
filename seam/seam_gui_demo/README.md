@@ -5,9 +5,9 @@ This demo requires four files derived using the SQUID/SEAM API based on the Deep
 ## Required Files
 
 - **MAVE dataset** - [Download MAVE dataset](https://drive.google.com/file/d/1YcItpu1zSkO2m7LVwkuZdcrmlmJLR3gJ/view?usp=sharing)
-- **Attribution maps (DeepSHAP)** - [Download attribution maps](https://drive.google.com/file/d/1jWShhFzBhxJ22DUNxjDIVFOrzuf-7i0P/view?usp=sharing)
-- **Embedding (UMAP)** - [Download UMAP embedding](https://drive.google.com/file/d/1pk1UQ5-HE2thrYTqGyJ2nFGVpIC-lBHU/view?usp=sharing)
-- **Linkage (Hierarchical clustering with Ward's linkage)** - [Download linkage data](https://drive.google.com/file/d/1Qqc6FOBq4C31TiMekTXxvati3XNSWTaN/view?usp=sharing)
+- **Attribution maps** - [Download attribution maps](https://drive.google.com/file/d/1jWShhFzBhxJ22DUNxjDIVFOrzuf-7i0P/view?usp=sharing)
+- **Embedding** - [Download UMAP embedding](https://drive.google.com/file/d/1pk1UQ5-HE2thrYTqGyJ2nFGVpIC-lBHU/view?usp=sharing)
+- **Linkage** - [Download linkage data](https://drive.google.com/file/d/1Qqc6FOBq4C31TiMekTXxvati3XNSWTaN/view?usp=sharing)
 
 Download these files using the links above and place them in the current directory before running the GUI demo.
 
