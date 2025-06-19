@@ -748,7 +748,7 @@ class MetaExplainer:
             return {'cmap': 'rocket_r', 'norm': None, 'label': 'Entropy (bits)'}
         
         return {
-            'cmap': 'viridis_r' if column == 'Reference' else 'rocket', #Blues_r for dark blue background
+            'cmap': 'viridis' if column == 'Reference' else 'rocket', #Blues_r for dark blue background
             'norm': None,
             'label': 'Percent mismatch' if column == 'Reference' else 'Percent match'
         }

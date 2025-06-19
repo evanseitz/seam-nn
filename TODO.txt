@@ -1,59 +1,37 @@
 TODO:
 
 - examples
-    - example for figure 1 should also mention all supplementary figures associated with it (Covariance, etc.)
-    - note that DeepSHAP takes about an hour for 100,000 sequences (DeepSTARR), so other methods used in examples
-    - update deepstarr_local.rst to mirror most recent Colab
-    - one global example using GIA coloring
-    - PCA/K-means version of 'Local library to annotate all TFBSs and biophysical states
-    - both:
-        - put random seeds on all mut_generators and rerun
-        - DeepSTARR 3-way mutation figure reproduced
-            - compare to SQUID pairwise
-            - repeat all slides from first SCQB presentation
-                - all_maps_average_y_adaptive.png / all_maps_average_y_fixed.png
-            - need section at end to dynamically understand MSM for a given cluster
-        - REVO? BEAM?
-        - ChromBPNet
-            - Promoter
-            - Enhancer with umap?
-        - CLIPNET
-            - PIK3R3?
-        - ProCapNet (Captum?)
+    - Pre-release
+        - Missing save outputs: all_maps_average_y_adaptive.png / all_maps_average_y_fixed.png
+        - TypeError: draw_variability_logo() got an unexpected keyword argument 'border'
+        - example for figure 1 should also mention all supplementary figures associated with it (Covariance, etc.)
+        - note that DeepSHAP takes about an hour for 100,000 sequences (DeepSTARR), so other methods used in examples
+        - update deepstarr_local.rst to mirror most recent Colab
+        - folder name specification: e.g., "kmeans_k200" for 200 clusters
+        - all colabs with:
+            - font_name='Arial', font_weight='bold', fade_below=0.5, shade_below=0.5, width=0.9,
+            - mutation seed
+        - one logo generator (in standalone function) for examples
+    - Post-release
+        - PCA/K-means version of Local library to annotate all TFBSs and biophysical states
+        - REVO / BEAM
+        - CLIPNET Python example
+            - PIK3R3
+        - ProCapNet Python example (Captum)
             - profiles
             - background
-    - local:
-        - Replicate global Colabs into Python scripts
-        - folder name specification: e.g., "kmeans_k200" for 200 clusters
-        - SpliceAI example
-    - colab:
-        - interactive MSM viewer
-        - change one of the examples to use PCA instead of hierarchical?
-        - update all colab examples: font_name='Arial Rounded MT Bold', fade_below=0.5, shade_below=0.5, width=0.9
-
-
-- plotting:
-    - Missing save outputs:
-        - all_maps_average_y_adaptive.png / all_maps_average_y_fixed.png
-    - TypeError: draw_variability_logo() got an unexpected keyword argument 'border'
-
 
 
 - SQUID:
-    - add copies of all colab tutorials (with import versions) to GitHub folder
-    - plot_y_hist() in impress.py needs option to set new axvline ref_idx or None
-    - handle larger pairwise matrices
-    - check why global seed is the only reason x_mut can be preserved
-        - add option to input pre-generated x_mut
-        - add option to skip inference (y_mut = None) -> is this already in place?
-    - backup SQUID Colabs on github
-
-
-- CLIPNET:
-    - Run on: 
-        - PIK3CA: 
-            - most commonly mutated proto-oncogene (mutated in 13% of cancers)
-        - TERT
+    - Pre-release
+        - move SQUID Mutagenizer into SEAM API
+    - Post-release
+        - add copies of all colab tutorials (with import versions) to GitHub folder
+        - plot_y_hist() in impress.py needs option to set new axvline ref_idx or None
+        - handle larger pairwise matrices
+        - check why global seed is the only reason x_mut can be preserved
+            - add option to input pre-generated x_mut
+            - add option to skip inference (y_mut = None) -> is this already in place?
 
 
 Documentation:
@@ -71,6 +49,8 @@ Documentation:
 
 
 - Compiler:
+    - Pre-release:
+        - change ‘DNN’ to ‘Activity’ in mave.csv
     - Post-release:
         - SEAM utils calls
         - Move hamming distance calculation to SEAM utils?
@@ -171,11 +151,16 @@ Documentation:
         - Online:
             - Youtube tutorial
             - Write .md manual
+            - Blog post
         - MSM -> CSM (frontend and backend); pip, check Colabs, etc.
+            - also change AllStats() to CSM()
         - check all "TODO"
         - turn off 'if 1:' for local imports
 
     - Post-release:
+        - Help docs for tab 3 (talk about embedding/linkage differences)
+        - File structure checks on tab 1 (remove from processing step)
+            - load data during processing (not upon file import)
         - MSM: option to map SEAM coordinates to new number (e.g., chr1:A-B)
         - Save mismatch table in Marginal Window of GUI; popup window showing location of saved file
         - Update P3 UMAP when Custom.plt_step is changed on P2 (needs to update Predef.cluster_colors)
@@ -199,14 +184,19 @@ Documentation:
             - view a page of individual logos from a given cluster (popup window with start/stop option)
             - allow option to preprocess Enrichment and PWM logos on the fly (P3 dialog box)
             - print sequence indices button (or put it in the sequence table widget)
+            - variability logo
             - Backgrounds:
                 - show average background (button)
                 - intra-cluster backgrounds (per cluster, load like PWMs)
-                - store logos with and without background and allow to toggle like PWMs
                 - calculate k-mer frequences, etc?
         - Other windows:
             - copy rows in Tables to clipboard
             - marginals() --> x_skip, y_skip; c_skip missing positional skip...
+            - CSM:
+                - button to find/label cluster given input integer
+                - always label ref in y axis?
+        - Processing imports:
+            - refactor the MSM/statistics code to reuse already-generated logos (to reduce number of preprocessing steps)
 
 
 - Wrapper:
@@ -228,6 +218,7 @@ Documentation:
             - specifically shuffle region and re-compute preserved
         - view variability logo for each cluster
         - consistency across attribution methods
+    - CLIPNET: PIK3CA (most commonly mutated proto-oncogene; mutated in 13% of cancers), TERT
 
 
 - Zenodo:
@@ -244,3 +235,13 @@ Documentation:
     - upload to pypi:
         python -m build
         twine upload --skip-existing dist/*
+
+
+- Manuscript / figures:
+    - PIK3R3:
+        - SSM wrong color map
+        - Redo with adaptive scaling
+    - Chrombpnet: 
+        - cite old zenodo (not new)
+        - for profile DeepSHAP, see me chrombpnet methods
+

@@ -763,7 +763,7 @@ class Imports(QtWidgets.QWidget):
         self.mark_imports_changed()
 
     def load_clusters_or_linkage(self):
-        Imports.linkage_fname = QFileDialog.getOpenFileName(self, 'Choose cluster or linkage file', '', 'All files (*.npy)')[0]
+        Imports.linkage_fname = QFileDialog.getOpenFileName(self, 'Choose linkage file', '', 'All files (*.npy)')[0]
         if not Imports.linkage_fname:
             # User cancelled - reset entry widget
             self.entry_linkage.setDisabled(False)
@@ -787,18 +787,25 @@ class Imports(QtWidgets.QWidget):
             self.has_clusters = True
             # Enable cluster subwidgets for linkage matrix
             self.update_cluster_subwidgets_state(True)
-        # Otherwise array is a cluster labels array # TODO
         else:
+            # Not a valid linkage matrix - show error and reset
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Warning)
+            box.setText('<b>Invalid Linkage File</b>')
+            box.setFont(font_standard)
+            box.setStandardButtons(QMessageBox.Ok)
+            box.setInformativeText('Linkage file must contain a 2D array with 4 columns (linkage matrix).\nShape should be (N-1, 4) where N is the number of sequences.')
+            reply = box.exec_()
+            
+            # Reset entry widget
+            self.entry_linkage.setDisabled(False)
+            self.entry_linkage.setText('Filename')
+            self.entry_linkage.setDisabled(True)
+            self.has_clusters = False
+            self.update_cluster_subwidgets_state(False)
+            Imports.btn_process_imports.setDisabled(True)
+            Imports.linkage_fname = ''
             Imports.linkage = None
-            Imports.clusters = pd.DataFrame({'Cluster': arr})
-            self.has_clusters = True
-            # For cluster labels, only enable sorting (not cutting controls)
-            self.label_cut_criterion.setEnabled(False)
-            self.combo_cut_criterion.setEnabled(False)
-            self.label_cut_param.setEnabled(False)
-            self.spin_cut_param.setEnabled(False)
-            self.label_linkage_sort_method.setEnabled(True)
-            self.combo_linkage_sort_method.setEnabled(True)
 
         # Mark imports as changed
         self.mark_imports_changed()
@@ -1866,7 +1873,13 @@ class Stats(QtWidgets.QMainWindow):
             self.ax1.set_xlim(0,1)
             self.ax1.set_ylim(0,1)
             self.ax1.text(.5, .5, 'N/A', horizontalalignment='center', verticalalignment='center')
-        self.ax1.set_title('Cluster', fontsize=6)
+        
+        # Set title based on tab
+        if Imports.current_tab == 1:
+            self.ax1.set_title('Custom cluster', fontsize=6)
+        elif Imports.current_tab == 2:
+            self.ax1.set_title('Cluster %s' % self.predef.cluster_idx, fontsize=6)
+        
         self.ax1.set_xlabel('Position', fontsize=4)
         self.ax1.set_ylabel('Reference sequence'
                             '\n'
@@ -1883,7 +1896,13 @@ class Stats(QtWidgets.QMainWindow):
             pos_freqs = np.diagonal(np.eye(len(consensus_seq))*consensus_oh.dot(np.array(pd.DataFrame(Custom.pfm_cluster)).T))
         elif Imports.current_tab == 2:
             pos_freqs = np.diagonal(np.eye(len(consensus_seq))*consensus_oh.dot(np.array(pd.DataFrame(self.predef.pfm_cluster)).T))
-        self.ax4.set_title('Cluster', fontsize=6)
+        
+        # Set title based on tab
+        if Imports.current_tab == 1:
+            self.ax4.set_title('Custom cluster', fontsize=6)
+        elif Imports.current_tab == 2:
+            self.ax4.set_title('Cluster %s' % self.predef.cluster_idx, fontsize=6)
+        
         self.ax4.set_xlabel('Position', fontsize=4)
         self.ax4.set_ylabel('Per-cluster consensus'
                             '\n'
@@ -1896,8 +1915,8 @@ class Stats(QtWidgets.QMainWindow):
         self.ax4.xaxis.set_major_locator(MaxNLocator(integer=True))
         # Distribution of scores in background
         self.ax3 = self.figure.add_subplot(235)
-        self.ax3.set_title('Background', fontsize=6)
-        self.ax3.set_xlabel('DNN scores', fontsize=4)
+        self.ax3.set_title('Sequences in library', fontsize=6)
+        self.ax3.set_xlabel('Activity', fontsize=4)
         self.ax3.set_ylabel('Frequency', fontsize=4)
         self.ax3.tick_params(axis="x", labelsize=4)
         self.ax3.tick_params(axis="y", labelsize=4)
@@ -1910,8 +1929,14 @@ class Stats(QtWidgets.QMainWindow):
                 pass
         # Frequency of scores in cluster
         self.ax2 = self.figure.add_subplot(232)
-        self.ax2.set_title('Cluster', fontsize=6)
-        self.ax2.set_xlabel('DNN scores', fontsize=4)
+        
+        # Set title based on tab
+        if Imports.current_tab == 1:
+            self.ax2.set_title('Sequences in custom cluster', fontsize=6)
+        elif Imports.current_tab == 2:
+            self.ax2.set_title('Sequences in cluster %s' % self.predef.cluster_idx, fontsize=6)
+        
+        self.ax2.set_xlabel('Activity', fontsize=4)
         self.ax2.set_ylabel('Frequency', fontsize=4)
         self.ax2.tick_params(axis="x", labelsize=4)
         self.ax2.tick_params(axis="y", labelsize=4)
@@ -1920,11 +1945,12 @@ class Stats(QtWidgets.QMainWindow):
         elif Imports.current_tab == 2:
             self.ax2.hist(Imports.mave['DNN'][self.predef.k_idxs], bins=100)    
         self.ax2.set_xlim(self.ax3.get_xlim())
+        
         # Attribution error analysis
         self.ax5 = self.figure.add_subplot(233)
         self.ax5.set_ylabel('Individual attribution map'
                             '\n'
-                            'deviationfrom cluster average', fontsize=4)
+                            'deviation from cluster average', fontsize=4)
         self.ax5.tick_params(axis="x", labelsize=4)
         self.ax5.tick_params(axis="y", labelsize=4)
 
@@ -1959,7 +1985,15 @@ class Stats(QtWidgets.QMainWindow):
         boxplot = self.ax5.boxplot(all_singles.values(), showfliers=False, widths=widths,  # default width=0.15
                                    #showmeans=True, meanprops=flierprops,
                                    medianprops={'linestyle': None, 'linewidth': 0}) 
-        self.ax5.set_xticks([1, 2], ['Cluster', 'Background'], fontsize=5, ha='center')
+        if Imports.current_tab == 1:
+            cluster_label = 'Custom cluster'
+        elif Imports.current_tab == 2:
+            cluster_label = f'Cluster {self.predef.cluster_idx}'
+        
+        if Imports.maps_bg_on is True:
+            self.ax5.set_xticks([1, 2], [cluster_label, 'Background'], fontsize=5, ha='center')
+        else:
+            self.ax5.set_xticks([1], [cluster_label], fontsize=5, ha='center')
         for median in boxplot['medians']:
             median.set_color('black')
         pts_cluster = np.random.normal(1, 0.015*3, size=len(errors_cluster)) # 0.015 per 0.15 boxplot width
@@ -1994,6 +2028,7 @@ class Predef(QtWidgets.QWidget):
     widget_bot_ref = None  # Store reference to widget_bot for splitter sizing
     original_logo_xlim = None  # Store original x-axis limits for home button
     original_logo_ylim = None  # Store original y-axis limits for home button
+    show_background_separated = False  # Track background separation checkbox state
 
     def update_logo(self):
         """Update the logo display based on current cluster and settings"""
@@ -2025,7 +2060,12 @@ class Predef(QtWidgets.QWidget):
         }
         gui_type = self.entry_logostyle.currentText().lower()
         logo_type = logo_type_map.get(gui_type, 'average')
-        logo_key = (cluster_id, logo_type)
+        
+        # Determine logo key based on background separation setting
+        if Predef.show_background_separated:
+            logo_key = (cluster_id, f'{logo_type}_separated')
+        else:
+            logo_key = (cluster_id, logo_type)
 
         if logo_key not in Imports.batch_logo_instances:
             print(f"Warning: No preprocessed logo found for cluster {cluster_id} with type {logo_type}")
@@ -2058,8 +2098,15 @@ class Predef(QtWidgets.QWidget):
         
         # Set y-axis limits based on user selection
         if use_fixed_ylim:
-            # Use pre-calculated global y-axis limits
-            if hasattr(Imports, 'global_y_min') and hasattr(Imports, 'global_y_max'):
+            # Use pre-calculated global y-axis limits based on background separation setting
+            if Predef.show_background_separated and hasattr(Imports, 'global_y_min_separated') and hasattr(Imports, 'global_y_max_separated'):
+                # Use background-separated global limits
+                ax.set_ylim(Imports.global_y_min_separated, Imports.global_y_max_separated)
+                # Set single tick at the top with the value
+                ax.set_yticks([Imports.global_y_max_separated])
+                ax.set_yticklabels([f'{Imports.global_y_max_separated:.2f}'])
+            elif hasattr(Imports, 'global_y_min') and hasattr(Imports, 'global_y_max'):
+                # Use standard global limits
                 ax.set_ylim(Imports.global_y_min, Imports.global_y_max)
                 # Set single tick at the top with the value
                 ax.set_yticks([Imports.global_y_max])
@@ -2266,14 +2313,24 @@ class Predef(QtWidgets.QWidget):
         self.btn_seq_table.setAutoDefault(False)
         self.btn_seq_table.setToolTip('View all sequences in the current cluster.')
 
-        self.btn_seq_stats = QPushButton('Cluster Statistics')
-        self.btn_seq_stats.clicked.connect(open_stats_window)
-        self.btn_seq_stats.setDisabled(False)
-        self.btn_seq_stats.setDefault(False)
-        self.btn_seq_stats.setAutoDefault(False)
-        self.btn_seq_stats.setToolTip('View statistics based on sequences in the current cluster.')
+        self.btn_intra_stats = QPushButton('Intra-cluster Statistics')
+        self.btn_intra_stats.clicked.connect(open_stats_window)
+        self.btn_intra_stats.setDisabled(False)
+        self.btn_intra_stats.setDefault(False)
+        self.btn_intra_stats.setAutoDefault(False)
+        self.btn_intra_stats.setToolTip('View statistics based on sequences in the current cluster.')
 
-        Predef.btn_all_stats = QPushButton('Compare Clusters')
+        # Add Cluster activities button
+        self.btn_inter_stats = QPushButton('Inter-cluster Statistics')
+        self.btn_inter_stats.clicked.connect(self.open_inter_stats_window)
+        self.btn_inter_stats.setDisabled(False)
+        self.btn_inter_stats.setDefault(False)
+        self.btn_inter_stats.setAutoDefault(False)
+        self.btn_inter_stats.setToolTip('View boxplot distribution of DNN predictions for all clusters.')
+        self.btn_inter_stats.setStyleSheet("padding-left: 16px; padding-right: 16px;")
+        self.btn_inter_stats.setMinimumHeight(self.btn_seq_table.sizeHint().height())
+
+        Predef.btn_all_stats = QPushButton('Cluster Summary Matrix (CSM)')
         Predef.btn_all_stats.clicked.connect(open_all_stats_window)
         Predef.btn_all_stats.setDisabled(False)
         Predef.btn_all_stats.setDefault(False)
@@ -2296,6 +2353,10 @@ class Predef(QtWidgets.QWidget):
         Predef.entry_logostyle.addItem('Sequence PWM')
         Predef.entry_logostyle.currentTextChanged.connect(choose_logostyle)
         Predef.entry_logostyle.setToolTip('Select the logo visualization scheme.')
+        
+        # Disable sequence-based logo options for now
+        Predef.entry_logostyle.setItemData(1, False, QtCore.Qt.UserRole - 1)  # Disable 'Sequence enrichment' TODO
+        Predef.entry_logostyle.setItemData(2, False, QtCore.Qt.UserRole - 1)  # Disable 'Sequence PWM' TODO
 
         Predef.entry_yscale = QComboBox(self)
         Predef.entry_yscale.addItem('Adaptive y-axis')
@@ -2303,6 +2364,18 @@ class Predef(QtWidgets.QWidget):
         Predef.entry_yscale.currentTextChanged.connect(choose_yscale)
         Predef.entry_yscale.setToolTip('Select the y-axis scaling used for rendering logos.')
 
+        # Background separation checkbox
+        Predef.label_bg_separation = QLabel('Separate background:')
+        Predef.label_bg_separation.setFont(font_standard)
+        Predef.label_bg_separation.setMargin(20)
+        Predef.checkbox_bg_separation = QCheckBox(self)
+        Predef.checkbox_bg_separation.setToolTip('Check to show background-separated logos (removes background signal).')
+        Predef.checkbox_bg_separation.setChecked(False)
+        Predef.checkbox_bg_separation.setVisible(False)  # Hidden by default
+        def toggle_background_separation():
+            Predef.show_background_separated = Predef.checkbox_bg_separation.isChecked()
+            self.update_logo()
+        Predef.checkbox_bg_separation.stateChanged.connect(toggle_background_separation)
 
         layout = QGridLayout()
         layout.setSizeConstraint(QGridLayout.SetMinimumSize)
@@ -2310,18 +2383,22 @@ class Predef(QtWidgets.QWidget):
         grid_top.addWidget(self.toolbar, 0, 0, 1, 12)
         grid_top.addWidget(self.canvas, 1, 0, 50, 12)
         grid_top.addWidget(self.logo_canvas, 51, 0, 1, 12, QtCore.Qt.AlignCenter)
-        grid_top.addWidget(self.line_L, 52, 0, 1, 3, QtCore.Qt.AlignVCenter)
-        grid_top.addWidget(self.btn_seq_table, 52, 3, 1, 2)
-        grid_top.addWidget(self.btn_seq_stats, 52, 5, 1, 2)
-        grid_top.addWidget(Predef.btn_all_stats, 52, 7, 1, 2)
-        grid_top.addWidget(self.line_R, 52, 9, 1, 3, QtCore.Qt.AlignVCenter)
+        grid_top.addWidget(self.line_L, 52, 0, 1, 2, QtCore.Qt.AlignVCenter)
+        grid_top.addWidget(self.btn_seq_table, 52, 2, 1, 2)
+        grid_top.addWidget(self.btn_intra_stats, 52, 4, 1, 2)
+        grid_top.addWidget(self.btn_inter_stats, 52, 6, 1, 2)
+        grid_top.addWidget(Predef.btn_all_stats, 52, 8, 1, 2)
+        grid_top.addWidget(self.line_R, 52, 10, 1, 2, QtCore.Qt.AlignVCenter)
         grid_bot = QGridLayout()
         grid_bot.addWidget(self.label_choose_cluster, 0, 0, 1, 1, QtCore.Qt.AlignRight)
-        grid_bot.addWidget(Predef.choose_cluster, 0, 1, 1, 1, QtCore.Qt.AlignCenter)
-        grid_bot.addWidget(QVLine(), 0, 2, 1, 2, QtCore.Qt.AlignCenter)
+        grid_bot.addWidget(Predef.choose_cluster, 0, 1, 1, 1, QtCore.Qt.AlignLeft)
+        grid_bot.addWidget(QVLine(), 0, 3, 1, 2, QtCore.Qt.AlignCenter) # TODO - weird spacing
+        grid_bot.addWidget(Predef.label_bg_separation, 0, 8, 1, 1, QtCore.Qt.AlignRight) # only visible in background-separated mode
+        grid_bot.addWidget(Predef.checkbox_bg_separation, 0, 9, 1, 1, QtCore.Qt.AlignLeft) # only visible in background-separated mode
         grid_bot.addWidget(self.label_display, 0, 10, 1, 1, QtCore.Qt.AlignRight)
         grid_bot.addWidget(self.entry_logostyle, 0, 11, 1, 1, QtCore.Qt.AlignCenter)
         grid_bot.addWidget(self.entry_yscale, 0, 12, 1, 1, QtCore.Qt.AlignLeft)
+
         
         widget_top = QWidget()
         widget_top.setLayout(grid_top)
@@ -2361,7 +2438,9 @@ class Predef(QtWidgets.QWidget):
                     self.cluster_idx = Imports.clusters[Imports.cluster_col][idx]
                     self.k_idxs =  np.array(Imports.clusters[Imports.cluster_col].loc[Imports.clusters[Imports.cluster_col] == self.cluster_idx].index)
                     self.num_seqs = len(self.k_idxs)
+                    self.choose_cluster.blockSignals(True) # prevent feedback loop
                     self.choose_cluster.setValue(self.cluster_idx)
+                    self.choose_cluster.blockSignals(False)
                 # Redraw and resize figure
                 self.ax.clear()
                 self.scatter = self.ax.scatter(self.pts_origX[::Custom.plt_step],
@@ -2403,6 +2482,16 @@ class Predef(QtWidgets.QWidget):
         self.dist = 9001
         self.onclick(None)
         self.clicked = True
+
+    def open_inter_stats_window(self):
+        global inter_stats_window
+        try:
+            inter_stats_window.close()
+        except:
+            pass
+        inter_stats_window = InterStats()
+        inter_stats_window.setMinimumSize(10, 10)
+        inter_stats_window.show()
 
 
 class AllStats(QtWidgets.QMainWindow):
@@ -2579,6 +2668,259 @@ class AllStats(QtWidgets.QMainWindow):
         tabs.setTabEnabled(1, True)
         tabs.setTabEnabled(2, True)
         Predef.btn_all_stats.setDisabled(False)
+
+
+class InterStats(QtWidgets.QMainWindow):
+    def __init__(self):
+        super(InterStats, self).__init__()
+        self.left = 10
+        self.top = 10
+
+        InterStats.figure = Figure(dpi=dpi, constrained_layout=True)
+        InterStats.figure.set_tight_layout(True)
+        InterStats.canvas = FigureCanvas(InterStats.figure)
+        self.toolbar = NavigationToolbar(self.canvas, self)
+        unwanted_buttons = ['Subplots']
+        for x in self.toolbar.actions():
+            if x.text() in unwanted_buttons:
+                self.toolbar.removeAction(x)
+        self.updateGeometry()
+        centralwidget = QWidget()
+        self.setCentralWidget(centralwidget)
+
+        layout = QGridLayout(centralwidget)
+        layout.setSizeConstraint(QGridLayout.SetMinimumSize) 
+        layout.addWidget(self.toolbar, 0, 0, 1, 10)
+        layout.addWidget(InterStats.canvas, 1, 0, 50, 10)
+
+        # Add controls for plot options
+        self.label_plot_type = QLabel('Plot type: ')
+        InterStats.combo_plot_type = QComboBox(self)
+        InterStats.combo_plot_type.addItem('Box plot')
+        InterStats.combo_plot_type.addItem('Bar plot')
+        
+        # Function to handle plot type changes and update metric state
+        def on_plot_type_changed():
+            current_metric = InterStats.combo_metric.currentText()
+            if InterStats.combo_plot_type.currentText() == 'Box plot':
+                # For box plots, remove occupancy option if it exists
+                if InterStats.combo_metric.count() > 1:
+                    InterStats.combo_metric.removeItem(1)
+                # If occupancy was selected, switch to prediction
+                if current_metric == 'Occupancy':
+                    InterStats.combo_metric.setCurrentIndex(0)
+            else:
+                # For bar plots, add occupancy option if it doesn't exist
+                if InterStats.combo_metric.count() == 1:
+                    InterStats.combo_metric.addItem('Occupancy')
+                # Restore occupancy selection if it was previously selected
+                if current_metric == 'Occupancy':
+                    InterStats.combo_metric.setCurrentIndex(1)            
+            self.reset()
+        
+        InterStats.combo_plot_type.currentTextChanged.connect(on_plot_type_changed)
+        InterStats.combo_plot_type.setToolTip('Select the type of visualization for cluster statistics.')
+
+        self.label_metric = QLabel('Metric: ')
+        InterStats.combo_metric = QComboBox(self)
+        InterStats.combo_metric.addItem('Prediction')
+        # Don't add Occupancy initially since Box plot is default
+        InterStats.combo_metric.currentTextChanged.connect(self.reset)
+        InterStats.combo_metric.setToolTip('Select what to visualize (DNN predictions or cluster occupancy).')
+
+        self.label_show_ref = QLabel('Show reference: ')
+        InterStats.checkbox_show_ref = QCheckBox(self)
+        InterStats.checkbox_show_ref.setChecked(True)
+        InterStats.checkbox_show_ref.stateChanged.connect(self.reset)
+        InterStats.checkbox_show_ref.setToolTip('Highlight the reference sequence cluster if available.')
+
+        self.label_show_fliers = QLabel('Show outliers: ')
+        InterStats.checkbox_show_fliers = QCheckBox(self)
+        InterStats.checkbox_show_fliers.setChecked(False)
+        InterStats.checkbox_show_fliers.setEnabled(False)  # Disabled by default since compact is checked
+        InterStats.checkbox_show_fliers.stateChanged.connect(self.reset)
+        InterStats.checkbox_show_fliers.setToolTip('Show outlier points in box plots.')
+
+        self.label_compact = QLabel('Compact visualization: ')
+        InterStats.checkbox_compact = QCheckBox(self)
+        InterStats.checkbox_compact.setChecked(True)
+        InterStats.checkbox_compact.stateChanged.connect(self.reset)
+        InterStats.checkbox_compact.setToolTip('Use compact representation for box plots (dots and IQR lines instead of full boxplots).')
+        
+        # Function to handle compact visualization changes and update outlier state
+        def on_compact_changed():
+            if InterStats.checkbox_compact.isChecked():
+                # Disable and uncheck outliers when compact is enabled
+                InterStats.checkbox_show_fliers.setChecked(False)
+                InterStats.checkbox_show_fliers.setEnabled(False)
+            else:
+                # Enable outliers when compact is disabled (but keep unchecked)
+                InterStats.checkbox_show_fliers.setEnabled(True)
+            # Then reset the plot
+            self.reset()
+        
+        InterStats.checkbox_compact.stateChanged.disconnect()
+        InterStats.checkbox_compact.stateChanged.connect(on_compact_changed)
+        
+        layout.addWidget(self.label_plot_type, 51, 0, 1, 1, QtCore.Qt.AlignRight)
+        layout.addWidget(InterStats.combo_plot_type, 51, 1, 1, 1, QtCore.Qt.AlignLeft)
+        layout.addWidget(self.label_metric, 51, 2, 1, 1, QtCore.Qt.AlignRight)
+        layout.addWidget(InterStats.combo_metric, 51, 3, 1, 1, QtCore.Qt.AlignLeft)
+        layout.addWidget(self.label_show_ref, 51, 4, 1, 1, QtCore.Qt.AlignRight)
+        layout.addWidget(InterStats.checkbox_show_ref, 51, 5, 1, 1, QtCore.Qt.AlignLeft)
+        layout.addWidget(self.label_show_fliers, 51, 6, 1, 1, QtCore.Qt.AlignRight)
+        layout.addWidget(InterStats.checkbox_show_fliers, 51, 7, 1, 1, QtCore.Qt.AlignLeft)
+        layout.addWidget(self.label_compact, 51, 8, 1, 1, QtCore.Qt.AlignRight)
+        layout.addWidget(InterStats.checkbox_compact, 51, 9, 1, 1, QtCore.Qt.AlignLeft)
+
+        tabs.setTabEnabled(0, False) #freezes out 1st tab
+        tabs.setTabEnabled(1, False) #freezes out 2nd tab
+        tabs.setTabEnabled(2, False) #freezes out parent tab
+
+        self.desktop = QApplication.desktop()
+        self.screenRect = self.desktop.screenGeometry()
+        self.height = self.screenRect.height()
+        self.width = self.screenRect.width()
+        self.resize(int(self.width*(8/10.)), int(self.height*(6/10.)))
+        self.setWindowTitle('Cluster Activity Distributions')
+        self.show()
+        
+        # Initialize metric state based on initial plot type (Box plot is default)
+        InterStats.combo_metric.setItemData(1, False, QtCore.Qt.UserRole - 1)
+        
+        # Generate the initial plot
+        self.reset()
+
+    def reset(self):
+        """Reset and regenerate the cluster activities plot."""
+        # Check if meta_explainer is available
+        if hasattr(Imports, 'meta_explainer') and Imports.meta_explainer is not None:
+            # Clear the existing figure
+            InterStats.figure.clear()
+            ax = InterStats.figure.add_subplot(111)
+            
+            # Get plot parameters from GUI controls
+            plot_type = 'box' if InterStats.combo_plot_type.currentText() == 'Box plot' else 'bar'
+            metric = 'prediction' if InterStats.combo_metric.currentText() == 'Prediction' else 'occupancy'
+            show_ref = InterStats.checkbox_show_ref.isChecked()
+            show_fliers = InterStats.checkbox_show_fliers.isChecked()
+            compact = InterStats.checkbox_compact.isChecked()
+            
+            # Collect data for each cluster (similar to plot_cluster_stats but without creating new figure)
+            boxplot_data = []
+            
+            # Use actual clusters from data instead of cluster_indices
+            actual_clusters = np.sort(Imports.meta_explainer.mave['Cluster'].unique())
+            cluster_to_idx = {k: i for i, k in enumerate(actual_clusters)}
+            
+            for k in actual_clusters:
+                k_idxs = Imports.meta_explainer.mave.loc[Imports.meta_explainer.mave['Cluster'] == k].index
+                if plot_type == 'box' or metric == 'prediction':
+                    data = Imports.meta_explainer.mave.loc[k_idxs, 'DNN']
+                    boxplot_data.append(data)
+                else:  # counts for bar plot
+                    boxplot_data.append([len(k_idxs)])
+                    
+            # Sort using class-level ordering if it exists
+            if Imports.meta_explainer.cluster_order is not None:
+                sorted_data = []
+                for k in Imports.meta_explainer.cluster_order:
+                    idx = cluster_to_idx[k]
+                    sorted_data.append(boxplot_data[idx])
+                boxplot_data = sorted_data
+                
+                # Update membership tracking
+                mapping_dict = {old_k: new_k for new_k, old_k in 
+                            enumerate(Imports.meta_explainer.cluster_order)}
+
+            if plot_type == 'box':
+                # Calculate IQR
+                iqr_values = [np.percentile(data, 75) - np.percentile(data, 25) 
+                            for data in boxplot_data if len(data) > 0]
+                average_iqr = np.mean(iqr_values) if iqr_values else 0
+                
+                if not compact:
+                    # Create boxplot using the existing axis
+                    ax.boxplot(boxplot_data[::-1], vert=False, 
+                            showfliers=show_fliers, 
+                            medianprops={'color': 'black'},
+                            flierprops={'marker': 'o', 'markersize': 0.5, 'markerfacecolor': 'black', 'markeredgecolor': 'black'})
+                    ax.set_yticks(range(1, len(boxplot_data) + 1)[::10])
+                    ax.set_yticklabels(range(len(boxplot_data))[::-1][::10], fontsize=4)
+                else:
+                    # Compact representation
+                    for pos, values in enumerate(boxplot_data[::-1]):
+                        values = np.array(values)            
+                        median = np.median(values)
+                        q1 = np.percentile(values, 25)
+                        q3 = np.percentile(values, 75)
+                        ax.plot([q1, q3], [pos+1, pos+1], color='gray', lw=.5)  # plot the IQR line
+                        ax.plot(median, pos+1, 'o', color='k', markersize=1, zorder=100)  # plot the median point
+                    ax.set_yticks(range(1, len(boxplot_data) + 1)[::10])
+                    ax.set_yticklabels(range(len(boxplot_data))[::-1][::10], fontsize=4)
+                
+                ax.set_ylabel('Clusters', fontsize=6)
+                ax.set_xlabel('Activity', fontsize=6)
+                ax.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
+                ax.set_title(f'Average IQR: {average_iqr:.2f}', fontsize=6)
+                
+                # Update reference cluster index if sorting is enabled
+                if show_ref and Imports.meta_explainer.ref_seq is not None:
+                    ref_cluster = Imports.meta_explainer.membership_df.loc[Imports.meta_explainer.ref_idx, 'Cluster']
+                    if Imports.meta_explainer.cluster_order is not None:
+                        ref_cluster = mapping_dict[ref_cluster]
+                    ref_data = boxplot_data[ref_cluster]
+                    if len(ref_data) > 0:
+                        ax.axvline(np.median(ref_data), c='red', 
+                                label='Ref', zorder=-100)
+                        ax.legend(loc='best', fontsize=4, frameon=False)
+
+            else:  # bar plot
+                y_positions = np.arange(len(boxplot_data))
+                values = [np.median(data) if metric == 'prediction' else data[0] 
+                        for data in boxplot_data]
+                height = 1.0
+                
+                if show_ref and Imports.meta_explainer.ref_seq is not None:
+                    ref_cluster = Imports.meta_explainer.membership_df.loc[Imports.meta_explainer.ref_idx, 'Cluster']
+                    if Imports.meta_explainer.cluster_order is not None:
+                        ref_cluster = mapping_dict[ref_cluster]
+                    colors = ['red' if i == ref_cluster else 'C0' 
+                            for i in range(len(values))]
+                    ax.barh(y_positions, values, height=height, color=colors)
+                else:
+                    ax.barh(y_positions, values, height=height)
+                
+                ax.set_yticks(y_positions[::10])
+                ax.set_yticklabels(y_positions[::10], fontsize=4)
+                ax.set_ylabel('Cluster', fontsize=6)
+                ax.set_xlabel('Activity' if metric == 'prediction' else 'Count', fontsize=6)
+                ax.invert_yaxis()
+                ax.axvline(x=0, color='black', linewidth=0.5, zorder=100)
+            
+            # Set consistent tick parameters to match other plots
+            ax.tick_params(axis="x", labelsize=4)
+            ax.tick_params(axis="y", labelsize=4)
+            
+            InterStats.figure.tight_layout()
+            InterStats.canvas.draw()
+            
+        else:
+            # Fallback if no meta_explainer available
+            InterStats.figure.clear()
+            ax = InterStats.figure.add_subplot(111)
+            ax.text(0.5, 0.5, 'No cluster data available.\nPlease load and process data first.', 
+                   ha='center', va='center', transform=ax.transAxes, fontsize=12)
+            ax.set_xlim(0, 1)
+            ax.set_ylim(0, 1)
+            ax.axis('off')
+            InterStats.canvas.draw()
+
+    def closeEvent(self, ce):
+        """Handle window close event."""
+        tabs.setTabEnabled(0, True)
+        tabs.setTabEnabled(1, True)
+        tabs.setTabEnabled(2, True)
 
 
 class Cell(QtWidgets.QMainWindow):
@@ -3195,7 +3537,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 tab2.canvas.draw()
 
             elif linkage_selected:
-                Imports.linkage = np.load(Imports.linkage_fname)
+                # Use the already loaded and validated linkage matrix
+                # Imports.linkage was already loaded and validated in load_clusters_or_linkage()
+                
                 # Create cluster assignments using Clusterer
                 clusterer = Clusterer(Imports.maps, gpu=False)
                 # Use values from UI instead of hardcoding
@@ -3252,10 +3596,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 alphabet=Imports.alphabet
             )
             
-            # Generate logos for all clusters at once
+            # Generate logos for all clusters at once (always standard logos)
             meta_logos = meta.generate_logos(
                 logo_type=Imports.batch_logo_type,
-                background_separation=Imports.checkbox_background_separation.isChecked(),
+                background_separation=False,  # Always generate standard logos first
                 mut_rate=Imports.spin_mutation_rate.value(),
                 entropy_multiplier=Imports.spin_entropy_multiplier.value(),
                 adaptive_background_scaling=Imports.checkbox_adaptive_scaling.isChecked(),
@@ -3282,6 +3626,7 @@ class MainWindow(QtWidgets.QMainWindow):
             
             # Create BatchLogo instances for each cluster from meta logos
             for cluster_idx in range(len(unique_clusters)):
+                # Always create standard logos
                 logo_key = (cluster_idx, Imports.batch_logo_type)
                 batch_logo = BatchLogo(
                     values=meta_logos.values[cluster_idx:cluster_idx+1],
@@ -3297,6 +3642,48 @@ class MainWindow(QtWidgets.QMainWindow):
                 )
                 batch_logo.process_all()
                 Imports.batch_logo_instances[logo_key] = batch_logo
+            
+            # If background separation is enabled, also create background-separated versions for all clusters
+            if Imports.checkbox_background_separation.isChecked():
+                print("Generating background-separated logos...")
+                # Create a separate MetaExplainer instance for background-separated logos
+                meta_bg = MetaExplainer(
+                    clusterer=clusterer,
+                    mave_df=Imports.mave,
+                    attributions=Imports.maps,
+                    ref_idx=Imports.ref_idx,
+                    background_separation=True,
+                    mut_rate=Imports.spin_mutation_rate.value(),
+                    sort_method=meta_sort_method,
+                    alphabet=Imports.alphabet
+                )
+                # Generate background-separated logos for all clusters at once
+                meta_logos_separated = meta_bg.generate_logos(
+                    logo_type=Imports.batch_logo_type,
+                    background_separation=True,
+                    mut_rate=Imports.spin_mutation_rate.value(),
+                    entropy_multiplier=Imports.spin_entropy_multiplier.value(),
+                    adaptive_background_scaling=Imports.checkbox_adaptive_scaling.isChecked(),
+                    figsize=(10, 2.5)
+                )
+                
+                # Create BatchLogo instances for background-separated versions
+                for cluster_idx in range(len(unique_clusters)):
+                    logo_key_separated = (cluster_idx, f'{Imports.batch_logo_type}_separated')
+                    batch_logo_separated = BatchLogo(
+                        values=meta_logos_separated.values[cluster_idx:cluster_idx+1],
+                        alphabet=Imports.alphabet,
+                        figsize=(10, 2.5),
+                        batch_size=1,
+                        font_name='Arial Rounded MT Bold',
+                        fade_below=0.5,
+                        shade_below=0.5,
+                        width=0.9,
+                        center_values=True,
+                        show_progress=False
+                    )
+                    batch_logo_separated.process_all()
+                    Imports.batch_logo_instances[logo_key_separated] = batch_logo_separated
             
             # Calculate global y-axis limits for fixed scaling
             y_mins = []
@@ -3326,6 +3713,36 @@ class MainWindow(QtWidgets.QMainWindow):
             else: # TODO - will this ever happen?
                 Imports.global_y_min = -1.0
                 Imports.global_y_max = 1.0
+            
+            # Calculate global y-axis limits for background-separated logos if they exist
+            if Imports.checkbox_background_separation.isChecked():
+                bg_y_mins = []
+                bg_y_maxs = []
+                
+                for cluster_idx in range(len(unique_clusters)):
+                    logo_key_separated = (cluster_idx, f'{Imports.batch_logo_type}_separated')
+                    if logo_key_separated in Imports.batch_logo_instances:
+                        batch_logo_separated = Imports.batch_logo_instances[logo_key_separated]
+                        matrix = batch_logo_separated.values[0]  # Shape: (seq_length, alphabet_size)
+                        
+                        # Calculate positive and negative sums at each position
+                        positive_mask = matrix > 0
+                        positive_matrix = matrix * positive_mask
+                        positive_sums = positive_matrix.sum(axis=1)
+                        
+                        negative_mask = matrix < 0
+                        negative_matrix = matrix * negative_mask
+                        negative_sums = negative_matrix.sum(axis=1)
+                        
+                        bg_y_mins.append(negative_sums.min())
+                        bg_y_maxs.append(positive_sums.max())
+                
+                if bg_y_mins and bg_y_maxs:
+                    Imports.global_y_min_separated = min(bg_y_mins)
+                    Imports.global_y_max_separated = max(bg_y_maxs)
+                else:
+                    Imports.global_y_min_separated = -1.0
+                    Imports.global_y_max_separated = 1.0
             
             # Generate Mechanism Summary Matrix (MSM) for AllStats
             print("Generating Mechanism Summary Matrix...")
@@ -3368,6 +3785,16 @@ class MainWindow(QtWidgets.QMainWindow):
             # Set cluster 0 in the spinbox and trigger the View button
             tab2.choose_cluster.setValue(0)
             tab2.highlight_cluster()
+            
+            # Show/hide background separation checkbox based on P1 setting
+            if Imports.checkbox_background_separation.isChecked():
+                Predef.checkbox_bg_separation.setVisible(True)
+                Predef.label_bg_separation.setVisible(True)
+            else:
+                Predef.checkbox_bg_separation.setVisible(False)
+                Predef.label_bg_separation.setVisible(False)
+                Predef.checkbox_bg_separation.setChecked(False)  # Ensure it's unchecked when hidden
+            
             # Update embedding plot to reflect cluster 0 is selected
             tab2.canvas.draw() # TODO - only if embedding selected?
 
@@ -3516,21 +3943,41 @@ class MainWindow(QtWidgets.QMainWindow):
             </ul>
         </div>
 
-        <h4>3. Embedding (*.npy)</h4>
-        <p>Optional: Import pre-computed embedding of attribution mapsfrom dimensionality reduction:</p>
-        <ul>
-            <li>Shape should be (N, Z) where Z is number of dimensions</li>
-            <li>Used for visualization in Custom Clusters and Predefined Clusters tabs</li>
-            <li>See SEAM Clusterer class for generating embedding of attribution maps using dimensionality reduction (e.g., UMAP, t-SNE, PCA)</li>
-        </ul>
+        <h4>3. Clustering Options</h4>
+        <p>Choose how to cluster your sequences. You must select either Embedding OR Linkage (but not both):</p>
+        
+        <div class="subsection">
+            <h5>Embedding (*.npy)</h5>
+            <ul>
+                <li>Import pre-computed embedding of attribution maps</li>
+                <li>Shape should be (N, Z) where Z is number of dimensions</li>
+                <li>Used for visualization in Custom Clusters and Predefined Clusters tabs</li>
+                <li><b>Clustering method:</b> Choose between kmeans (specify number of clusters) or dbscan</li>
+                <li><b>Cluster sorting:</b> Median activity (default) or No reordering</li>
+                <li>See SEAM Clusterer class for generating embedding of attribution maps using dimensionality reduction (e.g., UMAP, t-SNE, PCA)</li>
+            </ul>
+            
+            <h5>Linkage (*.npy)</h5>
+            <ul>
+                <li>Import pre-computed hierarchical clustering linkage matrix</li>
+                <li>Shape should be (N-1, 4) where N is number of sequences (e.g., see scipy.cluster.hierarchy.linkage)</li>
+                <li>Used for visualization in Predefined Clusters tab</li>
+                <li><b>Cut criterion:</b> maxclust (specify number of clusters) or distance (specify distance threshold)</li>
+                <li><b>Cluster sorting:</b> Median activity (default) or No reordering</li>
+                <li>See SEAM Clusterer class for generating linkage matrix from attribution maps (hierarchical clustering)</li>
+            </ul>
+        </div>
 
-        <h4>4. Clusters</h4>
-        <p>Choose how to cluster your sequences:</p>
-        <ul>
-            <li><b>Hierarchical:</b> Uses hierarchical clustering on attribution maps</li>
-            <li><b>Predefined:</b> Import pre-computed cluster assignments</li>
-            <li>Clusters help identify distinct regulatory mechanisms</li>
-        </ul>
+        <h4>4. Additional Options</h4>
+        <div class="subsection">
+            <h5>Background Separation</h5>
+            <p>Enable for analysis of local sequence libraries:</p>
+            <ul>
+                <li><b>Mutation rate:</b> Set the mutation rate for analysis (0.0 to 1.0, default: 0.10)</li>
+                <li><b>Adaptive scaling:</b> Enable cluster-specific background scaling for better separation (default: enabled)</li>
+                <li><b>Entropy multiplier:</b> Control background position identification stringency (0.1 to 1.0, default: 0.5). Lower values are more stringent.</li>
+            </ul>
+        </div>
 
         <p>After importing your data, click "Confirm Imports" at the bottom of the window to proceed to analysis</p>
         """
@@ -3541,8 +3988,69 @@ class MainWindow(QtWidgets.QMainWindow):
     def show_custom_help(self):
         """Show help dialog for Custom Clusters tab"""
         help_text = """
+        <style>
+            .subsection {
+                margin-left: 20px;
+                border-left: 3px solid #ccc;
+                padding-left: 10px;
+            }
+        </style>
         <h3>Custom Clusters Tab Guide</h3>
-        <p>Help for Custom Clusters tab coming soon...</p>
+        
+        <p>This tab allows you to interactively explore and manually select clusters in your embedding space. You can draw custom regions around groups of sequences to analyze their shared characteristics.</p>
+
+        <h4>Prerequisites</h4>
+        <p><b>Required:</b> You must have loaded data with an embedding file (not linkage) on the Import Files tab. The Custom Clusters tab is only available when using embedding-based clustering.</p>
+
+        <h4>Main Interface</h4>
+        <p>The main area shows a 2D scatter plot of your sequences in embedding space:</p>
+        <ul>
+            <li><b>Points:</b> Each point represents a sequence from your library</li>
+            <li><b>Colors:</b> Points are colored by measurement values (DNN score, GIA score, Hamming distance, etc.)</li>
+            <li><b>Axes:</b> X and Y coordinates represent different dimensions of your embedding (Ψ1, Ψ2, etc.)</li>
+        </ul>
+
+        <h4>Interactive Cluster Selection</h4>
+        <ol>
+            <li><b>Draw a polygon:</b> Click on the plot to place points that will form a polygon around sequences of interest</li>
+            <li><b>Connect the path:</b> Click "Connect Path" to close the polygon and identify sequences within it</li>
+            <li><b>View cluster:</b> Click "View Cluster" to analyze the selected sequences</li>
+        </ol>
+
+        <h4>Display Controls</h4>
+        <div class="subsection">
+            <h5>Coordinate Selection</h5>
+            <ul>
+                <li><b>Ψ1:</b> Select which embedding dimension to display on the X-axis</li>
+                <li><b>Ψ2:</b> Select which embedding dimension to display on the Y-axis</li>
+            </ul>
+            
+            <h5>Visualization Options</h5>
+            <ul>
+                <li><b>Color map:</b> Choose what to color points by (DNN, GIA, Hamming, Task, or Histogram)</li>
+                <li><b>Theme:</b> Light or dark theme for the plot</li>
+                <li><b>Drawing order:</b> Original, ascending, or descending order for point rendering</li>
+                <li><b>Skip every:</b> Reduce point density for better performance with large datasets</li>
+                <li><b>Marker size:</b> Adjust the size of points in the scatter plot</li>
+                <li><b>Plot reference:</b> Highlight the reference sequence (if available) with a star marker</li>
+            </ul>
+        </div>
+
+        <h4>Cluster Analysis</h4>
+        <p>When you select a cluster and click "View Cluster", a new window opens showing:</p>
+        <ul>
+            <li><b>Attribution logo:</b> Average attribution map for sequences in the cluster</li>
+            <li><b>Sequence logo:</b> Position frequency matrix showing sequence patterns</li>
+            <li><b>Statistics:</b> Detailed analysis of the cluster's characteristics</li>
+            <li><b>Sequence table:</b> View all individual sequences in the cluster</li>
+        </ul>
+
+        <h4>Tips</h4>
+        <ul>
+            <li>Use the zoom and pan tools to explore different regions of your embedding</li>
+            <li>Use the "Reset Path" button to start over with a new polygon</li>
+            <li>For large datasets, increase the "Skip every" value to improve performance</li>
+        </ul>
         """
         dialog = HelpDialog('Custom Clusters Help', help_text, self)
         dialog.exec_()
@@ -3585,6 +4093,7 @@ class HelpDialog(QtWidgets.QDialog):
         self.setLayout(layout)
 
 
+
 if __name__ == '__main__':
     app = QtWidgets.QApplication.instance()
     if app is None:
@@ -3607,7 +4116,6 @@ if __name__ == '__main__':
         QDialog:disabled { background-color: #f0f0f0; color: #808080; }
         QTextBrowser:disabled { background-color: #f0f0f0; color: #808080; }
         QDialogButtonBox:disabled { background-color: #f0f0f0; color: #808080; }
-        QSplitter:disabled { background-color: #f0f0f0; color: #808080; }
     """) # Add disabled state styling for all common widgets
         
     # Set app icon for tray
