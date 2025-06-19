@@ -2535,8 +2535,8 @@ class AllStats(QtWidgets.QMainWindow):
 
         self.label_compare = QLabel('Metric: ')
         AllStats.combo_compare = QComboBox(self)
-        AllStats.combo_compare.addItem('Entropy')
-        AllStats.combo_compare.addItem('Reference sequence')
+        AllStats.combo_compare.addItem('Positional Shannon entropy')
+        AllStats.combo_compare.addItem('Percent mismatches to reference')
         AllStats.combo_compare.addItem('Consensus per cluster')
         AllStats.combo_compare.currentTextChanged.connect(self.reset)
         AllStats.combo_compare.setToolTip('Select the reference scheme for comparing the sequences in each cluster.')
