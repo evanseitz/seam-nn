@@ -87,7 +87,7 @@ SEAM’s analysis pipeline is organized into modular components, with outputs fr
 
 ## Examples
 
-**Google Colab examples** for applying SEAM on previously-published deep learning models are available at the links below.
+**Google Colab examples** for applying SEAM on previously-published deep learning models (e.g., DeepSTARR) and experimental datasets (e.g., PBMs) are available at the links below.
 
 > **Note:** Due to memory requirements for calculating distance matrices, Colab Pro may be required for examples using hierarchical clustering with their current settings.
 
@@ -158,10 +158,9 @@ Next, activate this environment via `conda activate seam-gui`, and install the f
 	pip install seam-nn
 	pip install matplotlib==3.6
 ```
-> To avoid package conflicts, matplotlib==3.6 must be the last package installed
+> To avoid conflicts, matplotlib==3.6 must be the last package installed
 
 Finally, when you are done using the environment, always exit via `conda deactivate`.
-
 
 
 ## Citation:
@@ -172,4 +171,4 @@ bibtex TODO
 ## License:
 Copyright (C) 2023–2025 Evan Seitz, David McCandlish, Justin Kinney, Peter Koo
 
-The software, code sample and their documentation made available on this website could include technical or other mistakes, inaccuracies or typographical errors. We may make changes to the software or documentation made available on its web site at any time without prior notice. We assume no responsibility for errors or omissions in the software or documentation available from its web site. For further details, please see the LICENSE file.
+The software, code samples and their documentation made available on this website could include technical or other mistakes, inaccuracies or typographical errors. We may make changes to the software or documentation made available on its web site at any time without prior notice. We assume no responsibility for errors or omissions in the software or documentation available from its web site. For further details, please see the LICENSE file.

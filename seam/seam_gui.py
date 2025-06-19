@@ -18,7 +18,7 @@ Minimum installation:
     pip install seam-nn
     pip install matplotlib==3.6
 
-Notes:
+Installation notes:
     - Make sure matplotlib==3.6 is the last package installed
     - The seam-gui environment should be separate from the seam-nn environment due to matplotlib version conflicts
     - The seam-gui environment should be activated before installing packages and running the GUI
@@ -112,6 +112,10 @@ class Imports(QtWidgets.QWidget):
     imports_changed = False  # Track if imports have been changed since last confirmation
     imports_confirmed = False  # Track if imports have been initially confirmed
     imports_warning_acknowledged = False  # Track if the warning popup has been shown and acknowledged
+    background_separation = False  # Track background separation setting
+    mutation_rate = 0.10  # Track mutation rate setting
+    adaptive_background_scaling = True  # Track adaptive background scaling setting
+    entropy_multiplier = 0.5  # Track entropy multiplier setting
 
     def __init__(self, parent=None):
         super(Imports, self).__init__(parent)
@@ -133,7 +137,7 @@ class Imports(QtWidgets.QWidget):
         self.browse_mave.clicked.connect(self.load_mave)
         self.browse_mave.setToolTip('Accepted format: <i>.csv</i>')
 
-        self.label_ref = QLabel('Reference sequence')
+        self.label_ref = QLabel('Reference sequence:')
         self.label_ref.setFont(font_standard)
         self.label_ref.setMargin(20)
         Imports.entry_ref = QLineEdit('')
@@ -163,7 +167,7 @@ class Imports(QtWidgets.QWidget):
                     self.lineEdit().setVisible(self.isEnabled())
                 return super().changeEvent(e)
 
-        self.label_start = QLabel('Map start position')
+        self.label_start = QLabel('Map start position:')
         self.label_start.setFont(font_standard)
         self.label_start.setMargin(20)
         Imports.startbox_cropped = DoubleSpinBox(self)
@@ -175,7 +179,7 @@ class Imports(QtWidgets.QWidget):
         Imports.startbox_cropped.valueChanged.connect(self.cropped_signal)
         Imports.startbox_cropped.setToolTip('Provide the new start position with respect to MAVE sequences.')
 
-        self.label_stop = QLabel('Map stop position')
+        self.label_stop = QLabel('Map stop position:')
         self.label_stop.setFont(font_standard)
         self.label_stop.setMargin(20)
         Imports.stopbox_cropped = DoubleSpinBox(self)
@@ -285,6 +289,77 @@ class Imports(QtWidgets.QWidget):
         self.combo_embedding_sort_method.setToolTip('Choose how to sort clusters in summary matrix visualizations.')
         self.combo_embedding_sort_method.currentTextChanged.connect(set_sort_method)
 
+        # Add Additional Options section
+        self.label_additional = QLabel('Additional options')
+        self.label_additional.setFont(font_standard)
+        self.label_additional.setMargin(20)
+
+        # Background separation checkbox
+        self.label_background_separation = QLabel('Background separation')
+        self.label_background_separation.setFont(font_standard)
+        self.label_background_separation.setMargin(20)
+        
+        Imports.checkbox_background_separation = QCheckBox(self)
+        Imports.checkbox_background_separation.setToolTip('Enable background separation for analysis of local sequence library.')
+        def update_background_separation():
+            Imports.background_separation = Imports.checkbox_background_separation.isChecked()
+            # Show/hide background-related widgets based on background separation state
+            self.label_mutation_rate.setVisible(Imports.background_separation)
+            Imports.spin_mutation_rate.setVisible(Imports.background_separation)
+            self.label_adaptive_scaling.setVisible(Imports.background_separation)
+            Imports.checkbox_adaptive_scaling.setVisible(Imports.background_separation)
+            self.label_entropy_multiplier.setVisible(Imports.background_separation)
+            Imports.spin_entropy_multiplier.setVisible(Imports.background_separation)
+            self.mark_imports_changed()
+        Imports.checkbox_background_separation.stateChanged.connect(update_background_separation)
+
+        # Mutation rate label and spinbox
+        self.label_mutation_rate = QLabel('Mutation rate:')
+        self.label_mutation_rate.setFont(font_standard)
+        self.label_mutation_rate.setMargin(20)
+
+        Imports.spin_mutation_rate = QtWidgets.QDoubleSpinBox(self)
+        Imports.spin_mutation_rate.setMinimum(0.0)
+        Imports.spin_mutation_rate.setMaximum(1.0)
+        Imports.spin_mutation_rate.setValue(0.10)
+        Imports.spin_mutation_rate.setDecimals(2)
+        Imports.spin_mutation_rate.setSingleStep(0.01)
+        def update_mutation_rate():
+            Imports.mutation_rate = Imports.spin_mutation_rate.value()
+            self.mark_imports_changed()
+        Imports.spin_mutation_rate.valueChanged.connect(update_mutation_rate)
+        Imports.spin_mutation_rate.setToolTip('Set the mutation rate for analysis (0.0 to 1.0).')
+
+        # Adaptive scaling label and checkbox
+        self.label_adaptive_scaling = QLabel('Adaptive scaling:')
+        self.label_adaptive_scaling.setFont(font_standard)
+        self.label_adaptive_scaling.setMargin(20)
+
+        Imports.checkbox_adaptive_scaling = QCheckBox(self)
+        Imports.checkbox_adaptive_scaling.setToolTip('Enable cluster-specific background scaling for better background separation.')
+        Imports.checkbox_adaptive_scaling.setChecked(True)
+        def update_adaptive_scaling():
+            Imports.adaptive_background_scaling = Imports.checkbox_adaptive_scaling.isChecked()
+            self.mark_imports_changed()
+        Imports.checkbox_adaptive_scaling.stateChanged.connect(update_adaptive_scaling)
+
+        # Entropy multiplier label and spinbox
+        self.label_entropy_multiplier = QLabel('Entropy multiplier:')
+        self.label_entropy_multiplier.setFont(font_standard)
+        self.label_entropy_multiplier.setMargin(20)
+
+        Imports.spin_entropy_multiplier = QtWidgets.QDoubleSpinBox(self)
+        Imports.spin_entropy_multiplier.setMinimum(0.1)
+        Imports.spin_entropy_multiplier.setMaximum(1.0)
+        Imports.spin_entropy_multiplier.setValue(0.5)
+        Imports.spin_entropy_multiplier.setDecimals(1)
+        Imports.spin_entropy_multiplier.setSingleStep(0.1)
+        def update_entropy_multiplier():
+            Imports.entropy_multiplier = Imports.spin_entropy_multiplier.value()
+            self.mark_imports_changed()
+        Imports.spin_entropy_multiplier.valueChanged.connect(update_entropy_multiplier)
+        Imports.spin_entropy_multiplier.setToolTip('Control background position identification stringency (0.1 to 1.0). Lower values are more stringent.')
+
         # Update cut parameter label and spinbox when criterion changes
         def update_cut_param():
             crit = Imports.combo_cut_criterion.currentText()
@@ -371,11 +446,28 @@ class Imports(QtWidgets.QWidget):
         self.grid.addWidget(Imports.spin_cut_param, 7, 5, 1, 1, QtCore.Qt.AlignLeft)
         self.grid.addWidget(self.label_linkage_sort_method, 7, 6, 1, 1, QtCore.Qt.AlignRight)
         self.grid.addWidget(self.combo_linkage_sort_method, 7, 7, 1, 1, QtCore.Qt.AlignLeft)
-        # Final section
-        self.grid.addWidget(self.label_empty, 8, 2, 1, 8, QtCore.Qt.AlignRight)
-        self.grid.addWidget(self.line_L, 9, 0, 1, 4, QtCore.Qt.AlignVCenter)
-        self.grid.addWidget(self.line_R, 9, 6, 1, 4, QtCore.Qt.AlignVCenter)
-        self.grid.addWidget(Imports.btn_process_imports, 9, 4, 1, 2)
+        # Small aesthetic line between sections
+        self.line_mid = QLabel('') # aesthetic line middle
+        self.line_mid.setFont(font_standard)
+        self.line_mid.setMargin(0)
+        self.line_mid.setFrameStyle(QFrame.HLine | QFrame.Sunken)
+        self.grid.addWidget(self.line_mid, 8, 1, 1, 8, QtCore.Qt.AlignVCenter)
+        # Seventh row: Additional options
+        self.grid.addWidget(self.label_additional, 9, 1, 1, 1, QtCore.Qt.AlignLeft)
+        # Eighth row: Additional options sub-widgets (indented under additional options row)
+        self.grid.addWidget(Imports.checkbox_background_separation, 10, 1, 1, 1, QtCore.Qt.AlignRight)
+        self.grid.addWidget(self.label_background_separation, 10, 2, 1, 1, QtCore.Qt.AlignLeft)
+        self.grid.addWidget(self.label_mutation_rate, 10, 3, 1, 1, QtCore.Qt.AlignRight)
+        self.grid.addWidget(Imports.spin_mutation_rate, 10, 4, 1, 1, QtCore.Qt.AlignLeft)
+        self.grid.addWidget(self.label_adaptive_scaling, 10, 5, 1, 1, QtCore.Qt.AlignRight)
+        self.grid.addWidget(Imports.checkbox_adaptive_scaling, 10, 6, 1, 1, QtCore.Qt.AlignLeft)
+        self.grid.addWidget(self.label_entropy_multiplier, 10, 7, 1, 1, QtCore.Qt.AlignRight)
+        self.grid.addWidget(Imports.spin_entropy_multiplier, 10, 8, 1, 1, QtCore.Qt.AlignLeft)
+        # Final section for submitting imports
+        self.grid.addWidget(self.label_empty, 11, 2, 5, 8, QtCore.Qt.AlignRight)
+        self.grid.addWidget(self.line_L, 16, 0, 1, 4, QtCore.Qt.AlignVCenter)
+        self.grid.addWidget(self.line_R, 16, 6, 1, 4, QtCore.Qt.AlignVCenter)
+        self.grid.addWidget(Imports.btn_process_imports, 16, 4, 1, 2)
 
         self.setLayout(self.grid)
 
@@ -408,22 +500,14 @@ class Imports(QtWidgets.QWidget):
         # Set initial state for embedding clustering method
         toggle_cluster_spinbox()
 
-        if 0: # developer shortcut TODO
-            data_dir = os.path.join(py_dir, 'seam_gui_demo')
-            Imports.mave_fname = os.path.join(data_dir, 'mave.csv')
-            Imports.mave_col_names = ['DNN', 'Hamming']
-            Imports.combo_ref.setCurrentIndex(0)
-            Imports.ref_full = pd.read_csv(Imports.mave_fname)['Sequence'].iloc[0]
-            Imports.entry_ref.setText(Imports.ref_full)
-            Imports.maps_fname = os.path.join(data_dir, 'maps_deepshap.npy')
-            Imports.startbox_cropped.setMinimum(0)
-            Imports.startbox_cropped.setMaximum(len(Imports.ref_full)-1)
-            Imports.stopbox_cropped.setMinimum(1)
-            Imports.stopbox_cropped.setMaximum(len(Imports.ref_full))
-            Imports.startbox_cropped.setValue(0)
-            Imports.stopbox_cropped.setValue(len(Imports.ref_full))
-            Imports.embedding_fname = os.path.join(data_dir, 'embedding_deepshap_umap.npy')
-            #Imports.linkage_fname = os.path.join(data_dir, 'hierarchical_linkage_ward_deepshap.npy')
+        # Initialize mutation rate widgets as hidden (background separation not checked by default)
+        self.label_mutation_rate.setVisible(False)
+        Imports.spin_mutation_rate.setVisible(False)
+        self.label_adaptive_scaling.setVisible(False)
+        Imports.checkbox_adaptive_scaling.setVisible(False)
+        self.label_entropy_multiplier.setVisible(False)
+        Imports.spin_entropy_multiplier.setVisible(False)
+
 
     def update_mave_subwidgets_state(self, enabled):
         """Enable or disable MAVE subwidgets based on whether MAVE file is loaded"""
@@ -2149,14 +2233,6 @@ class Predef(QtWidgets.QWidget):
                 # No need to clear cache since logos are pre-generated for both scale types
                 self.update_logo()  # Update logo with new scale type
 
-        def highlight_cluster(): # TODO is this needed?
-            Predef.cluster_idx = int(Predef.choose_cluster.value())
-            Predef.k_idxs = np.array(Imports.clusters[Imports.cluster_col].loc[Imports.clusters[Imports.cluster_col] == Predef.cluster_idx].index)
-            Predef.num_seqs = len(Predef.k_idxs)
-            Predef.clicked = False  # bypass mouse click event to force replot
-            Predef.dist = 9001
-            self.onclick(None)
-            Predef.clicked = True
 
         self.canvas.mpl_connect('button_press_event', self.onclick)
         self.width = self.canvas.size().width()
@@ -2206,20 +2282,12 @@ class Predef(QtWidgets.QWidget):
 
         self.label_choose_cluster = QLabel('Choose cluster: ')
         Predef.choose_cluster = QDoubleSpinBox(self)
-        Predef.choose_cluster.setButtonSymbols(QAbstractSpinBox.NoButtons)
         Predef.choose_cluster.setDecimals(0)
         Predef.choose_cluster.setMinimum(0)
         Predef.choose_cluster.setFont(font_standard)
         Predef.choose_cluster.setDisabled(False)
-        Predef.choose_cluster.lineEdit().returnPressed.connect(self.highlight_cluster) # only signal when the Return or Enter key is pressed
+        Predef.choose_cluster.valueChanged.connect(self.highlight_cluster)
         Predef.choose_cluster.setToolTip('Define the index of a cluster of interest.')
-
-        self.btn_view_cluster = QPushButton('View')
-        self.btn_view_cluster.setDisabled(False)
-        self.btn_view_cluster.setDefault(False)
-        self.btn_view_cluster.setAutoDefault(False)
-        self.btn_view_cluster.clicked.connect(self.highlight_cluster)
-        self.btn_view_cluster.setToolTip('Navigate to a cluster in the figure using its index.')
 
         self.label_display = QLabel('Logo display: ')
         Predef.entry_logostyle = QComboBox(self)
@@ -2250,8 +2318,7 @@ class Predef(QtWidgets.QWidget):
         grid_bot = QGridLayout()
         grid_bot.addWidget(self.label_choose_cluster, 0, 0, 1, 1, QtCore.Qt.AlignRight)
         grid_bot.addWidget(Predef.choose_cluster, 0, 1, 1, 1, QtCore.Qt.AlignCenter)
-        grid_bot.addWidget(self.btn_view_cluster, 0, 2, 1, 1, QtCore.Qt.AlignLeft)
-        grid_bot.addWidget(QVLine(), 0, 3, 1, 2, QtCore.Qt.AlignCenter)
+        grid_bot.addWidget(QVLine(), 0, 2, 1, 2, QtCore.Qt.AlignCenter)
         grid_bot.addWidget(self.label_display, 0, 10, 1, 1, QtCore.Qt.AlignRight)
         grid_bot.addWidget(self.entry_logostyle, 0, 11, 1, 1, QtCore.Qt.AlignCenter)
         grid_bot.addWidget(self.entry_yscale, 0, 12, 1, 1, QtCore.Qt.AlignLeft)
@@ -2344,7 +2411,6 @@ class AllStats(QtWidgets.QMainWindow):
     val = 0
     threshold = 100
     delta = False
-    mut_rate = 0.10
 
     def __init__(self):
         super(AllStats, self).__init__()
@@ -3180,8 +3246,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 mave_df=Imports.mave,
                 attributions=Imports.maps,
                 ref_idx=Imports.ref_idx,
-                background_separation=False, # TODO
-                mut_rate=0.10, # TODO
+                background_separation=Imports.checkbox_background_separation.isChecked(),
+                mut_rate=Imports.spin_mutation_rate.value(),
                 sort_method=meta_sort_method,
                 alphabet=Imports.alphabet
             )
@@ -3189,7 +3255,10 @@ class MainWindow(QtWidgets.QMainWindow):
             # Generate logos for all clusters at once
             meta_logos = meta.generate_logos(
                 logo_type=Imports.batch_logo_type,
-                background_separation=False,
+                background_separation=Imports.checkbox_background_separation.isChecked(),
+                mut_rate=Imports.spin_mutation_rate.value(),
+                entropy_multiplier=Imports.spin_entropy_multiplier.value(),
+                adaptive_background_scaling=Imports.checkbox_adaptive_scaling.isChecked(),
                 figsize=(10, 2.5)
             )
             
@@ -3298,7 +3367,7 @@ class MainWindow(QtWidgets.QMainWindow):
             tab2.update_logo()
             # Set cluster 0 in the spinbox and trigger the View button
             tab2.choose_cluster.setValue(0)
-            tab2.btn_view_cluster.click()
+            tab2.highlight_cluster()
             # Update embedding plot to reflect cluster 0 is selected
             tab2.canvas.draw() # TODO - only if embedding selected?
 

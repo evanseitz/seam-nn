@@ -68,8 +68,6 @@ Documentation:
         - update all terms in the backend code to reflect those used in final manuscript (MSM --> SSM, etc.)
             - and in all Python/Colab examples
         - Note in readme about DeepSHAP only in examples due to conflicts in eager mode defaulted in modern Colab (TF). Also mention PyTorch
-        - A graphic user interface (GUI) is available for dynamically interpretting SEAM results. The GUI can be run using the command line interface from the 'seam" folder via
-            "python seam_gui.py'. The SEAM GUI requires pre-computed inputs that can be saved using the example scripts above.
 
 
 - Compiler:
@@ -196,7 +194,6 @@ Documentation:
             - more space around edges of embedding figure
         - Widgets on P3:
             - figsize option
-            - toggle up and down for cluster selection, remove 'View' button
             - go to WT cluster button (update cluster selection integer and plots)
                 - also show WT sequence location
             - view a page of individual logos from a given cluster (popup window with start/stop option)
@@ -205,6 +202,7 @@ Documentation:
             - Backgrounds:
                 - show average background (button)
                 - intra-cluster backgrounds (per cluster, load like PWMs)
+                - store logos with and without background and allow to toggle like PWMs
                 - calculate k-mer frequences, etc?
         - Other windows:
             - copy rows in Tables to clipboard
