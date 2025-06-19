@@ -158,7 +158,7 @@ Next, activate this environment via `conda activate seam-gui`, and install the f
 	pip install seam-nn
 	pip install matplotlib==3.6
 ```
-> Always ensure matplotlib==3.6 is the last package installed
+> To avoid package conflicts, matplotlib==3.6 must be the last package installed
 
 Finally, when you are done using the environment, always exit via `conda deactivate`.
 
