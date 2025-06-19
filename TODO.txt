@@ -57,102 +57,106 @@ TODO:
 
 
 Documentation:
-    - API figure (use squid as template)
-    - Check all readthedocs pages for accuracy
-    - https://pypi.org/project/seam-nn/ pictures not loading correctly? also check all text
-    - show example kwargs for each attribution method in ReadTheDocs: PCA with plot_eigenvalues, etc.
-    - read through and verify API in ReadTheDocs
-    - add Colab copies to ReadTheDocs
-    - make sure requirements and installation are consistent with setup.py
-    - update all terms in the backend code to reflect those used in final manuscript (MSM --> SSM, etc.)
-        - and in all examples
-    - Note in readme about DeepSHAP only in examples due to conflicts in eager mode defaulted in modern Colab (TF). Also mention PyTorch
-    - A graphic user interface (GUI) is available for dynamically interpretting SEAM results. The GUI can be run using the command line interface from the 'seam" folder via
-        "python seam_gui.py'. The SEAM GUI requires pre-computed inputs that can be saved using the example scripts above.
+    - Pre-release:
+        - API figure (use squid as template)
+        - Check all readthedocs pages for accuracy
+        - https://pypi.org/project/seam-nn/ pictures not loading correctly? also check all text
+        - show example kwargs for each attribution method in ReadTheDocs: PCA with plot_eigenvalues, etc.
+        - read through and verify API in ReadTheDocs
+        - add Colab copies to ReadTheDocs
+        - make sure requirements and installation are consistent with setup.py
+        - update all terms in the backend code to reflect those used in final manuscript (MSM --> SSM, etc.)
+            - and in all Python/Colab examples
+        - Note in readme about DeepSHAP only in examples due to conflicts in eager mode defaulted in modern Colab (TF). Also mention PyTorch
+        - A graphic user interface (GUI) is available for dynamically interpretting SEAM results. The GUI can be run using the command line interface from the 'seam" folder via
+            "python seam_gui.py'. The SEAM GUI requires pre-computed inputs that can be saved using the example scripts above.
 
 
 - Compiler:
-    - SEAM utils calls
-    - Move hamming distance calculation to SEAM utils?
-    - save output to self.mave
-    - docstring check (readthedocs compatibility)
-    - discover alphabet from mave.csv and save to self.alphabet
-        - e.g., alphabet = sorted(list(set(mave['Sequence'][0:100].apply(list).sum())))
-    - mave.to_csv('mave.csv', index=False)
-    - remove redundant sequences (in general) and after concat with SNV/DNV; or check if it’s already in the code (or put it there in compile)
-    - ensembler() to combine model folds?
-    - GIA scores in Compiler
+    - Post-release:
+        - SEAM utils calls
+        - Move hamming distance calculation to SEAM utils?
+        - save output to self.mave
+        - docstring check (readthedocs compatibility)
+        - mave.to_csv('mave.csv', index=False)
+        - remove redundant sequences (in general) and after concat with SNV/DNV; or check if it’s already in the code (or put it there in compile)
+        - ensembler() to combine model folds?
+        - GIA scores in Compiler
 
 
 - Attributer:
-    - option to use PyTorch / import Captum
-    - Methods:
-        - ISM:
-            - error running 100,000 sequences with 16 batch size in global
-                - Attribution:   0%|          | 0/6250 [00:00<?, ?it/s]GPU implementation failed with error: {{function_node __wrapped__TensorScatterUpdate_device_/job:localhost/replica:0/task:0/device:GPU:0}} Outer dimensions of indices and update must match. Indices shape: [32,1], updates shape:[1] [Op:TensorScatterUpdate] name: 
-            - check if the sequence has been used anywhere else (in any other batch)... use memmap? or caching
-            - once everything is fixed up, check UMAP of global AP1 library
-            - automatically handle best batch_size (tf.experimental.autotune)?
-                - Batch_size check against memory
-            - check gpu version time per batch over batches (memory leakage?)
-        - DeepSHAP
-            - add old TF1 version
-            - Refactor DeepSHAP code for newer TF versions
-            - DeepSHAP for TF2: dinuc_shuffle, etc. in batch mode with GPUs
-            - pytorch version?
-            - no longer need sequence_utils.py?
-            - dinuc shuffling vs training set option
-            - ChromBPNet profile mode with stop_gradient gives worse looking results than without stop_gradient, and vs. intgrad
-        - IntGrad
-            - Plot each map within a given int grad trajectory
-            - Test that dinuc_shuffle is able to call the numpy version of batch_dinuc_shuffle
-            - baseline_type=None for pre-generated baseline? (e.g., training set)
-            - Leo's sub-batch code?
+    - Pre-release:
+        - option to use PyTorch / import Captum
+    
+    - Post-release:
+        - Methods:
+            - ISM:
+                - check if the sequence has been used anywhere else (in any other batch)... use memmap? or caching
+                - automatically handle best batch_size (tf.experimental.autotune)?
+                    - Batch_size check against memory
+                - check gpu version time per batch over batches (memory leakage?)
+            - DeepSHAP
+                - add old TF1 version
+                - Refactor DeepSHAP code for newer TF versions
+                - DeepSHAP for TF2: dinuc_shuffle, etc. in batch mode with GPUs
+                - pytorch version?
+                - no longer need sequence_utils.py?
+                - dinuc shuffling vs training set option
+                - ChromBPNet profile mode with stop_gradient gives worse looking results than without stop_gradient, and vs. intgrad
+            - IntGrad
+                - Plot each map within a given int grad trajectory
+                - Test that dinuc_shuffle is able to call the numpy version of batch_dinuc_shuffle
+                - baseline_type=None for pre-generated baseline? (e.g., training set)
+                - Leo's sub-batch code?
 
 
 - Clusterer:
-    - implement other methods from cuml.manifold?
-        - tsne CPU, GPU
-    - phate GPU?
-    - Dendrogram plot: update cluster colors based on cut level
-    - add diffusion maps code
-    - reuse DM distance matrix for clustering?
-    - add Louvain (or Leiden) clustering
-    - hierarchical vs embedding discrepancy:
-        - hierarchical doesn't take method as hyperparam: clusterer = Clusterer(attributions,gpu=gpu)
-    - Does hierarchical cpu not run out of memory when gpu does? Is the memmap problematic? 
-    - Error in get_cluster_labels print(f"Cut level for {n_clusters} clusters: {max_d:.3f}") --> add error message when more clusters are provided than maps
+    - Pre-release:
+        - Dendrogram plot: update cluster colors based on cut level
+        - add Louvain (or Leiden) clustering
+
+    - Post-release:
+        - implement other methods from cuml.manifold?
+            - tsne CPU, GPU
+        - phate GPU?
+        - add diffusion maps code
+        - reuse DM distance matrix for clustering?
+        - hierarchical vs embedding discrepancy:
+            - hierarchical doesn't take method as hyperparam: clusterer = Clusterer(attributions,gpu=gpu)
+        - Does hierarchical cpu not run out of memory when gpu does? Is the memmap problematic? 
 
 
 - MetaExplainer:
-    - add mutual information plot to explainer?
-    - JK: plot KL divergence between cluster and BG (2nd distribution) for coloring MSM?
-    - Marginal delta_H to show regions of conservation
-    - test plot_cluster_profiles
-        - check profile plotting functionality (lines 741-753 from meta_explainer_orig.py)
-            - plot individual profiles for each cluster
-            - handle alpha blending for overlays
-    - test enrichment logos
-    - line up the MSM with the logos below them, and with the bar plot to their right (see below)
-    - use marginal bar plots on the right side of the MSM figure
-    - background_entropy currently only defined for 4 nucleotides; see latex equation
-        - currently: background_entropy = entropy([null_rate, (1-null_rate)/3, (1-null_rate)/3, (1-null_rate)/3], base=2)
-    - plot_msm() needs xtick_spacing
-    - ability to plot a single row (cluster) of MSM, and given a position, view the nucleotide frequencies
-    - change Blues to viridis for percent mismatch palette (recall, sns.color_palette('rocket', n_colors=100); sns.color_palette('viridis', n_colors=100)
+    - Pre-release:
+        - background_entropy currently only defined for 4 nucleotides; see latex equation
+            - currently: background_entropy = entropy([null_rate, (1-null_rate)/3, (1-null_rate)/3, (1-null_rate)/3], base=2)
+
+    - Post-release:
+        - add mutual information plot to explainer?
+        - test plot_cluster_profiles
+            - check profile plotting functionality (lines 741-753 from meta_explainer_orig.py)
+                - plot individual profiles for each cluster
+                - handle alpha blending for overlays
+        - line up the MSM with the logos below them, and with the bar plot to their right (see below)
+        - use marginal bar plots on the right side of the MSM figure
+        - plot_msm() needs xtick_spacing
+        - ability to plot a single row (cluster) of MSM, and given a position, view the nucleotide frequencies
+        - change Blues to viridis for percent mismatch palette (recall, sns.color_palette('rocket', n_colors=100); sns.color_palette('viridis', n_colors=100)
 
 
 - Identifier:
-    - code to combine TFBS states based on squares in covariance matrix
-        - use more complicated locus: Ohler6-m0-seq171
-    - Fisher, Binomial, etc. for SNPs database
-    - update readthedocs for Identifier
-    - add xtick_spacing to plot_covariance_square
-    - background_entropy currently only defined for 4 nucleotides
-    - calculate expected effect for each cluster? (change in y-value from WT cluster)
-    - fix state matrix bug (multiplier > 1?)
-    - add percent mismatches table and printouts from old code
-    - automate epistatic effects from state matrix
+    - Pre-release:
+        - background_entropy currently only defined for 4 nucleotides
+        - update readthedocs for Identifier
+
+    - Post-release:
+        - code to combine TFBS states based on squares in covariance matrix
+            - use more complicated locus: Ohler6-m0-seq171
+        - Fisher, Binomial, etc. for SNPs database
+        - add xtick_spacing to plot_covariance_square
+        - calculate expected effect for each cluster? (change in y-value from WT cluster)
+        - fix state matrix bug (multiplier > 1?)
+        - add percent mismatches table and printouts from old code
 
 
 - Impress:
@@ -163,30 +167,48 @@ Documentation:
 
 
 - GUI Class:
-    - GUI requires 'matplotlib==3.6.0', which is in conflict with scipy dendrogram plot
-    - Save a page of individual logos to figure from a given cluster (popup window with start/stop option)
-    - if no points selected, clear and show warning box
-    - P2/P3: statistics window needs correct toolbar readouts
-    - P1: “First row”, “consensus”, “custom”, “None”
-    - Redoing cluster folder on P1 (while hist shown on P2) results in overlapping plots on P2
-    - Box plots for y vs clusters in MSM margin or sub-window
-    - Re-assert “Drawing order” after changing “Color Map” on P2
-    - Toolbars: save with tight layout
-    - Go to WT cluster (i.e., first row of ‘all clusters.csv’)
-    - MSM: option to map SEAM coordinates to new number (e.g., chr1:A-B)
-    - Save mismatch table in Marginal Window of GUI; popup window showing location of saved file
-    - Update P3 UMAP when Custom.plt_step is changed on P2 (needs to update Predef.cluster_colors)
-    - New tab to merge clusters and label them (e.g., AP-1, etc)
-        - Visualize state vs. TFBS presence graph
-    - pop up box to view dendrogram
-    - youtube tutorial
-    - Write .md manual
-    - copy rows in Tables to clipboard
-    - load GUI without embedding (just cluster); show N/A on embedding plots, etc.
-    - marginals() --> x_skip, y_skip; c_skip missing positional skip...
-    - add option to plot embedding (from other method) with labels defined by linkage-based clusters
-    - allow option to preprocess Enrichment and PWM logos on the fly (P3 dialog box)
-    - Imports widget for Psi 1 and Psi 2?
+    - Pre-release:
+        - all 'DNN' to 'Activity'
+        - GUI requires 'matplotlib==3.6.0', which is in conflict with scipy dendrogram plot
+        - Online:
+            - Youtube tutorial
+            - Write .md manual
+        - MSM -> CSM (frontend and backend); pip, check Colabs, etc.
+        - check all "TODO"
+        - turn off 'if 1:' for local imports
+
+    - Post-release:
+        - MSM: option to map SEAM coordinates to new number (e.g., chr1:A-B)
+        - Save mismatch table in Marginal Window of GUI; popup window showing location of saved file
+        - Update P3 UMAP when Custom.plt_step is changed on P2 (needs to update Predef.cluster_colors)
+        - New tab to merge clusters and label them (e.g., AP-1, etc)
+            - Visualize state vs. TFBS presence graph
+            - Epistatic interactions
+        - Widgets on P1:
+            - get naming of columns ('DNN', 'GIA', etc.) straight from mave dataset
+                - update available entries on P2
+                - widgets under reference sequence widget for mapping labels to Activity and Sequence columns
+            - add 'consensus' option for reference sequence
+            - pop up box to view dendrogram
+            - add option to plot embedding (from other method) with labels defined by linkage-based clusters
+            - Imports widget for Psi 1 and Psi 2?
+        - Widgets on P2:
+            - more space around edges of embedding figure
+        - Widgets on P3:
+            - figsize option
+            - toggle up and down for cluster selection, remove 'View' button
+            - go to WT cluster button (update cluster selection integer and plots)
+                - also show WT sequence location
+            - view a page of individual logos from a given cluster (popup window with start/stop option)
+            - allow option to preprocess Enrichment and PWM logos on the fly (P3 dialog box)
+            - print sequence indices button (or put it in the sequence table widget)
+            - Backgrounds:
+                - show average background (button)
+                - intra-cluster backgrounds (per cluster, load like PWMs)
+                - calculate k-mer frequences, etc?
+        - Other windows:
+            - copy rows in Tables to clipboard
+            - marginals() --> x_skip, y_skip; c_skip missing positional skip...
 
 
 - Wrapper:
@@ -195,7 +217,7 @@ Documentation:
 
 
 - Old code:
-    - speed up all processes with new backend, and add readme
+    - add readme for seam_manuscript stating old code
     - remove unneeded code from logomaker_batch folder
 
 
@@ -217,6 +239,7 @@ Documentation:
         - Hnf4...
         - x_mut and y_mut for PBMs
         - AP1 genomic loci
+        - GUI demo files (update readme)
 
 
 - Commands:

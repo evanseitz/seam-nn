@@ -134,9 +134,35 @@ Additional dependencies for these Python examples may be required and outlined a
 
 
 ## SEAM Interactive Interpretability Tool:
-Interactive interpretability tools are currently under development and will be available in a future release. These tools will provide a graphic user interface (GUI) for dynamically interpreting SEAM results, allowing users to explore and analyze pre-computed inputs from the example scripts above.
+A graphic user interface (GUI) is available for dynamically interpretting SEAM results, allowing users to explore and analyze pre-computed inputs from the e. The GUI can be run using the command line interface from the `seam` folder via `python seam_gui.py` with the `seam-gui` environment activated (see below). The SEAM GUI requires pre-computed inputs that can be saved using the example scripts above. Instructions for downloading demo files for running the SEAM GUI are available in the folder `seam_gui_demo`.
 
 <img src="https://raw.githubusercontent.com/evanseitz/seam-nn/main/docs/_static/seam_gui.png" alt="fig" width="800"/>
+
+**SEAM GUI environment** requires alternative imports to the default `seam` environment (above). The `seam-gui` environment can be installed following these steps:
+
+```bash
+conda create --name seam-gui python==3.8*
+```
+
+Next, activate this environment via `conda activate seam-gui`, and install the following packages:
+
+```bash
+	pip install --upgrade pip
+	pip install PyQt5
+	pip3 install --user psutil
+	pip install biopython
+	pip install scipy
+	pip install seaborn
+	pip install -U scikit-learn
+	pip install pysam
+	pip install seam-nn
+	pip install matplotlib==3.6
+```
+
+Finally, when you are done using the environment, always exit via `conda deactivate`.
+
+> Make sure matplotlib==3.6 is the last package installed
+
 
 ## Citation:
 If this code is useful in your work, please cite our paper.

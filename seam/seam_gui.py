@@ -804,6 +804,15 @@ class Custom(QtWidgets.QWidget):
                 Custom.cbar_label = 'DNN task'
             elif Custom.entry_cmap.currentText() == 'Histogram':
                 Custom.cbar_label = 'Histogram'
+            
+            # Update zorder based on current drawing order setting and new color map
+            if Custom.entry_zorder.currentText() == 'Original':
+                Custom.zord = Custom.zord0
+            elif Custom.entry_zorder.currentText() == 'Ascending':
+                Custom.zord = np.argsort(np.array(Imports.mave[Custom.cmap]))
+            elif Custom.entry_zorder.currentText() == 'Descending':
+                Custom.zord = np.argsort(np.array(Imports.mave[Custom.cmap]))[::-1]
+            
             Custom.btn_reset.click()
 
         def choose_zorder():
@@ -1148,12 +1157,15 @@ class Custom(QtWidgets.QWidget):
                 bin_count += 1
                 idxs.append(idx)
         Custom.seqs_cluster = seqs[idxs]
-        map_avg /= bin_count
-        map_avg = np.reshape(map_avg, (Imports.seq_length, Imports.maps_shape[2]))
-        try: # TODO - see below
-            Custom.imgAvg = utils.arr2pd(map_avg, Imports.alphabet)
-        except: # TODO - may need a separate option for this to deal with two-hot encodings (e.g., CLIPNET)
-            Custom.imgAvg = utils.arr2pd(map_avg)
+        if bin_count > 0:
+            map_avg /= bin_count
+            map_avg = np.reshape(map_avg, (Imports.seq_length, Imports.maps_shape[2]))
+            try: # TODO - see below
+                Custom.imgAvg = utils.arr2pd(map_avg, Imports.alphabet)
+            except: # TODO - may need a separate option for this to deal with two-hot encodings (e.g., CLIPNET)
+                Custom.imgAvg = utils.arr2pd(map_avg)
+        else:
+            Custom.imgAvg = None
         return idxs
 
 
@@ -1334,6 +1346,7 @@ class Cluster(QtWidgets.QMainWindow):
         self.entry_start.setValue(Custom.logos_start)
         self.entry_start.setPrefix('Start: ')
         self.entry_start.setToolTip('Start position for viewing window.')
+        self.entry_start.lineEdit().returnPressed.connect(crop_logos)
 
         self.entry_stop = QDoubleSpinBox(self)
         self.entry_stop.setButtonSymbols(QAbstractSpinBox.NoButtons)
@@ -1344,6 +1357,7 @@ class Cluster(QtWidgets.QMainWindow):
         self.entry_stop.setPrefix('Stop: ')
         self.entry_stop.setSuffix(' / %s' % int(Imports.seq_length))
         self.entry_stop.setToolTip('Stop position for viewing window.')
+        self.entry_stop.lineEdit().returnPressed.connect(crop_logos)
 
         self.btn_crop = QPushButton('Crop view')
         self.btn_crop.clicked.connect(crop_logos)
@@ -1498,7 +1512,18 @@ class Cluster(QtWidgets.QMainWindow):
         self.ax1.set_ylim(ax1.get_ylim())
         self.ax1.axhline(y=0, color='black', linestyle='-', linewidth=0.5, alpha=0.3)
         self.ax1.set_xticks([])
-        self.ax1.set_yticks([])
+        
+        # Set single y-tick at the top for attribution logo
+        yticks = ax1.get_yticks()
+        if len(yticks) > 0:
+            max_y = yticks[-1]
+            self.ax1.set_yticks([max_y])
+            self.ax1.set_yticklabels([f'{max_y:.2f}'])
+            self.ax1.tick_params(axis='y', labelsize=6)
+        else:
+            self.ax1.set_yticks([])
+            self.ax1.set_yticklabels([])
+        
         for spine in self.ax1.spines.values():
             spine.set_visible(False)
         plt.close(fig1)  # Close temporary figure
@@ -1508,15 +1533,10 @@ class Cluster(QtWidgets.QMainWindow):
         
         # Initialize highlight_ranges before using it
         highlight_ranges = None
-        if Custom.logo_ref:
-            if Imports.map_crop:
-                ref_seq = Imports.ref_full[Imports.seq_start:Imports.seq_stop]
-            else:
-                ref_seq = Imports.ref_full
-                
+        if Custom.logo_ref and ref_seq is not None:
             # Compare reference sequence with logo
             highlight_positions = []
-            for i, (ref_char, logo_chars) in enumerate(zip(ref_seq[Custom.logos_start:Custom.logos_stop], 
+            for i, (ref_char, logo_chars) in enumerate(zip(ref_seq, 
                                                          Cluster.seq_logo[Custom.logos_start:Custom.logos_stop].values)):
                 if ref_char in Imports.alphabet:
                     char_idx = Imports.alphabet.index(ref_char)
@@ -1550,6 +1570,8 @@ class Cluster(QtWidgets.QMainWindow):
                 show_progress=False
             )
             Cluster.batch_logo_sequence.process_all()
+            if ref_seq is not None:
+                Cluster.batch_logo_sequence.style_glyphs_in_sequence(ref_seq)
         
         # Draw to temporary figure and copy to our subplot
         highlight_colors = ['red'] if highlight_ranges else None
@@ -1586,10 +1608,29 @@ class Cluster(QtWidgets.QMainWindow):
         self.ax2.axhline(y=0, color='black', linestyle='-', linewidth=0.5, alpha=0.3)
         self.ax2.set_xlabel('Position', fontsize=6, va='top', labelpad=6)
         self.ax2.set_xticks([])
-        self.ax2.set_yticks([])
+        
+        # Set single y-tick at the top for sequence logo
+        yticks = ax2.get_yticks()
+        if len(yticks) > 0:
+            max_y = yticks[-1]
+            self.ax2.set_yticks([max_y])
+            self.ax2.set_yticklabels([f'{max_y:.2f}'])
+            self.ax2.tick_params(axis='y', labelsize=6)
+        else:
+            self.ax2.set_yticks([])
+            self.ax2.set_yticklabels([])
+        
         for spine in self.ax2.spines.values():
             spine.set_visible(False)
         plt.close(fig2)  # Close temporary figure
+        
+        # Set up coordinate tracking for both subplots
+        def cluster_format_coord(x, y):
+            return f'x={int(x)}, y={y:.3f}'
+        
+        # Set the format_coord for both axes
+        self.ax1.format_coord = cluster_format_coord
+        self.ax2.format_coord = cluster_format_coord
         
         self.canvas.draw()
 
