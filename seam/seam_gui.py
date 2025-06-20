@@ -3953,7 +3953,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 <li>Shape should be (N, Z) where Z is number of dimensions</li>
                 <li>Used for visualization in Custom Clusters and Predefined Clusters tabs</li>
                 <li><b>Clustering method:</b> Choose between kmeans (specify number of clusters) or dbscan</li>
-                <li><b>Cluster sorting:</b> Median activity (default) or No reordering</li>
+                <li><b>Number of clusters:</b> Specify number of clusters for kmeans clustering</li>
+                <li><b>Cluster sorting:</b> Median activity (default) or no reordering</li>
                 <li>See SEAM Clusterer class for generating embedding of attribution maps using dimensionality reduction (e.g., UMAP, t-SNE, PCA)</li>
             </ul>
             
@@ -3963,7 +3964,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 <li>Shape should be (N-1, 4) where N is number of sequences (e.g., see scipy.cluster.hierarchy.linkage)</li>
                 <li>Used for visualization in Predefined Clusters tab</li>
                 <li><b>Cut criterion:</b> maxclust (specify number of clusters) or distance (specify distance threshold)</li>
-                <li><b>Cluster sorting:</b> Median activity (default) or No reordering</li>
+                <li><b>Number of clusters:</b> If maxclust, specify number of clusters for maxclust clustering</li>
+                <li><b>Distance threshold:</b> If distance, specify distance threshold for hierarchical clustering</li>
+                <li><b>Cluster sorting:</b> Median activity (default) or no reordering</li>
                 <li>See SEAM Clusterer class for generating linkage matrix from attribution maps (hierarchical clustering)</li>
             </ul>
         </div>
