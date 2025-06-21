@@ -24,10 +24,6 @@ Installation notes:
     - The seam-gui environment should be activated before installing packages and running the GUI
 '''
 
-# TODO - data structure checks; e.g:
-# linkage_matrix = np.load(Imports.linkage_fname)
-# if linkage_matrix.shape[1] == 4:  # This is a linkage matrix
-
 
 import sys, os
 sys.dont_write_bytecode = True
@@ -49,6 +45,7 @@ from matplotlib.ticker import MaxNLocator # integer ticks
 import pandas as pd
 from Bio import motifs # 'pip install biopython'
 from scipy import spatial # 'pip install scipy'
+from scipy.cluster import hierarchy
 from tqdm import tqdm
 if 1: # enable local SEAM imports TODO
     sys.path.insert(0, os.path.abspath('.'))
@@ -367,17 +364,21 @@ class Imports(QtWidgets.QWidget):
                 self.label_cut_param.setText('Number of clusters:')
                 # Update the existing spinbox to be an integer spinbox
                 if not isinstance(self.spin_cut_param, QtWidgets.QSpinBox):
+                    # Remove the old widget from the grid first
+                    self.grid.removeWidget(self.spin_cut_param)
                     val = self.spin_cut_param.value()
                     self.spin_cut_param = QtWidgets.QSpinBox(self)
                     self.spin_cut_param.setMinimum(2)
                     self.spin_cut_param.setValue(int(val))
                     self.spin_cut_param.setSingleStep(1)
                     self.spin_cut_param.valueChanged.connect(lambda: self.mark_imports_changed())
-                    self.grid.addWidget(self.spin_cut_param, 6, 4, 1, 1, QtCore.Qt.AlignLeft)
+                    self.grid.addWidget(self.spin_cut_param, 7, 5, 1, 1, QtCore.Qt.AlignLeft)
             else:
                 self.label_cut_param.setText('Distance threshold:')
                 # Update the existing spinbox to be a double spinbox
                 if not isinstance(self.spin_cut_param, QtWidgets.QDoubleSpinBox):
+                    # Remove the old widget from the grid first
+                    self.grid.removeWidget(self.spin_cut_param)
                     val = self.spin_cut_param.value()
                     self.spin_cut_param = QtWidgets.QDoubleSpinBox(self)
                     self.spin_cut_param.setMinimum(0.0)
@@ -385,7 +386,7 @@ class Imports(QtWidgets.QWidget):
                     self.spin_cut_param.setSingleStep(0.01)
                     self.spin_cut_param.setValue(float(val))
                     self.spin_cut_param.valueChanged.connect(lambda: self.mark_imports_changed())
-                    self.grid.addWidget(self.spin_cut_param, 6, 4, 1, 1, QtCore.Qt.AlignLeft)            
+                    self.grid.addWidget(self.spin_cut_param, 7, 5, 1, 1, QtCore.Qt.AlignLeft)            
             self.mark_imports_changed()
         self.combo_cut_criterion.currentTextChanged.connect(update_cut_param)
 
@@ -543,6 +544,9 @@ class Imports(QtWidgets.QWidget):
         if Imports.checkbox_embedding.isChecked():
             # Uncheck linkage checkbox if embedding is checked
             Imports.checkbox_linkage.setChecked(False)
+            # Clear linkage filename when switching to embedding
+            Imports.linkage_fname = ''
+            self.entry_linkage.setText('Filename')
             # Enable embedding browse button only (entry widget should always be disabled)
             self.browse_embedding.setEnabled(True)
             # Disable linkage widgets
@@ -558,6 +562,10 @@ class Imports(QtWidgets.QWidget):
         if Imports.checkbox_linkage.isChecked():
             # Uncheck embedding checkbox if linkage is checked
             Imports.checkbox_embedding.setChecked(False)
+            # Clear embedding filename when switching to linkage
+            Imports.embedding_fname = ''
+            self.entry_embedding.setText('Filename')
+            self.has_embedding = False
             # Enable linkage browse button only (entry widget should always be disabled)
             self.browse_linkage.setEnabled(True)
             # Disable embedding widgets
@@ -927,7 +935,7 @@ class Custom(QtWidgets.QWidget):
             Custom.btn_reset.click()
 
         def plot_reference():
-            if Imports.ref_idx != '': # TODO -add warning or disable
+            if Imports.ref_idx != '': # TODO - add warning or disable
                 if Custom.checkbox_ref.isChecked():
                     Custom.plot_ref = True 
                 else:
@@ -1160,6 +1168,11 @@ class Custom(QtWidgets.QWidget):
         Custom.ax.autoscale()
         Custom.ax.margins(x=0)
         Custom.ax.margins(y=0)
+        
+        # Set thin spine thickness for embedding plot
+        for spine in Custom.ax.spines.values():
+            spine.set_linewidth(0.1)
+        
         # Update colorbar
         Custom.cbar.update_normal(Custom.scatter)
         Custom.cbar.ax.set_ylabel(Custom.cbar_label, rotation=270, fontsize=6, labelpad=9)
@@ -1222,6 +1235,10 @@ class Custom(QtWidgets.QWidget):
             ax.plot([self.coordsX[0],self.coordsX[-1]],
                     [self.coordsY[0],self.coordsY[-1]],
                     color=Custom.theme_color1, linestyle='solid', linewidth=.5, zorder=1)
+
+            # Set thin spine thickness for embedding plot
+            for spine in Custom.ax.spines.values():
+                spine.set_linewidth(0.1)
 
             # Update colorbar
             Custom.cbar.update_normal(Custom.scatter)
@@ -1455,7 +1472,7 @@ class Cluster(QtWidgets.QMainWindow):
         self.btn_crop.setDisabled(False)
         self.btn_crop.setDefault(False)
         self.btn_crop.setAutoDefault(False)
-        self.btn_crop.setToolTip('Visually crop diplay window for logos based on start and stop values.')
+        self.btn_crop.setToolTip('Visually crop display window for logos based on start and stop values.')
 
         self.label_cluster = QLabel('Cluster info: ')
         self.btn_seq_table = QPushButton('Sequences')
@@ -2008,6 +2025,71 @@ class Stats(QtWidgets.QMainWindow):
 ################################################################################
 # Predefined clustering tab 
 
+class EmbeddingPlotter:
+    """Handles plotting for the embedding pathway (P3)"""
+    
+    @staticmethod
+    def plot_embedding_scatter(ax, embedding, cluster_assignments, cluster_idx, k_idxs, 
+                              plt_step, plt_marker, plt_lw, theme_color1, theme_color2):
+        """Plot embedding scatter plot with cluster highlighting and colorbar"""
+        # Use the exact same logic as the working version for P3
+        ax.clear()
+        
+        # Extract X and Y coordinates from embedding array (like pts_origX and pts_origY)
+        pts_origX = embedding[:, 0]
+        pts_origY = embedding[:, 1]
+        
+        # Plot all points with cluster colors (using pts_origX and pts_origY like working version)
+        scatter = ax.scatter(pts_origX[::plt_step],
+                            pts_origY[::plt_step],
+                            s=plt_marker,
+                            c=cluster_assignments[::plt_step],
+                            cmap='tab10', linewidth=plt_lw, zorder=0)
+        
+        # Highlight selected cluster points in black (exact same as working version)
+        if k_idxs is not None and len(k_idxs) > 0:
+            ax.scatter(pts_origX[k_idxs][::plt_step],
+                      pts_origY[k_idxs][::plt_step],
+                      c='black', 
+                      s=plt_marker, cmap='jet', linewidth=plt_lw, zorder=10)
+        
+        # Set thin spine thickness for embedding plot
+        for spine in ax.spines.values():
+            spine.set_linewidth(0.1)
+            spine.set_visible(True)  # Ensure spines are visible for embedding mode
+        
+        # Set title
+        ax.set_title('Click on a cluster to view its logo', fontsize=5)
+
+
+class DendrogramPlotter:
+    """Handles plotting for the linkage pathway (P3)"""
+    
+    @staticmethod
+    def plot_dendrogram(ax, linkage, maps, spin_cut_param, combo_cut_criterion):
+        """Plot dendrogram with proper parameter handling"""
+        clusterer = Clusterer(maps, gpu=False)
+        
+        # Determine cut level for highlighting (exact same as working version)
+        param = spin_cut_param.value()
+        criterion = combo_cut_criterion.currentText().lower()
+        cut_level = None
+                
+        if criterion == 'maxclust':
+            n_clusters = int(param)
+            if n_clusters > 1 and n_clusters < Imports.nS:
+                # Adjust for 0-based cluster assignments
+                cut_level = linkage[Imports.nS - n_clusters - 1, 2]
+        else:  # distance
+            cut_level = param
+
+        # Always truncate dendrograms (exact same as working version)
+        clusterer.plot_dendrogram(linkage, ax=ax, cut_level=cut_level, truncate=True, cut_level_truncate=cut_level, criterion=criterion, n_clusters=param if criterion == 'maxclust' else None)
+        
+        # Set title for linkage mode
+        ax.set_title('Dendrogram-based clustering (click on a leaf to view its cluster logo)', fontsize=5)
+
+
 class Predef(QtWidgets.QWidget):
     pixmap = ''
     coordsX = 0
@@ -2352,7 +2434,7 @@ class Predef(QtWidgets.QWidget):
         Predef.entry_logostyle.addItem('Sequence enrichment')
         Predef.entry_logostyle.addItem('Sequence PWM')
         Predef.entry_logostyle.currentTextChanged.connect(choose_logostyle)
-        Predef.entry_logostyle.setToolTip('Select the logo visualization scheme.')
+        Predef.entry_logostyle.setToolTip('Select the logo visualization scheme: Average of maps (attribution-based) or sequence-based options.')
         
         # Disable sequence-based logo options for now
         Predef.entry_logostyle.setItemData(1, False, QtCore.Qt.UserRole - 1)  # Disable 'Sequence enrichment' TODO
@@ -2377,6 +2459,8 @@ class Predef(QtWidgets.QWidget):
             self.update_logo()
         Predef.checkbox_bg_separation.stateChanged.connect(toggle_background_separation)
 
+        # Truncate dendrogram widgets removed - always truncate by default
+
         layout = QGridLayout()
         layout.setSizeConstraint(QGridLayout.SetMinimumSize)
         grid_top = QGridLayout()
@@ -2392,7 +2476,7 @@ class Predef(QtWidgets.QWidget):
         grid_bot = QGridLayout()
         grid_bot.addWidget(self.label_choose_cluster, 0, 0, 1, 1, QtCore.Qt.AlignRight)
         grid_bot.addWidget(Predef.choose_cluster, 0, 1, 1, 1, QtCore.Qt.AlignLeft)
-        grid_bot.addWidget(QVLine(), 0, 3, 1, 2, QtCore.Qt.AlignCenter) # TODO - weird spacing
+        grid_bot.addWidget(QVLine(), 0, 3, 1, 2, QtCore.Qt.AlignCenter)
         grid_bot.addWidget(Predef.label_bg_separation, 0, 8, 1, 1, QtCore.Qt.AlignRight) # only visible in background-separated mode
         grid_bot.addWidget(Predef.checkbox_bg_separation, 0, 9, 1, 1, QtCore.Qt.AlignLeft) # only visible in background-separated mode
         grid_bot.addWidget(self.label_display, 0, 10, 1, 1, QtCore.Qt.AlignRight)
@@ -2431,57 +2515,107 @@ class Predef(QtWidgets.QWidget):
                 if ix != None and iy != None:
                     self.coordsX = float(ix)
                     self.coordsY = float(iy)
-                self.dist, idx = spatial.KDTree(self.embedding).query(np.array([self.coordsX, self.coordsY]))
+                
+                # Handle both embedding and linkage cases
+                if hasattr(self, 'embedding') and self.embedding is not None:
+                    # Embedding case - use KDTree for nearest neighbor search
+                    self.dist, idx = spatial.KDTree(self.embedding).query(np.array([self.coordsX, self.coordsY]))
+                else:
+                    # Linkage case - use simple distance-based selection
+                    # Find the closest point in the scatter plot
+                    coords = np.column_stack([self.pts_origX, self.pts_origY])
+                    distances = np.sqrt((coords[:, 0] - self.coordsX)**2 + (coords[:, 1] - self.coordsY)**2)
+                    idx = np.argmin(distances)
+                    self.dist = distances[idx]
+                    
             if self.dist < .01 or self.clicked == False:
                 # Locate all members in dataframe that belong to cluster
                 if self.clicked == True:
                     self.cluster_idx = Imports.clusters[Imports.cluster_col][idx]
                     self.k_idxs =  np.array(Imports.clusters[Imports.cluster_col].loc[Imports.clusters[Imports.cluster_col] == self.cluster_idx].index)
                     self.num_seqs = len(self.k_idxs)
+                    self.embedding is not None
                     self.choose_cluster.blockSignals(True) # prevent feedback loop
                     self.choose_cluster.setValue(self.cluster_idx)
                     self.choose_cluster.blockSignals(False)
                 # Redraw and resize figure
                 self.ax.clear()
-                self.scatter = self.ax.scatter(self.pts_origX[::Custom.plt_step],
-                                                self.pts_origY[::Custom.plt_step],
-                                                s=Custom.plt_marker,
-                                                c=self.cluster_colors,
-                                                cmap='tab10', linewidth=Custom.plt_lw, zorder=0)
-                self.scatter = self.ax.scatter(self.pts_origX[self.k_idxs][::Custom.plt_step],
-                                                self.pts_origY[self.k_idxs][::Custom.plt_step],
-                                                c='black', 
-                                                s=Custom.plt_marker, cmap='jet', linewidth=Custom.plt_lw, zorder=10)
+                
+                embedding_selected = Imports.checkbox_embedding.isChecked() and Imports.embedding_fname != ''
+
+                if embedding_selected:
+                    # Use EmbeddingPlotter for embedding pathway
+                    EmbeddingPlotter.plot_embedding_scatter(
+                        ax=self.ax,
+                        embedding=np.column_stack([self.pts_origX, self.pts_origY]),  # Use pts_origX and pts_origY like working version
+                        cluster_assignments=self.cluster_colors,
+                        cluster_idx=self.cluster_idx,
+                        k_idxs=self.k_idxs,
+                        plt_step=Custom.plt_step,
+                        plt_marker=Custom.plt_marker,
+                        plt_lw=Custom.plt_lw,
+                        theme_color1='lightgray',
+                        theme_color2='black'
+                    )
+                else:
+                    # Use DendrogramPlotter for linkage pathway
+                    DendrogramPlotter.plot_dendrogram(
+                        ax=self.ax,
+                        linkage=Imports.linkage,
+                        maps=Imports.maps,
+                        spin_cut_param=Imports.spin_cut_param,
+                        combo_cut_criterion=Imports.combo_cut_criterion
+                    )
+                    
                 self.ax.tick_params(axis='both', which='major', labelsize=4)
                 self.ax.get_xaxis().set_ticks([])
                 self.ax.get_yaxis().set_ticks([])
-                self.ax.set_title('Click on a cluster to view its logo', fontsize=5)
+                
+                # Set appropriate title based on whether in embedding or linkage mode
+                if hasattr(Imports, 'embedding_fname') and Imports.embedding_fname != '':
+                    # Embedding mode - we loaded an actual embedding file
+                    self.ax.set_title('Click on a cluster to view its logo', fontsize=5)
+                else:
+                    # Linkage mode - using placeholder coordinates
+                    self.ax.set_title('Dendrogram-based clustering', fontsize=5)
+                
                 #self.ax.set_xlabel(r'$\mathrm{\Psi}$%s' % int(Imports.psi_1+1), fontsize=6) TODO - weird cropping
                 #self.ax.set_ylabel(r'$\mathrm{\Psi}$%s' % int(Imports.psi_2+1), fontsize=6) TODO
                 self.ax.autoscale()
                 self.ax.margins(x=0)
                 self.ax.margins(y=0)
-                # Update sequence logo
-                self.update_logo()
+                
                 # Force the matplotlib toolbar to update its status
                 if self.clicked == True:
                     self.canvas.motion_notify_event(*self.ax.transAxes.transform([0,0]))
                     self.canvas.motion_notify_event(*self.ax.transAxes.transform([ix,iy]))
+                
                 # Save sequences in cluster
                 seqs = Imports.mave['Sequence'].str.slice(Imports.seq_start, Imports.seq_stop)
                 self.seqs_cluster = seqs[self.k_idxs]
                 seq_array_cluster = motifs.create(self.seqs_cluster, alphabet=Imports.alphabet)
                 self.pfm_cluster = seq_array_cluster.counts # position frequency matrix
+                    
+                # Update sequence logo AFTER all other operations to prevent feedback loop
+                self.update_logo()
+                
                 self.canvas.draw() # refresh canvas
+                
+                # Clear the processing flag
+                if self.clicked == True:
+                    self._processing_click = False
 
     def highlight_cluster(self):
         self.cluster_idx = int(self.choose_cluster.value())
         self.k_idxs =  np.array(Imports.clusters[Imports.cluster_col].loc[Imports.clusters[Imports.cluster_col] == self.cluster_idx].index)
         self.num_seqs = len(self.k_idxs)
+        
+        # For embedding mode, use the existing logic
         self.clicked = False  # bypass mouse click event to force replot
         self.dist = 9001
         self.onclick(None)
         self.clicked = True
+
 
     def open_inter_stats_window(self):
         global inter_stats_window
@@ -2610,13 +2744,13 @@ class AllStats(QtWidgets.QMainWindow):
             marginals_window.close()
         except:
             pass
-        if AllStats.combo_compare.currentText() == 'Reference sequence':
+        if AllStats.combo_compare.currentText() == 'Percent mismatches to reference':
             Predef.df_col = 'Reference'
             AllStats.delta = False
         elif AllStats.combo_compare.currentText() == 'Consensus per cluster':
             Predef.df_col = 'Consensus'
             AllStats.delta = False
-        elif AllStats.combo_compare.currentText() == 'Entropy':
+        elif AllStats.combo_compare.currentText() == 'Positional Shannon entropy':
             Predef.df_col = 'Entropy'
             AllStats.delta = False
 
@@ -3289,9 +3423,27 @@ class MainWindow(QtWidgets.QMainWindow):
             predef_stats_window.close()
         except:
             pass
-        # tabs.setTabEnabled(2, False) #freezes out 3rd tab # TODO - why was this here?
 
     def process_imports(self):
+        # Clear P3 logo figure at the start of any import update
+        try:
+            tab2.logo_ax.clear()
+            tab2.logo_ax.axis('off')
+            tab2.logo_canvas.draw()
+        except:
+            pass
+
+        try:
+            # Clear embedding-specific state
+            if hasattr(tab2, 'embedding'):
+                delattr(tab2, 'embedding')
+            if hasattr(tab2, 'seqs_cluster'):
+                delattr(tab2, 'seqs_cluster')
+            if hasattr(tab2, 'pfm_cluster'):
+                delattr(tab2, 'pfm_cluster')
+        except:
+            pass
+        
         # Check that either embedding OR linkage is selected (but not both)
         embedding_selected = Imports.checkbox_embedding.isChecked() and Imports.embedding_fname != ''
         linkage_selected = Imports.checkbox_linkage.isChecked() and Imports.linkage_fname != ''
@@ -3324,9 +3476,10 @@ class MainWindow(QtWidgets.QMainWindow):
             Imports.seq_start = 0
             Imports.seq_stop = len(Imports.mave['Sequence'][0])
             Imports.seq_length = Imports.seq_stop - Imports.seq_start
-            Imports.maps = np.load(Imports.maps_fname, allow_pickle=True)
-            Imports.maps_shape = Imports.maps.shape
-            Imports.dim = (Imports.seq_length)*Imports.maps.shape[2]
+            # Remove redundant maps loading since it's already loaded in load_maps method
+            # Imports.maps = np.load(Imports.maps_fname, allow_pickle=True)
+            # Imports.maps_shape = Imports.maps.shape
+            Imports.dim = (Imports.seq_length)*Imports.maps_shape[2]
             if 'Hamming' in Imports.mave_col_names:
                 Imports.hamming_orig = Imports.mave['Hamming']
 
@@ -3426,12 +3579,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 Imports.errors_background = np.linalg.norm(maps_background - np.mean(maps_background, axis=0), axis=(1,2))
             else:
                 Imports.maps_bg_on = False
-            
-            # Set splitter so bottom panel is at its minimum size before collapsing TODO - is this needed?
-            #if hasattr(Predef, 'splitter') and hasattr(Predef, 'widget_bot_ref'):
-            #    min_bot = Predef.widget_bot_ref.sizeHint().height()
-            #    total_height = Predef.splitter.height()
-            #    Predef.splitter.setSizes([max(total_height - min_bot, 0), min_bot])
 
             tab2 = self.findChild(QtWidgets.QTabWidget).widget(2) # moved from within linkage_selected below
             tab2.ax.clear()
@@ -3457,6 +3604,10 @@ class MainWindow(QtWidgets.QMainWindow):
                                                 s=Custom.plt_marker,
                                                 c=Imports.mave[Custom.cmap][::Custom.plt_step],
                                                 cmap='jet', linewidth=Custom.plt_lw)
+
+                # Set thin spine thickness for embedding plot
+                for spine in Custom.ax.spines.values():
+                    spine.set_linewidth(0.1)
 
                 # Create initial colorbar
                 divider = make_axes_locatable(Custom.ax)
@@ -3507,12 +3658,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 tab2.pts_origX = x
                 tab2.pts_origY = y
 
-                tab2.clusters_idx = np.arange(Imports.clusters[Imports.cluster_col].max()+1) # TODO: is this needed below or can we use Predef version?
+                tab2.clusters_idx = np.arange(Imports.clusters[Imports.cluster_col].max()+1) # TODO: is this needed below or use Predef version?
                 Predef.clusters_idx = np.arange(Imports.clusters[Imports.cluster_col].max()+1)
                 tab2.cluster_sorted_indices = np.arange(Imports.clusters[Imports.cluster_col].max()+1)
                 Imports.mave['Cluster'] = Imports.clusters['Cluster']
 
-                tab2.cluster_colors = Imports.clusters[Imports.cluster_col][::Custom.plt_step]
+                tab2.cluster_colors = Imports.clusters[Imports.cluster_col].values[::Custom.plt_step]
                 #if Imports.cluster_col == 'Cluster_sort': # TODO - is this still needed?
                 #    unique_clusters = np.unique(tab2.cluster_colors)
                 #    randomized_mapping = {cluster: i for i, cluster in enumerate(np.random.permutation(unique_clusters))}
@@ -3524,6 +3675,10 @@ class MainWindow(QtWidgets.QMainWindow):
                                                c=tab2.cluster_colors,
                                                cmap='tab10',
                                                linewidth=Custom.plt_lw)
+
+                # Set thin spine thickness for embedding plot
+                for spine in tab2.ax.spines.values():
+                    spine.set_linewidth(0.1)
 
                 #tab2.ax.set_xlabel(r'$\mathrm{\Psi}$%s' % int(Imports.psi_1+1), fontsize=6) TODO - weird cropping
                 #tab2.ax.set_ylabel(r'$\mathrm{\Psi}$%s' % int(Imports.psi_2+1), fontsize=6) TODO
@@ -3537,15 +3692,14 @@ class MainWindow(QtWidgets.QMainWindow):
                 tab2.canvas.draw()
 
             elif linkage_selected:
-                # Use the already loaded and validated linkage matrix
-                # Imports.linkage was already loaded and validated in load_clusters_or_linkage()
-                
                 # Create cluster assignments using Clusterer
                 clusterer = Clusterer(Imports.maps, gpu=False)
                 # Use values from UI instead of hardcoding
-                n_clusters = Imports.spin_cut_param.value()
+                param = Imports.spin_cut_param.value()
                 criterion = Imports.combo_cut_criterion.currentText().lower()
-                cluster_assignments, _ = clusterer.get_cluster_labels(Imports.linkage, criterion=criterion, n_clusters=n_clusters)
+                cluster_assignments, _ = clusterer.get_cluster_labels(Imports.linkage, criterion=criterion, n_clusters=param)
+                if criterion == 'maxclust':
+                    cluster_assignments -= 1 # fcluster is 1-based, convert to 0-based
                 Imports.clusters = pd.DataFrame({'Cluster': cluster_assignments})
                 Imports.cluster_col = 'Cluster'
                         
@@ -3556,14 +3710,50 @@ class MainWindow(QtWidgets.QMainWindow):
                 # Get unique clusters
                 unique_clusters = Imports.clusters[Imports.cluster_col].unique()
 
-                tab2.pts_origX = np.zeros(Imports.nS) # dummy values
-                tab2.pts_origY = np.zeros(Imports.nS) # dummy values
+                # --- Dendrogram Implementation ---
+                tab2.ax.clear()
 
-                tab2.clusters_idx = np.arange(Imports.clusters[Imports.cluster_col].max()+1) # TODO: is this needed below or can we use Predef version?
+                # Use the existing plot_dendrogram function from Clusterer
+                # Always truncate dendrograms
+                
+                # Calculate cut_level for dendrogram display
+                cut_level = None
+                if criterion == 'maxclust':
+                    n_clusters = param
+                    cut_level = Imports.linkage[Imports.nS - n_clusters - 1, 2]
+                else: # distance
+                    cut_level = param
+                
+                clusterer.plot_dendrogram(Imports.linkage, ax=tab2.ax, cut_level=cut_level, truncate=True, cut_level_truncate=cut_level, criterion=criterion, n_clusters=param if criterion == 'maxclust' else None)
+                
+                # Setup coordinates for clickable leaves
+                with plt.ioff():
+                    fig_temp, ax_temp = plt.subplots()
+                    R = hierarchy.dendrogram(Imports.linkage, ax=ax_temp, no_plot=True)
+                    plt.close(fig_temp)
+                
+                n_samples = Imports.nS
+                x_coords = np.zeros(n_samples)
+                y_coords = np.zeros(n_samples) # Leaves are at y=0
+
+                # Map leaf order to x-coordinates
+                for i, leaf_idx in enumerate(R['leaves']):
+                    x_coords[leaf_idx] = 10 * i + 5
+                
+                tab2.pts_origX = x_coords
+                tab2.pts_origY = y_coords
+                tab2.embedding = np.column_stack([x_coords, y_coords])
+                tab2.cluster_colors = cluster_assignments # Store for onclick highlighting
+
+                # Adjust plot appearance
+                tab2.ax.tick_params(axis='y', which='major', labelsize=4)
+                tab2.ax.set_title('Dendrogram-based clustering (click on a leaf to view its cluster logo)', fontsize=5)
+
+                tab2.clusters_idx = np.arange(Imports.clusters[Imports.cluster_col].max()+1)
                 Predef.clusters_idx = np.arange(Imports.clusters[Imports.cluster_col].max()+1)
                 tab2.cluster_sorted_indices = np.arange(Imports.clusters[Imports.cluster_col].max()+1)
                 Imports.mave['Cluster'] = Imports.clusters['Cluster']
-                
+            
             # Store original shape and reshape maps to 3D for logo processing
             original_shape = Imports.maps.shape
             if len(Imports.maps.shape) == 2:
@@ -3784,6 +3974,8 @@ class MainWindow(QtWidgets.QMainWindow):
             tab2.update_logo()
             # Set cluster 0 in the spinbox and trigger the View button
             tab2.choose_cluster.setValue(0)
+
+            embedding_selected = Imports.checkbox_embedding.isChecked() and Imports.embedding_fname != ''
             tab2.highlight_cluster()
             
             # Show/hide background separation checkbox based on P1 setting
@@ -3796,7 +3988,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 Predef.checkbox_bg_separation.setChecked(False)  # Ensure it's unchecked when hidden
             
             # Update embedding plot to reflect cluster 0 is selected
-            tab2.canvas.draw() # TODO - only if embedding selected?
+            tab2.canvas.draw()
 
             print('Processing complete.')
 
@@ -3947,7 +4139,7 @@ class MainWindow(QtWidgets.QMainWindow):
         <p>Choose how to cluster your sequences. You must select either Embedding OR Linkage (but not both):</p>
         
         <div class="subsection">
-            <h5>Embedding (*.npy)</h5>
+            <h4>Embedding (*.npy)</h4>
             <ul>
                 <li>Import pre-computed embedding of attribution maps</li>
                 <li>Shape should be (N, Z) where Z is number of dimensions</li>
@@ -3958,7 +4150,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 <li>See SEAM Clusterer class for generating embedding of attribution maps using dimensionality reduction (e.g., UMAP, t-SNE, PCA)</li>
             </ul>
             
-            <h5>Linkage (*.npy)</h5>
+            <h4>Linkage (*.npy)</h4>
             <ul>
                 <li>Import pre-computed hierarchical clustering linkage matrix</li>
                 <li>Shape should be (N-1, 4) where N is number of sequences (e.g., see scipy.cluster.hierarchy.linkage)</li>
@@ -3973,7 +4165,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         <h4>4. Additional Options</h4>
         <div class="subsection">
-            <h5>Background Separation</h5>
+            <h4>Background Separation</h4>
             <p>Enable for analysis of local sequence libraries:</p>
             <ul>
                 <li><b>Mutation rate:</b> Set the mutation rate for analysis (0.0 to 1.0, default: 0.10)</li>
@@ -4022,13 +4214,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
         <h4>Display Controls</h4>
         <div class="subsection">
-            <h5>Coordinate Selection</h5>
+            <h4>Coordinate Selection</h4>
             <ul>
                 <li><b>Ψ1:</b> Select which embedding dimension to display on the X-axis</li>
                 <li><b>Ψ2:</b> Select which embedding dimension to display on the Y-axis</li>
             </ul>
             
-            <h5>Visualization Options</h5>
+            <h4>Visualization Options</h4>
             <ul>
                 <li><b>Color map:</b> Choose what to color points by (DNN, GIA, Hamming, Task, or Histogram)</li>
                 <li><b>Theme:</b> Light or dark theme for the plot</li>
@@ -4061,8 +4253,95 @@ class MainWindow(QtWidgets.QMainWindow):
     def show_predefined_help(self):
         """Show help dialog for Predefined Clusters tab"""
         help_text = """
+        <style>
+            .subsection {
+                margin-left: 20px;
+                border-left: 3px solid #ccc;
+                padding-left: 10px;
+            }
+        </style>
         <h3>Predefined Clusters Tab Guide</h3>
-        <p>Help for Predefined Clusters tab coming soon...</p>
+        
+        <p>This tab provides automated cluster analysis and visualization based on your imported clustering data. The interface and functionality differ depending on whether you imported an embedding or linkage file on the Import Files tab.</p>
+
+        <h4>Prerequisites</h4>
+        <p><b>Required:</b> You must have loaded data with either an embedding file OR a linkage file (but not both) on the Import Files tab. The Predefined Clusters tab becomes available after confirming your imports.</p>
+
+        <h4>Two Different Modes</h4>
+        
+        <div class="subsection">
+            <h4>Embedding Mode (Interactive)</h4>
+            <p>When you imported an embedding file, this tab provides an interactive scatter plot:</p>
+            <ul>
+                <li><b>Clickable clusters:</b> Click directly on any cluster in the embedding space to view its analysis</li>
+                <li><b>Real-time updates:</b> Logos and statistics update immediately when you click on different clusters</li>
+                <li><b>Visual feedback:</b> The selected cluster is highlighted in the plot</li>
+                <li><b>Cluster navigation:</b> Use the "Choose cluster" spinner to jump to specific cluster numbers</li>
+            </ul>
+            
+            <h4>Linkage Mode (Dendrogram View)</h4>
+            <p>When you imported a linkage file, this tab shows a hierarchical clustering dendrogram:</p>
+            <ul>
+                <li><b>Dendrogram visualization:</b> Displays the hierarchical structure of your clusters</li>
+                <li><b>Cluster selection:</b> Use the "Choose cluster" spinner to select clusters (interactive clicking coming in future updates)</li>
+                <li><b>Truncated view:</b> The dendrogram is truncated to show only the clusters specified by your maxclust/distance parameters from the Import Files tab</li>
+            </ul>
+        </div>
+
+        <h4>Main Interface Components</h4>
+        
+        <div class="subsection">
+            <h4>Visualization Area</h4>
+            <ul>
+                <li><b>Top plot:</b> Shows either the embedding scatter plot (embedding mode) or dendrogram (linkage mode)</li>
+                <li><b>Bottom logo:</b> Displays the cluster-averaged attribution logo for the currently selected cluster</li>
+            </ul>
+            
+            <h4>Cluster Selection</h4>
+            <ul>
+                <li><b>Choose cluster:</b> Use the spinner to select a specific cluster by number</li>
+            </ul>
+            
+            <h4>Logo Display Options</h4>
+            <ul>
+                <li><b>Logo visualization scheme:</b> Choose between "Average of maps" (attribution-based) or sequence-based options</li>
+                <li><b>Y-axis scaling:</b> Adaptive (auto-scaled per logo) or Fixed (consistent scale across logos)</li>
+                <li><b>Background separation:</b> When enabled, shows background-separated logos (removes background signal)</li>
+            </ul>
+        </div>
+
+        <h4>Analysis Tools</h4>
+        
+        <div class="subsection">
+            <h4>Cluster Analysis</h4>
+            <ul>
+                <li><b>Clustered Sequences:</b> View all individual sequences in the current cluster in a table format</li>
+                <li><b>Intra-cluster Statistics:</b> Detailed statistical analysis of the selected cluster</li>
+                <li><b>Inter-cluster Statistics:</b> Compare the selected cluster with all other clusters using box plots or bar charts</li>
+                <li><b>Cluster Summary Matrix (CSM):</b> View a heatmap showing cluster characteristics across all positions</li>
+                <ul>
+                    <li><b>Metrics:</b> Choose between positional Shannon entropy, percent mismatches to reference, or consensus per cluster</li>
+                    <li><b>Marginal distributions:</b> Analyze the distribution of cluster characteristics across positions and clusters</li>
+                </ul>
+            </ul>
+        </div>
+
+        <h4>Workflow Tips</h4>
+        <ul>
+            <li><b>Start with overview:</b> Use the Cluster Summary Matrix to get a global view of your clusters</li>
+            <li><b>Explore interesting clusters:</b> Click on clusters (embedding mode) or use the spinner to explore clusters with interesting patterns</li>
+            <li><b>Compare clusters:</b> Use Inter-cluster Statistics to understand how clusters differ from each other</li>
+            <li><b>Zoom for details:</b> Use the matplotlib zoom tool to examine specific regions of the visualization</li>
+            <li><b>Adjust logo display:</b> Try different y-axis scaling options to better visualize your data</li>
+        </ul>
+
+        <h4>Key Differences from Custom Clusters</h4>
+        <ul>
+            <li><b>Automated clustering:</b> Clusters are pre-defined based on your imported clustering data</li>
+            <li><b>Systematic analysis:</b> Easy to systematically explore all clusters rather than manually drawing regions</li>
+            <li><b>Global statistics:</b> Access to cluster summary matrix and intra- and inter-cluster comparisons</li>
+            <li><b>Reproducible results:</b> Same clusters will always be available, unlike manually drawn regions</li>
+        </ul>
         """
         dialog = HelpDialog('Predefined Clusters Help', help_text, self)
         dialog.exec_()
@@ -4119,6 +4398,8 @@ if __name__ == '__main__':
         QDialog:disabled { background-color: #f0f0f0; color: #808080; }
         QTextBrowser:disabled { background-color: #f0f0f0; color: #808080; }
         QDialogButtonBox:disabled { background-color: #f0f0f0; color: #808080; }
+        QTabBar:disabled { background-color: #f0f0f0; color: #808080; }
+        QTabBar::tab:disabled { background-color: #f0f0f0; color: #808080; }
     """) # Add disabled state styling for all common widgets
         
     # Set app icon for tray

@@ -739,7 +739,8 @@ class Clusterer:
 
     def plot_dendrogram(self, linkage, figsize=(15, 10), leaf_rotation=90, 
                         leaf_font_size=8, cut_level=None, save_path=None, dpi=200,
-                        file_format='png'):
+                        file_format='png', ax=None, truncate=True, cut_level_truncate=None, 
+                        criterion=None, n_clusters=None):
         """Plot dendrogram from hierarchical clustering linkage matrix.
         
         Args:
@@ -751,13 +752,65 @@ class Clusterer:
             save_path: Path to save figure (if None, displays plot)
             dpi: DPI for saved figure (default: 200)
             file_format: Format for saved figure (default: 'png'). Common formats: 'png', 'pdf', 'svg', 'eps'
+            ax: Matplotlib axis to plot on (for GUI use). If provided, plots on existing axis instead of creating new figure
+            truncate: Whether to truncate dendrogram for large datasets (for GUI use). Only used when ax is provided
+            cut_level_truncate: Height at which to truncate dendrogram (for GUI use). Used with truncate=True
+            criterion: Clustering criterion ('maxclust' or 'distance') for truncation calculation. Used with truncate=True
+            n_clusters: Number of clusters (for maxclust criterion) for truncation calculation. Used with truncate=True and criterion='maxclust'
         """
         sys.setrecursionlimit(100000)  # Fix for large dendrograms
         
+        # GUI mode: plot on existing axis
+        if ax is not None:
+            ax.clear()
+            dendro_params = {
+                'leaf_rotation': leaf_rotation,
+                'leaf_font_size': leaf_font_size,
+                'ax': ax
+            }
+            if truncate and cut_level_truncate is not None:
+                # Calculate p based on the user's clustering parameters
+                if criterion == 'maxclust':
+                    p = n_clusters
+                else:
+                    # For distance criterion, calculate how many clusters are formed at this distance
+                    clusters_at_distance = hierarchy.fcluster(linkage, cut_level_truncate, criterion='distance')
+                    p = len(np.unique(clusters_at_distance))
+                
+                dendro_params.update({
+                    'truncate_mode': 'lastp',
+                    'p': p,
+                    'show_leaf_counts': False
+                })
+                ax.set_xlabel('')
+            else:
+                # Don't truncate - show full dendrogram
+                dendro_params['no_labels'] = True
+                ax.set_xlabel('')
+                ax.set_xticks([])
+
+            hierarchy.dendrogram(linkage, **dendro_params)
+
+            if cut_level is not None:
+                # Make reference line thinner and add legend
+                ax.axhline(y=cut_level, color='r', linestyle='--', linewidth=0.5, label='Reference')
+                ax.legend(loc='best', fontsize=6, frameon=False)
+
+            # Make boundary lines thinner to match embedding figure
+            for spine in ax.spines.values():
+                spine.set_linewidth(0.1)
+                spine.set_visible(False)  # Remove black rectangle border for GUI mode
+
+            ax.set_title('Hierarchical Clustering Dendrogram', fontsize=8)
+            ax.set_ylabel('Distance', fontsize=6)
+            ax.tick_params(axis='both', which='major', labelsize=4)
+            return
+        
+        # Original functionality
         plt.figure(figsize=figsize)
-        plt.title('Hierarchical Clustering Dendrogram')
-        plt.xlabel('Sample index')
-        plt.ylabel('Distance')
+        plt.title('Hierarchical Clustering Dendrogram', fontsize=8)
+        plt.xlabel('')  # Remove x-label
+        plt.ylabel('Distance', fontsize=6)
         
         with plt.rc_context({'lines.linewidth': 2}):
             hierarchy.dendrogram(
@@ -767,12 +820,26 @@ class Clusterer:
             )
 
         if cut_level is not None:
-            plt.axhline(y=cut_level, color='r', linestyle='--', label=f'Cut level: {cut_level:.3f}')
-            plt.legend(frameon=False, loc='best')
+            # Make reference line thinner and add legend
+            plt.axhline(y=cut_level, color='r', linestyle='-', linewidth=0.5, label='Reference')
+            plt.legend(loc='best', fontsize=4, frameon=False)
+        
+        # Add padding around the dendrogram
+        xlim = plt.gca().get_xlim()
+        ylim = plt.gca().get_ylim()
+        x_pad = (xlim[1] - xlim[0]) * 0.1
+        y_pad = (ylim[1] - ylim[0]) * 0.1
+        plt.gca().set_xlim(xlim[0] - x_pad, xlim[1] + x_pad)
+        plt.gca().set_ylim(ylim[0] - y_pad, ylim[1] + y_pad)
+        
+        # Make boundary lines thinner to match embedding figure
+        #for spine in plt.gca().spines.values():
+            #spine.set_linewidth(0.1)
         
         plt.xticks([])
         plt.gca().spines['top'].set_visible(False)
         plt.gca().spines['right'].set_visible(False)
+        plt.gca().tick_params(axis='both', which='major', labelsize=4)
         
         if save_path:
             plt.savefig(save_path + f'/attributions_dendrogram.{file_format}', 
@@ -782,10 +849,10 @@ class Clusterer:
             plt.show()
 
     def get_cluster_labels(self, linkage, criterion='maxclust', max_distance=10, n_clusters=200):
-        """Get cluster labels from hierarchical clustering linkage matrix.
+        """Get cluster labels from a linkage matrix.
         
         Args:
-            linkage: Hierarchical clustering linkage matrix
+            linkage: Linkage matrix from scipy.cluster.hierarchy.linkage
             criterion: How to form flat clusters ('distance' or 'maxclust')
                 'distance': Cut tree at specified height 
                 'maxclust': Produce specified number of clusters

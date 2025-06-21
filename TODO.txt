@@ -46,6 +46,7 @@ Documentation:
         - update all terms in the backend code to reflect those used in final manuscript (MSM --> SSM, etc.)
             - and in all Python/Colab examples
         - Note in readme about DeepSHAP only in examples due to conflicts in eager mode defaulted in modern Colab (TF). Also mention PyTorch
+        - check if you can just add matplotlib at end of current env -- "Likewise you can also add this line at the end of the standard seam environment (above)."
 
 
 - Compiler:
@@ -147,7 +148,6 @@ Documentation:
 - GUI Class:
     - Pre-release:
         - all 'DNN' to 'Activity'
-        - GUI requires 'matplotlib==3.6.0', which is in conflict with scipy dendrogram plot
         - Online:
             - Youtube tutorial
             - Write .md manual
@@ -158,6 +158,8 @@ Documentation:
         - turn off 'if 1:' for local imports
 
     - Post-release:
+        - Interactive dendrogram on tab 3 (Plotly?)
+        - update dendrogram tooltip (cluster and occupancy) as Choose Cluster is altered (instead of on hover)
         - Help docs for tab 3 (talk about embedding/linkage differences)
         - File structure checks on tab 1 (remove from processing step)
             - load data during processing (not upon file import)
@@ -168,6 +170,7 @@ Documentation:
             - Visualize state vs. TFBS presence graph
             - Epistatic interactions
         - Widgets on P1:
+            - check that all embed/linkage variables pull from current widget contents
             - get naming of columns ('DNN', 'GIA', etc.) straight from mave dataset
                 - update available entries on P2
                 - widgets under reference sequence widget for mapping labels to Activity and Sequence columns
