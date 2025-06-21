@@ -3081,7 +3081,7 @@ class Cell(QtWidgets.QMainWindow):
         self.screenRect = self.desktop.screenGeometry()
         self.height = self.screenRect.height()
         self.width = self.screenRect.width()
-        if AllStats.combo_compare.currentText() == 'Reference sequence':
+        if AllStats.combo_compare.currentText() == 'Percent mismatches to reference':
             self.setWindowTitle('Cluster: %s | Position: %s | Mismatch: %s' % (AllStats.row, AllStats.col, AllStats.val))
         else:
             self.setWindowTitle('Cluster: %s | Position: %s | Match: %s' % (AllStats.row, AllStats.col, AllStats.val))
@@ -3109,7 +3109,7 @@ class Cell(QtWidgets.QMainWindow):
         self.vc = occ.value_counts()
         self.vc = self.vc.sort_index()
         self.vc.plot(kind='bar', ax=self.ax, rot=0)
-        if AllStats.combo_compare.currentText() == 'Reference sequence':
+        if AllStats.combo_compare.currentText() == 'Percent mismatches to reference':
             ref_short = Imports.ref_full[Imports.seq_start:Imports.seq_stop]
             self.ax.set_title('Reference: %s' % ref_short[AllStats.col:AllStats.col+1], fontsize=4)
         else:
