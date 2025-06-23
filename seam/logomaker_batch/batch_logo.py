@@ -1,21 +1,14 @@
 from __future__ import division
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 import time
 from matplotlib.patches import PathPatch
 from matplotlib.collections import PatchCollection
-from matplotlib.path import Path
-from logomaker_batch.Logo import Logo
-from logomaker_batch.gpu_utils import GPUTransformer
-from logomaker_batch.colors import get_rgb, get_color_dict, CHARS_TO_COLORS_DICT, COLOR_SCHEME_DICT
+from logomaker_batch.colors import get_rgb, COLOR_SCHEME_DICT
 from tqdm import tqdm
-from logomaker_batch.Glyph import Glyph
 import matplotlib.font_manager as fm
-from logomaker_batch.error_handling import handle_errors, check
 from matplotlib.textpath import TextPath
-from matplotlib.transforms import Affine2D, Bbox
-from logomaker_batch.matrix import transform_matrix
+from matplotlib.transforms import Affine2D
 from matplotlib.colors import to_rgb
 
 
@@ -122,7 +115,6 @@ class BatchLogo:
         timing = {}
         with TimingContext('total_processing', timing):
             if self.show_progress:
-                from tqdm import tqdm
                 with tqdm(total=self.N, desc="Processing logos") as pbar:
                     for start_idx in range(0, self.N, self.batch_size):
                         end_idx = min(start_idx + self.batch_size, self.N)
@@ -504,7 +496,7 @@ class BatchLogo:
         # For each position, subtract the mean of that position
         return values - values.mean(axis=-1, keepdims=True)
 
-    def draw_variability_logo(self, view_window=None, figsize=None):
+    def draw_variability_logo(self, view_window=None, figsize=None, border=True):
         """Draw a variability logo showing all glyphs from all clusters overlaid at each position.
         
         Parameters
@@ -513,6 +505,8 @@ class BatchLogo:
             [start, end] positions to view. If None, show entire logo
         figsize : tuple, optional
             Figure size in inches. If None, use size from initialization
+        border : bool, default=True
+            Whether to show the axis spines (border)
         """
         # Process all glyphs into logo_data
         logo_data = {'glyphs': []}
@@ -578,7 +572,7 @@ class BatchLogo:
                             floor = ceiling + self.kwargs['vsep']
         
         fig, ax = plt.subplots(figsize=figsize if figsize is not None else self.figsize)
-        self._draw_single_logo(ax, logo_data, fixed_ylim=True)
+        self._draw_single_logo(ax, logo_data, fixed_ylim=True, border=border)
         
         if view_window is not None:
             start, end = view_window
@@ -647,12 +641,4 @@ The result is significantly faster logo generation while maintaining exact visua
 parity with the original implementation through careful coordinate system management
 and optimized transformation sequences.
 
-TODO:
-- Implement actual GPU acceleration for path transformations using TensorFlow
-  * Current implementation has GPU references but runs on CPU
-  * Could leverage TensorFlow for batch matrix operations
-  * Need to profile which operations would benefit most from GPU acceleration
-- New batch_logo.py has fainter logo characters than the original logomaker
-  * Were these double rendered in the original logomaker?
-- Fixed y-lim option calculated over entire batched dataset for rendering
 """

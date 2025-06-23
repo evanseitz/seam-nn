@@ -107,6 +107,8 @@ ENV/
 # mypy
 .mypy_cache/
 
+seam/logomaker_batch/__pycache__
+
 # hide models used for testing
 seam/deepshap_tf2_batch/testing/deepstarr_assets
 

@@ -27,6 +27,7 @@ Installation notes:
 
 import sys, os
 sys.dont_write_bytecode = True
+import copy
 import psutil, logging # 'pip3 install --user psutil'
 import numpy as np
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -2111,6 +2112,8 @@ class Predef(QtWidgets.QWidget):
     original_logo_xlim = None  # Store original x-axis limits for home button
     original_logo_ylim = None  # Store original y-axis limits for home button
     show_background_separated = False  # Track background separation checkbox state
+    show_variability_logo = False  # Track variability logo checkbox state
+    show_average_background = False  # Track average background checkbox state
 
     def update_logo(self):
         """Update the logo display based on current cluster and settings"""
@@ -2143,11 +2146,17 @@ class Predef(QtWidgets.QWidget):
         gui_type = self.entry_logostyle.currentText().lower()
         logo_type = logo_type_map.get(gui_type, 'average')
         
-        # Determine logo key based on background separation setting
-        if Predef.show_background_separated:
-            logo_key = (cluster_id, f'{logo_type}_separated')
+        # Check which logo type is requested
+        if Predef.show_variability_logo:
+            logo_key = 'variability'
+        elif Predef.show_average_background:
+            logo_key = 'average_background'
         else:
-            logo_key = (cluster_id, logo_type)
+            # Determine logo key based on background separation setting
+            if Predef.show_background_separated:
+                logo_key = (cluster_id, f'{logo_type}_separated')
+            else:
+                logo_key = (cluster_id, logo_type)
 
         if logo_key not in Imports.batch_logo_instances:
             print(f"Warning: No preprocessed logo found for cluster {cluster_id} with type {logo_type}")
@@ -2159,7 +2168,11 @@ class Predef(QtWidgets.QWidget):
         batch_logo = Imports.batch_logo_instances[logo_key]
         
         # Determine if we should use fixed y-axis limits
-        use_fixed_ylim = self.entry_yscale.currentText() == 'Fixed y-axis'
+        # For variability logo, always use fixed scaling; for others, use widget setting
+        if Predef.show_variability_logo:
+            use_fixed_ylim = True
+        else:
+            use_fixed_ylim = self.entry_yscale.currentText() == 'Fixed y-axis'
 
         # Remove the old logo_canvas from the layout
         parent_layout = self.logo_canvas.parent().layout()
@@ -2172,14 +2185,35 @@ class Predef(QtWidgets.QWidget):
         # Create figure manually to avoid tight_layout
         fig, ax = plt.subplots(figsize=figsize)
         
-        # Draw the logo directly without calling draw_single (which calls tight_layout)
-        batch_logo._draw_single_logo(ax, batch_logo.processed_logos[0], fixed_ylim=use_fixed_ylim, border=False)
+        # Draw the logo based on type
+        if Predef.show_variability_logo:
+            # Use pre-computed variability logo figure for instant display
+            if hasattr(Imports, 'variability_figure') and hasattr(Imports, 'variability_axis'):
+                # Create a fresh copy of the pre-computed figure to avoid size issues
+                variability_fig = copy.deepcopy(Imports.variability_figure)
+                variability_ax = variability_fig.axes[0]  # Get the axis from the copied figure
+                # Close our original figure and use the copied variability figure
+                plt.close(fig)
+                fig = variability_fig
+                ax = variability_ax
+            else:
+                # Fallback: generate on demand if pre-computed figure not available
+                variability_fig, variability_ax = batch_logo.draw_variability_logo(view_window=None, figsize=figsize, border=False)
+                plt.close(fig)
+                fig = variability_fig
+                ax = variability_ax
+        elif Predef.show_average_background:
+            # Draw average background logo directly (fast, no deep copy needed)
+            batch_logo._draw_single_logo(ax, batch_logo.processed_logos[0], fixed_ylim=use_fixed_ylim, border=False)
+        else:
+            # Draw the logo directly without calling draw_single (which calls tight_layout)
+            batch_logo._draw_single_logo(ax, batch_logo.processed_logos[0], fixed_ylim=use_fixed_ylim, border=False)
         
         # Enable tight_layout now that we've removed problematic y-axis labels
         fig.set_tight_layout(True)
         
         # Set y-axis limits based on user selection
-        if use_fixed_ylim:
+        if use_fixed_ylim and not Predef.show_variability_logo:
             # Use pre-calculated global y-axis limits based on background separation setting
             if Predef.show_background_separated and hasattr(Imports, 'global_y_min_separated') and hasattr(Imports, 'global_y_max_separated'):
                 # Use background-separated global limits
@@ -2199,7 +2233,7 @@ class Predef(QtWidgets.QWidget):
                 # Set single tick at the top with the value
                 ax.set_yticks([1.0])
                 ax.set_yticklabels(['1.00'])
-        else:
+        elif not Predef.show_variability_logo:
             # For adaptive scaling, calculate the max value from the current logo
             yticks = ax.get_yticks()
             if len(yticks) > 0:
@@ -2211,9 +2245,54 @@ class Predef(QtWidgets.QWidget):
                 # Fallback if no ticks available
                 ax.set_yticks([])
                 ax.set_yticklabels([])
+
+        elif Predef.show_average_background:
+            # Average background logo uses widget setting for y-axis scaling
+            if use_fixed_ylim:
+                # Use pre-calculated global y-axis limits
+                if hasattr(Imports, 'global_y_min') and hasattr(Imports, 'global_y_max'):
+                    ax.set_ylim(Imports.global_y_min, Imports.global_y_max)
+                    # Set single tick at the top with the value
+                    ax.set_yticks([Imports.global_y_max])
+                    ax.set_yticklabels([f'{Imports.global_y_max:.2f}'])
+                else:
+                    # Fallback to default limits
+                    ax.set_ylim(-1.0, 1.0)
+                    ax.set_yticks([1.0])
+                    ax.set_yticklabels(['1.00'])
+            else:
+                # For adaptive scaling, calculate the max value from the current logo
+                yticks = ax.get_yticks()
+                if len(yticks) > 0:
+                    adaptive_max = yticks[-1]
+                    # Set single tick at the top with the value
+                    ax.set_yticks([adaptive_max])
+                    ax.set_yticklabels([f'{adaptive_max:.2f}'])
+                else:
+                    # Fallback if no ticks available
+                    ax.set_yticks([])
+                    ax.set_yticklabels([])
+
+        elif Predef.show_variability_logo:
+            # Variability logo always uses fixed scaling
+            if hasattr(Imports, 'global_y_min') and hasattr(Imports, 'global_y_max'):
+                ax.set_ylim(Imports.global_y_min, Imports.global_y_max)
+                # Set single tick at the top with the value
+                ax.set_yticks([Imports.global_y_max])
+                ax.set_yticklabels([f'{Imports.global_y_max:.2f}'])
+            else:
+                # Fallback to default limits
+                ax.set_ylim(-1.0, 1.0)
+                ax.set_yticks([1.0])
+                ax.set_yticklabels(['1.00'])
         
         # Remove y-axis label since we're using tick labels
-        ax.set_ylabel('Cluster avg.    ')
+        if Predef.show_variability_logo:
+            ax.set_ylabel('Variability    ')
+        elif Predef.show_average_background:
+            ax.set_ylabel('Avg. BG    ')
+        else:
+            ax.set_ylabel('Cluster avg.    ')
         
         # Add coordinate tracking to the logo axis
         def logo_format_coord(x, y):
@@ -2362,6 +2441,74 @@ class Predef(QtWidgets.QWidget):
                 # No need to clear cache since logos are pre-generated for both scale types
                 self.update_logo()  # Update logo with new scale type
 
+        # Background separation checkbox
+        Predef.label_bg_separation = QLabel('Separate background:')
+        Predef.label_bg_separation.setFont(font_standard)
+        Predef.label_bg_separation.setMargin(20)
+        Predef.checkbox_bg_separation = QCheckBox(self)
+        Predef.checkbox_bg_separation.setToolTip('Check to show background-separated logos (removes background signal).')
+        Predef.checkbox_bg_separation.setChecked(False)
+        Predef.checkbox_bg_separation.setVisible(False)  # Hidden by default
+        def toggle_background_separation():
+            Predef.show_background_separated = Predef.checkbox_bg_separation.isChecked()
+            # Uncheck other checkboxes when this one is checked
+            if Predef.checkbox_bg_separation.isChecked():
+                Predef.checkbox_variability.setChecked(False)
+                Predef.checkbox_avg_background.setChecked(False)
+                self.update_logo()  # Only update when checking
+            else:
+                # Only update when unchecking this specific checkbox (not when unchecking due to another checkbox)
+                if not Predef.checkbox_variability.isChecked() and not Predef.checkbox_avg_background.isChecked():
+                    self.update_logo()
+        Predef.checkbox_bg_separation.stateChanged.connect(toggle_background_separation)
+        # Store reference to the function for later use
+        Predef.toggle_background_separation_func = toggle_background_separation
+
+        # View variability logo checkbox
+        Predef.label_variability = QLabel('View variability logo:')
+        Predef.label_variability.setFont(font_standard)
+        Predef.label_variability.setMargin(20)
+        Predef.checkbox_variability = QCheckBox(self)
+        Predef.checkbox_variability.setToolTip('Shows a static logo representing sequence variability across all clusters (unchanging between cluster selections). If background separation is enabled on the Imports tab, this logo will correspond to background-separated cluster-averaged logos.')
+        Predef.checkbox_variability.setChecked(False)
+        Predef.checkbox_variability.setVisible(True)  # Always visible
+        def toggle_variability():
+            Predef.show_variability_logo = Predef.checkbox_variability.isChecked()
+            # Uncheck other checkboxes when this one is checked
+            if Predef.checkbox_variability.isChecked():
+                Predef.checkbox_bg_separation.setChecked(False)
+                Predef.checkbox_avg_background.setChecked(False)
+                self.update_logo()  # Only update when checking
+            else:
+                # Only update when unchecking this specific checkbox (not when unchecking due to another checkbox)
+                if not Predef.checkbox_bg_separation.isChecked() and not Predef.checkbox_avg_background.isChecked():
+                    self.update_logo()
+        Predef.checkbox_variability.stateChanged.connect(toggle_variability)
+        # Store reference to the function for later use
+        Predef.toggle_variability_func = toggle_variability
+
+        # View average background checkbox
+        Predef.label_avg_background = QLabel('View average background:')
+        Predef.label_avg_background.setFont(font_standard)
+        Predef.label_avg_background.setMargin(20)
+        Predef.checkbox_avg_background = QCheckBox(self)
+        Predef.checkbox_avg_background.setToolTip('Shows a static logo representing the average background signal across all clusters (unchanging between cluster selections). This option is only available when background separation analysis is chosen on the Imports tab.')
+        Predef.checkbox_avg_background.setChecked(False)
+        Predef.checkbox_avg_background.setVisible(True)  # Always visible
+        def toggle_avg_background():
+            Predef.show_average_background = Predef.checkbox_avg_background.isChecked()
+            # Uncheck other checkboxes when this one is checked
+            if Predef.checkbox_avg_background.isChecked():
+                Predef.checkbox_bg_separation.setChecked(False)
+                Predef.checkbox_variability.setChecked(False)
+                self.update_logo()  # Only update when checking
+            else:
+                # Only update when unchecking this specific checkbox (not when unchecking due to another checkbox)
+                if not Predef.checkbox_bg_separation.isChecked() and not Predef.checkbox_variability.isChecked():
+                    self.update_logo()
+        Predef.checkbox_avg_background.stateChanged.connect(toggle_avg_background)
+        # Store reference to the function for later use
+        Predef.toggle_avg_background_func = toggle_avg_background
 
         self.canvas.mpl_connect('button_press_event', self.onclick)
         self.width = self.canvas.size().width()
@@ -2446,19 +2593,6 @@ class Predef(QtWidgets.QWidget):
         Predef.entry_yscale.currentTextChanged.connect(choose_yscale)
         Predef.entry_yscale.setToolTip('Select the y-axis scaling used for rendering logos.')
 
-        # Background separation checkbox
-        Predef.label_bg_separation = QLabel('Separate background:')
-        Predef.label_bg_separation.setFont(font_standard)
-        Predef.label_bg_separation.setMargin(20)
-        Predef.checkbox_bg_separation = QCheckBox(self)
-        Predef.checkbox_bg_separation.setToolTip('Check to show background-separated logos (removes background signal).')
-        Predef.checkbox_bg_separation.setChecked(False)
-        Predef.checkbox_bg_separation.setVisible(False)  # Hidden by default
-        def toggle_background_separation():
-            Predef.show_background_separated = Predef.checkbox_bg_separation.isChecked()
-            self.update_logo()
-        Predef.checkbox_bg_separation.stateChanged.connect(toggle_background_separation)
-
         # Truncate dendrogram widgets removed - always truncate by default
 
         layout = QGridLayout()
@@ -2477,6 +2611,10 @@ class Predef(QtWidgets.QWidget):
         grid_bot.addWidget(self.label_choose_cluster, 0, 0, 1, 1, QtCore.Qt.AlignRight)
         grid_bot.addWidget(Predef.choose_cluster, 0, 1, 1, 1, QtCore.Qt.AlignLeft)
         grid_bot.addWidget(QVLine(), 0, 3, 1, 2, QtCore.Qt.AlignCenter)
+        grid_bot.addWidget(Predef.label_variability, 0, 4, 1, 1, QtCore.Qt.AlignRight)
+        grid_bot.addWidget(Predef.checkbox_variability, 0, 5, 1, 1, QtCore.Qt.AlignLeft)
+        grid_bot.addWidget(Predef.label_avg_background, 0, 6, 1, 1, QtCore.Qt.AlignRight)
+        grid_bot.addWidget(Predef.checkbox_avg_background, 0, 7, 1, 1, QtCore.Qt.AlignLeft)
         grid_bot.addWidget(Predef.label_bg_separation, 0, 8, 1, 1, QtCore.Qt.AlignRight) # only visible in background-separated mode
         grid_bot.addWidget(Predef.checkbox_bg_separation, 0, 9, 1, 1, QtCore.Qt.AlignLeft) # only visible in background-separated mode
         grid_bot.addWidget(self.label_display, 0, 10, 1, 1, QtCore.Qt.AlignRight)
@@ -2634,6 +2772,8 @@ class AllStats(QtWidgets.QMainWindow):
     val = 0
     threshold = 100
     delta = False
+    current_xlim = None  # Store current x-axis limits for zoom preservation
+    current_ylim = None  # Store current y-axis limits for zoom preservation
 
     def __init__(self):
         super(AllStats, self).__init__()
@@ -2716,7 +2856,8 @@ class AllStats(QtWidgets.QMainWindow):
 
     def format_coord(self, x, y):
         col = int(np.floor(x))
-        row = AllStats.reordered_ind[int(np.floor(y))]
+        # Use sequential cluster number (0, 1, 2, ...) for display
+        sequential_row = int(np.floor(y))
         val = AllStats.revels.iloc[int(np.floor(y))][col]
         
         # Calculate median activity for the cluster
@@ -2735,11 +2876,16 @@ class AllStats(QtWidgets.QMainWindow):
             median_str = ''
         
         if Predef.df_col == 'Reference' or Predef.df_col == 'Consensus':
-            return f'cluster={row:1.0f}, position={col:1.0f}, value={abs(val):1.1f}%{median_str}'
+            return f'cluster={sequential_row:1.0f}, position={col:1.0f}, value={abs(val):1.1f}%{median_str}'
         elif Predef.df_col == 'Entropy':
-            return f'cluster={row:1.0f}, position={col:1.0f}, value={abs(val):1.2f} bits{median_str}'
+            return f'cluster={sequential_row:1.0f}, position={col:1.0f}, value={abs(val):1.2f} bits{median_str}'
         
     def reset(self):
+        # Store current view limits before clearing (only if this is not the initial creation)
+        if hasattr(AllStats, 'ax') and AllStats.ax is not None:
+            AllStats.current_xlim = AllStats.ax.get_xlim()
+            AllStats.current_ylim = AllStats.ax.get_ylim()
+        
         try:
             marginals_window.close()
         except:
@@ -2765,6 +2911,12 @@ class AllStats(QtWidgets.QMainWindow):
             gui_figure=AllStats.figure
         )
         AllStats.ax.format_coord = self.format_coord
+        
+        # Restore view limits if they exist (preserves zoom state when switching metrics)
+        if AllStats.current_xlim is not None and AllStats.current_ylim is not None:
+            AllStats.ax.set_xlim(AllStats.current_xlim)
+            AllStats.ax.set_ylim(AllStats.current_ylim)
+        
         AllStats.canvas.draw()
 
     def open_cell_window(self):
@@ -2789,6 +2941,9 @@ class AllStats(QtWidgets.QMainWindow):
                 self.open_cell_window()
 
     def closeEvent(self, ce): # activated when user clicks to exit via subwindow button
+        # Reset zoom state when closing window
+        AllStats.current_xlim = None
+        AllStats.current_ylim = None
         self.reset()
         try:
             allstats_cell_window.close()
@@ -3074,17 +3229,26 @@ class Cell(QtWidgets.QMainWindow):
         centralwidget = QWidget()
         self.setCentralWidget(centralwidget)
         layout = QGridLayout(centralwidget)
-        layout.setSizeConstraint(QGridLayout.SetMinimumSize) 
+        layout.setSizeConstraint(QGridLayout.SetMinimumSize)
         layout.addWidget(self.toolbar, 0, 0, 1, 12)
         layout.addWidget(self.canvas, 1 ,0, 50, 12)
         self.desktop = QApplication.desktop()
         self.screenRect = self.desktop.screenGeometry()
         self.height = self.screenRect.height()
         self.width = self.screenRect.width()
-        if AllStats.combo_compare.currentText() == 'Percent mismatches to reference':
-            self.setWindowTitle('Cluster: %s | Position: %s | Mismatch: %s' % (AllStats.row, AllStats.col, AllStats.val))
+        
+        # Calculate the remapped cluster number for the window title
+        if Imports.cluster_reverse_mapping is not None:
+            title_cluster_num = Imports.cluster_reverse_mapping[AllStats.row]
         else:
-            self.setWindowTitle('Cluster: %s | Position: %s | Match: %s' % (AllStats.row, AllStats.col, AllStats.val))
+            title_cluster_num = AllStats.row
+            
+        if AllStats.combo_compare.currentText() == 'Percent mismatches to reference':
+            self.setWindowTitle('Cluster: %s | Position: %s | Mismatch: %s' % (title_cluster_num, AllStats.col, AllStats.val))
+        elif AllStats.combo_compare.currentText() == 'Positional Shannon entropy':
+            self.setWindowTitle('Cluster: %s | Position: %s | Entropy: %s' % (title_cluster_num, AllStats.col, AllStats.val))
+        else:  # Consensus per cluster
+            self.setWindowTitle('Cluster: %s | Position: %s | Match: %s' % (title_cluster_num, AllStats.col, AllStats.val))
         self.resize(int(self.width*(5/10.)), int(self.height*(5/10.)))
         self.show()
 
@@ -3443,6 +3607,23 @@ class MainWindow(QtWidgets.QMainWindow):
                 delattr(tab2, 'pfm_cluster')
         except:
             pass
+
+        # Reset all logo display checkboxes to unchecked state when reprocessing imports
+        # Temporarily disconnect event handlers to prevent unwanted logo updates
+        Predef.checkbox_variability.stateChanged.disconnect()
+        Predef.checkbox_bg_separation.stateChanged.disconnect()
+        Predef.checkbox_avg_background.stateChanged.disconnect()
+        
+        # Now safely uncheck the checkboxes
+        Predef.checkbox_variability.setChecked(False)
+        Predef.show_variability_logo = False
+        Predef.show_background_separated = False
+        Predef.show_average_background = False
+        
+        # Reconnect the event handlers using stored function references
+        Predef.checkbox_variability.stateChanged.connect(Predef.toggle_variability_func)
+        Predef.checkbox_bg_separation.stateChanged.connect(Predef.toggle_background_separation_func)
+        Predef.checkbox_avg_background.stateChanged.connect(Predef.toggle_avg_background_func)
         
         # Check that either embedding OR linkage is selected (but not both)
         embedding_selected = Imports.checkbox_embedding.isChecked() and Imports.embedding_fname != ''
@@ -3875,6 +4056,70 @@ class MainWindow(QtWidgets.QMainWindow):
                     batch_logo_separated.process_all()
                     Imports.batch_logo_instances[logo_key_separated] = batch_logo_separated
             
+            # Create variability logo (shows all clusters overlaid) - AFTER background separation logic
+            print("Generating variability logo...")
+            if Imports.checkbox_background_separation.isChecked():
+                # Use background-separated data for variability logo
+                variability_logo = BatchLogo(
+                    values=meta_logos_separated.values,  # All clusters with background separation
+                    alphabet=Imports.alphabet,
+                    figsize=(10, 2.5),
+                    batch_size=len(unique_clusters),
+                    font_name='Arial Rounded MT Bold',
+                    fade_below=0.5,
+                    shade_below=0.5,
+                    width=0.9,
+                    center_values=True,
+                    show_progress=False
+                )
+            else:
+                # Use standard data for variability logo
+                variability_logo = BatchLogo(
+                    values=meta_logos.values,  # All clusters
+                    alphabet=Imports.alphabet,
+                    figsize=(10, 2.5),
+                    batch_size=len(unique_clusters),
+                    font_name='Arial Rounded MT Bold',
+                    fade_below=0.5,
+                    shade_below=0.5,
+                    width=0.9,
+                    center_values=True,
+                    show_progress=False
+                )
+            
+            variability_logo.process_all()
+            Imports.batch_logo_instances['variability'] = variability_logo
+            
+            # Pre-compute the variability logo figure for instant display
+            print("Pre-computing variability logo figure...")
+            variability_fig, variability_ax = variability_logo.draw_variability_logo(view_window=None, figsize=(20, 1.5), border=False)
+            Imports.variability_figure = variability_fig
+            Imports.variability_axis = variability_ax
+
+            # Create average background logo only if background separation is enabled
+            if Imports.checkbox_background_separation.isChecked():
+                print("Generating average background logo...")
+                # Get the background data from the meta_bg object (which has background_separation=True)
+                # The background attribute is available after background separation is computed
+                if hasattr(meta_bg, 'background') and meta_bg.background is not None:
+                    average_background_logo = BatchLogo(
+                        values=meta_bg.background[np.newaxis, :, :],
+                        alphabet=Imports.alphabet,
+                        figsize=(10, 2.5),
+                        batch_size=1,
+                        font_name='Arial Rounded MT Bold',
+                        fade_below=0.5,
+                        shade_below=0.5,
+                        width=0.9,
+                        center_values=True,
+                        show_progress=False
+                    )
+                    average_background_logo.process_all()
+                    Imports.batch_logo_instances['average_background'] = average_background_logo
+                else:
+                    print("Warning: No background data available for average background logo")
+
+                            
             # Calculate global y-axis limits for fixed scaling
             y_mins = []
             y_maxs = []
@@ -3958,7 +4203,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if embedding_selected:
                 tabs.setTabEnabled(1, True)  # Custom Clusters tab
                 tabs.setTabEnabled(2, True)  # Predefined Clusters tab
-                tabs.setCurrentIndex(1)
+                tabs.setCurrentIndex(2)
                 Custom.btn_reset.click()
             elif linkage_selected:
                 tabs.setTabEnabled(1, False)  # Custom Clusters tab
@@ -3982,10 +4227,15 @@ class MainWindow(QtWidgets.QMainWindow):
             if Imports.checkbox_background_separation.isChecked():
                 Predef.checkbox_bg_separation.setVisible(True)
                 Predef.label_bg_separation.setVisible(True)
+                Predef.checkbox_avg_background.setVisible(True)
+                Predef.label_avg_background.setVisible(True)
             else:
                 Predef.checkbox_bg_separation.setVisible(False)
                 Predef.label_bg_separation.setVisible(False)
                 Predef.checkbox_bg_separation.setChecked(False)  # Ensure it's unchecked when hidden
+                Predef.checkbox_avg_background.setVisible(False)
+                Predef.label_avg_background.setVisible(False)
+                Predef.checkbox_avg_background.setChecked(False)  # Ensure it's unchecked when hidden
             
             # Update embedding plot to reflect cluster 0 is selected
             tab2.canvas.draw()
@@ -4307,6 +4557,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 <li><b>Logo visualization scheme:</b> Choose between "Average of maps" (attribution-based) or sequence-based options</li>
                 <li><b>Y-axis scaling:</b> Adaptive (auto-scaled per logo) or Fixed (consistent scale across logos)</li>
                 <li><b>Background separation:</b> When enabled, shows background-separated logos (removes background signal)</li>
+                <li><b>Variability logo:</b> Shows a static logo representing sequence variability across all clusters (unchanging between cluster selections). If background separation is enabled on the Imports tab, this logo will correspond to background-separated cluster-averaged logos.</li>
+                <li><b>Average background:</b> Shows a static logo representing the average background signal across all clusters (unchanging between cluster selections). This option is only available when background separation analysis is chosen on the Imports tab.</li>
             </ul>
         </div>
 

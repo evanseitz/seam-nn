@@ -1,6 +1,6 @@
 # SEAM GUI Demo
 
-This demo requires four files derived using the SQUID/SEAM API based on the DeepSTARR DNN:
+This demo requires four files derived using the SQUID/SEAM API based on the DeepSTARR DNN using a local library:
 
 ## Required Files
 

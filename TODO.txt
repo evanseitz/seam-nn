@@ -147,23 +147,25 @@ Documentation:
 
 - GUI Class:
     - Pre-release:
-        - all 'DNN' to 'Activity'
-        - Online:
-            - Youtube tutorial
-            - Write .md manual
-            - Blog post
-        - MSM -> CSM (frontend and backend); pip, check Colabs, etc.
+        - all 'DNN' to 'Activity' (also change column name in demo mave.csv)
+        - MSM -> CSM (frontend and backend)
             - also change AllStats() to CSM()
         - check all "TODO"
         - turn off 'if 1:' for local imports
+        - pip update pypi -> check all colabs (add font size test), turn of if 1 import in GUI and check there too
+            - pip upgrade seam-nn or reinstall env
+        - Online:
+            - Youtube tutorial; share with PK, JK, DM
+            - Write .md manual
+            - Blog post
 
     - Post-release:
         - Interactive dendrogram on tab 3 (Plotly?)
-        - update dendrogram tooltip (cluster and occupancy) as Choose Cluster is altered (instead of on hover)
-        - Help docs for tab 3 (talk about embedding/linkage differences)
+        - update dendrogram toolbar (x=, y=, cluster= and occupancy=) as Choose Cluster is altered (instead of on hover)
         - File structure checks on tab 1 (remove from processing step)
             - load data during processing (not upon file import)
         - MSM: option to map SEAM coordinates to new number (e.g., chr1:A-B)
+        - when variability and average background widgets are checked on P3, just freeze out all other widgets
         - Save mismatch table in Marginal Window of GUI; popup window showing location of saved file
         - Update P3 UMAP when Custom.plt_step is changed on P2 (needs to update Predef.cluster_colors)
         - New tab to merge clusters and label them (e.g., AP-1, etc)
@@ -178,8 +180,6 @@ Documentation:
             - pop up box to view dendrogram
             - add option to plot embedding (from other method) with labels defined by linkage-based clusters
             - Imports widget for Psi 1 and Psi 2?
-        - Widgets on P2:
-            - more space around edges of embedding figure
         - Widgets on P3:
             - figsize option
             - go to WT cluster button (update cluster selection integer and plots)
@@ -187,19 +187,12 @@ Documentation:
             - view a page of individual logos from a given cluster (popup window with start/stop option)
             - allow option to preprocess Enrichment and PWM logos on the fly (P3 dialog box)
             - print sequence indices button (or put it in the sequence table widget)
-            - variability logo
             - Backgrounds:
-                - show average background (button)
                 - intra-cluster backgrounds (per cluster, load like PWMs)
                 - calculate k-mer frequences, etc?
         - Other windows:
             - copy rows in Tables to clipboard
             - marginals() --> x_skip, y_skip; c_skip missing positional skip...
-            - CSM:
-                - button to find/label cluster given input integer
-                - always label ref in y axis?
-        - Processing imports:
-            - refactor the MSM/statistics code to reuse already-generated logos (to reduce number of preprocessing steps)
 
 
 - Wrapper:
@@ -209,11 +202,10 @@ Documentation:
 
 - Old code:
     - add readme for seam_manuscript stating old code
-    - remove unneeded code from logomaker_batch folder
 
 
 - Other:
-    - sampling from clusters  
+    - sampling new sequences from clusters
     - epistasis robustness:
         - test with num_clusters = 2^4
         - instead of median:

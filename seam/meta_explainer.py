@@ -712,7 +712,9 @@ class MetaExplainer:
         # Set cluster (y-axis) ticks
         y_skip = 10 if n_clusters > 10 else 1
         y_ticks = np.arange(0.5, n_clusters, y_skip)
-        y_labels = [str(cluster_order[int(i-0.5)]) for i in y_ticks]
+        # Use sequential labels (0, 1, 2, ...) instead of original cluster numbers
+        y_labels = [str(int(i-0.5)) for i in y_ticks]
+        #y_labels = [str(cluster_order[int(i-0.5)]) for i in y_ticks]
         ax.set_yticks(y_ticks)
         ax.set_yticklabels(y_labels, rotation=0)
         
