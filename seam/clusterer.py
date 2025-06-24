@@ -839,20 +839,18 @@ class Clusterer:
                 plt.legend(loc='best', frameon=False)
         
         # Add padding around the dendrogram
-        xlim = plt.gca().get_xlim()
-        ylim = plt.gca().get_ylim()
-        x_pad = (xlim[1] - xlim[0]) * 0.1
-        y_pad = (ylim[1] - ylim[0]) * 0.1
-        plt.gca().set_xlim(xlim[0] - x_pad, xlim[1] + x_pad)
-        plt.gca().set_ylim(ylim[0] - y_pad, ylim[1] + y_pad)
-        
-        plt.xticks([])
-        
-        # Apply GUI-specific styling only when gui=True
         if gui:
-            plt.gca().spines['top'].set_visible(False)
-            plt.gca().spines['right'].set_visible(False)
+            xlim = plt.gca().get_xlim()
+            ylim = plt.gca().get_ylim()
+            x_pad = (xlim[1] - xlim[0]) * 0.1
+            y_pad = (ylim[1] - ylim[0]) * 0.1
+            plt.gca().set_xlim(xlim[0] - x_pad, xlim[1] + x_pad)
+            plt.gca().set_ylim(ylim[0] - y_pad, ylim[1] + y_pad)
             plt.gca().tick_params(axis='both', which='major', labelsize=4)
+
+        plt.xticks([])
+        plt.gca().spines['top'].set_visible(False)
+        plt.gca().spines['right'].set_visible(False)
         
         if save_path:
             plt.savefig(save_path + f'/attributions_dendrogram.{file_format}', 

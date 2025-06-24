@@ -94,6 +94,7 @@ Documentation:
     - Pre-release:
         - Dendrogram plot: update cluster colors based on cut level
         - add Louvain (or Leiden) clustering
+        - either implement other methods or remove them from the supported list
 
     - Post-release:
         - implement other methods from cuml.manifold?
@@ -214,6 +215,8 @@ Documentation:
         - view variability logo for each cluster
         - consistency across attribution methods
     - CLIPNET: PIK3CA (most commonly mutated proto-oncogene; mutated in 13% of cancers), TERT
+    - hierarchy of driver mutations
+    - logo profile showing mutational sensitivity
 
 
 - Zenodo:
