@@ -909,9 +909,15 @@ class Custom(QtWidgets.QWidget):
             if Custom.entry_zorder.currentText() == 'Original':
                 Custom.zord = Custom.zord0
             elif Custom.entry_zorder.currentText() == 'Ascending':
-                Custom.zord = np.argsort(np.array(Imports.mave[Custom.cmap]))
+                if Custom.cmap == 'Histogram':
+                    Custom.zord = Custom.zord0
+                else:
+                    Custom.zord = np.argsort(np.array(Imports.mave[Custom.cmap]))
             elif Custom.entry_zorder.currentText() == 'Descending':
-                Custom.zord = np.argsort(np.array(Imports.mave[Custom.cmap]))[::-1]
+                if Custom.cmap == 'Histogram':
+                    Custom.zord = Custom.zord0
+                else:
+                    Custom.zord = np.argsort(np.array(Imports.mave[Custom.cmap]))[::-1]
             
             Custom.btn_reset.click()
 
@@ -920,9 +926,15 @@ class Custom(QtWidgets.QWidget):
             if Custom.entry_zorder.currentText() == 'Original':
                 Custom.zord = Custom.zord0
             elif Custom.entry_zorder.currentText() == 'Ascending':
-                Custom.zord = np.argsort(np.array(Imports.mave[Custom.cmap]))
+                if Custom.cmap == 'Histogram':
+                    Custom.zord = Custom.zord0
+                else:
+                    Custom.zord = np.argsort(np.array(Imports.mave[Custom.cmap]))
             elif Custom.entry_zorder.currentText() == 'Descending':
-                Custom.zord = np.argsort(np.array(Imports.mave[Custom.cmap]))[::-1]
+                if Custom.cmap == 'Histogram':
+                    Custom.zord = Custom.zord0
+                else:
+                    Custom.zord = np.argsort(np.array(Imports.mave[Custom.cmap]))[::-1]
             Custom.btn_reset.click()
 
         def choose_theme():
@@ -1506,7 +1518,7 @@ class Cluster(QtWidgets.QMainWindow):
         else:
             Cluster.checkbox_contrib.setChecked(False)
         Cluster.checkbox_contrib.stateChanged.connect(show_contributions)
-        Cluster.checkbox_contrib.setToolTip('Show contribution scores over the cluster-averaged ensemble. This multiplies each sequence\'s attribution map by its one-hot encoding before averaging, highlighting which nucleotides contribute most to the model\'s predictions.')
+        Cluster.checkbox_contrib.setToolTip('This multiplies each sequence\'s attribution map by its one-hot encoding before averaging.')
 
         if Custom.logo_ref == True:
             Cluster.checkbox_ref.setChecked(True)
@@ -2469,7 +2481,7 @@ class Predef(QtWidgets.QWidget):
         Predef.label_variability.setFont(font_standard)
         Predef.label_variability.setMargin(20)
         Predef.checkbox_variability = QCheckBox(self)
-        Predef.checkbox_variability.setToolTip('Shows a static logo representing sequence variability across all clusters (unchanging between cluster selections). If background separation is enabled on the Imports tab, this logo will correspond to background-separated cluster-averaged logos.')
+        Predef.checkbox_variability.setToolTip('Shows a static logo representing sequence variability across all clusters.')
         Predef.checkbox_variability.setChecked(False)
         Predef.checkbox_variability.setVisible(True)  # Always visible
         def toggle_variability():
@@ -2492,7 +2504,7 @@ class Predef(QtWidgets.QWidget):
         Predef.label_avg_background.setFont(font_standard)
         Predef.label_avg_background.setMargin(20)
         Predef.checkbox_avg_background = QCheckBox(self)
-        Predef.checkbox_avg_background.setToolTip('Shows a static logo representing the average background signal across all clusters (unchanging between cluster selections). This option is only available when background separation analysis is chosen on the Imports tab.')
+        Predef.checkbox_avg_background.setToolTip('Shows a static logo representing the average background signal across all clusters.')
         Predef.checkbox_avg_background.setChecked(False)
         Predef.checkbox_avg_background.setVisible(True)  # Always visible
         def toggle_avg_background():
@@ -2937,7 +2949,12 @@ class AllStats(QtWidgets.QMainWindow):
                 AllStats.col = int(np.floor(float(ix)))
                 AllStats.row = AllStats.reordered_ind[int(np.floor(float(iy)))]
                 val = AllStats.revels.iloc[int(np.floor(iy))][AllStats.col]
-                AllStats.val = f'{abs(val):1.1f}%'
+                if AllStats.combo_compare.currentText() == 'Percent mismatches to reference':
+                    AllStats.val = f'{abs(val):1.1f}%'
+                elif AllStats.combo_compare.currentText() == 'Positional Shannon entropy':
+                    AllStats.val = f'{abs(val):1.1f} bits'
+                else:  # Consensus per cluster
+                    AllStats.val = f'{abs(val):1.1f}'
                 self.open_cell_window()
 
     def closeEvent(self, ce): # activated when user clicks to exit via subwindow button
