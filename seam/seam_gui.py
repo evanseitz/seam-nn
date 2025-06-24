@@ -48,7 +48,7 @@ from Bio import motifs # 'pip install biopython'
 from scipy import spatial # 'pip install scipy'
 from scipy.cluster import hierarchy
 from tqdm import tqdm
-if 1: # enable local SEAM imports TODO
+if 0: # enable local SEAM imports TODO
     sys.path.insert(0, os.path.abspath('.'))
     from logomaker_batch.batch_logo import BatchLogo
     from clusterer import Clusterer
@@ -1776,7 +1776,10 @@ class Cluster(QtWidgets.QMainWindow):
         tabs.setTabEnabled(0, True)
         if Imports.embedding_fname != '' or Imports.linkage_fname != '':
             tabs.setTabEnabled(2, True)
-        tabs.setTabEnabled(1, True)
+        if Imports.embedding_fname != '':
+            tabs.setTabEnabled(1, True)
+        else:
+            tabs.setTabEnabled(1, False)
 
 
 class SequenceTable(QtWidgets.QTableWidget):
@@ -2097,7 +2100,7 @@ class DendrogramPlotter:
             cut_level = param
 
         # Always truncate dendrograms (exact same as working version)
-        clusterer.plot_dendrogram(linkage, ax=ax, cut_level=cut_level, truncate=True, cut_level_truncate=cut_level, criterion=criterion, n_clusters=param if criterion == 'maxclust' else None)
+        clusterer.plot_dendrogram(linkage, ax=ax, cut_level=cut_level, truncate=True, cut_level_truncate=cut_level, criterion=criterion, n_clusters=param if criterion == 'maxclust' else None, gui=True)
         
         # Set title for linkage mode
         ax.set_title('Dendrogram-based clustering (click on a leaf to view its cluster logo)', fontsize=5)
@@ -2714,7 +2717,7 @@ class Predef(QtWidgets.QWidget):
                         linkage=Imports.linkage,
                         maps=Imports.maps,
                         spin_cut_param=Imports.spin_cut_param,
-                        combo_cut_criterion=Imports.combo_cut_criterion
+                        combo_cut_criterion=Imports.combo_cut_criterion,
                     )
                     
                 self.ax.tick_params(axis='both', which='major', labelsize=4)
@@ -2971,7 +2974,10 @@ class AllStats(QtWidgets.QMainWindow):
         except:
             pass
         tabs.setTabEnabled(0, True)
-        tabs.setTabEnabled(1, True)
+        if Imports.embedding_fname != '':
+            tabs.setTabEnabled(1, True)
+        else:
+            tabs.setTabEnabled(1, False)
         tabs.setTabEnabled(2, True)
         Predef.btn_all_stats.setDisabled(False)
 
@@ -3225,7 +3231,10 @@ class InterStats(QtWidgets.QMainWindow):
     def closeEvent(self, ce):
         """Handle window close event."""
         tabs.setTabEnabled(0, True)
-        tabs.setTabEnabled(1, True)
+        if Imports.embedding_fname != '':
+            tabs.setTabEnabled(1, True)
+        else:
+            tabs.setTabEnabled(1, False)
         tabs.setTabEnabled(2, True)
 
 
@@ -3922,7 +3931,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 else: # distance
                     cut_level = param
                 
-                clusterer.plot_dendrogram(Imports.linkage, ax=tab2.ax, cut_level=cut_level, truncate=True, cut_level_truncate=cut_level, criterion=criterion, n_clusters=param if criterion == 'maxclust' else None)
+                clusterer.plot_dendrogram(Imports.linkage, ax=tab2.ax, cut_level=cut_level, truncate=True, cut_level_truncate=cut_level, criterion=criterion, n_clusters=param if criterion == 'maxclust' else None, gui=True)
                 
                 # Setup coordinates for clickable leaves
                 with plt.ioff():

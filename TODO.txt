@@ -3,28 +3,28 @@ TODO:
 - examples
     - Pre-release
         - Missing save outputs: all_maps_average_y_adaptive.png / all_maps_average_y_fixed.png
-        - TypeError: draw_variability_logo() got an unexpected keyword argument 'border'
         - example for figure 1 should also mention all supplementary figures associated with it (Covariance, etc.)
-        - note that DeepSHAP takes about an hour for 100,000 sequences (DeepSTARR), so other methods used in examples
         - update deepstarr_local.rst to mirror most recent Colab
         - folder name specification: e.g., "kmeans_k200" for 200 clusters
-        - all colabs with:
-            - font_name='Arial', font_weight='bold', fade_below=0.5, shade_below=0.5, width=0.9,
-            - mutation seed
-        - one logo generator (in standalone function) for examples
     - Post-release
+        - Colabs:
+            - replace all download links with zenodo wget
+            - update all Title lines with final figure numbers (currently Fig.TODO)
         - PCA/K-means version of Local library to annotate all TFBSs and biophysical states
         - REVO / BEAM
         - CLIPNET Python example
             - PIK3R3
-        - ProCapNet Python example (Captum)
-            - profiles
-            - background
+            - add note in readme about CLIPNET version (original)
+        - ProCapNet Python example
+            - Captum/PyTorch support -> add to docs, readme, manuscript
+            - MYC profiles
+            - PPIF background
+        - Create predictors.py script (for ChromBPNet, etc.)
 
 
 - SQUID:
     - Pre-release
-        - move SQUID Mutagenizer into SEAM API
+        - move SQUID Mutagenizer into SEAM API?
     - Post-release
         - add copies of all colab tutorials (with import versions) to GitHub folder
         - plot_y_hist() in impress.py needs option to set new axvline ref_idx or None
@@ -46,6 +46,7 @@ Documentation:
         - update all terms in the backend code to reflect those used in final manuscript (MSM --> SSM, etc.)
             - and in all Python/Colab examples
         - Note in readme about DeepSHAP only in examples due to conflicts in eager mode defaulted in modern Colab (TF). Also mention PyTorch
+            - note that DeepSHAP takes about an hour for 100,000 sequences (DeepSTARR), so other methods used in examples
         - check if you can just add matplotlib at end of current env -- "Likewise you can also add this line at the end of the standard seam environment (above)."
 
 
@@ -155,7 +156,6 @@ Documentation:
         - pip update pypi -> check all colabs (add font size test), turn of if 1 import in GUI and check there too
             - pip upgrade seam-nn or reinstall env
         - Online:
-            - Youtube tutorial; share with PK, JK, DM
             - Write .md manual
             - Blog post
 

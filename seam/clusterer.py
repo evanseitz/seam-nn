@@ -740,7 +740,7 @@ class Clusterer:
     def plot_dendrogram(self, linkage, figsize=(15, 10), leaf_rotation=90, 
                         leaf_font_size=8, cut_level=None, save_path=None, dpi=200,
                         file_format='png', ax=None, truncate=True, cut_level_truncate=None, 
-                        criterion=None, n_clusters=None):
+                        criterion=None, n_clusters=None, gui=False):
         """Plot dendrogram from hierarchical clustering linkage matrix.
         
         Args:
@@ -757,6 +757,7 @@ class Clusterer:
             cut_level_truncate: Height at which to truncate dendrogram (for GUI use). Used with truncate=True
             criterion: Clustering criterion ('maxclust' or 'distance') for truncation calculation. Used with truncate=True
             n_clusters: Number of clusters (for maxclust criterion) for truncation calculation. Used with truncate=True and criterion='maxclust'
+            gui: Whether to apply GUI-specific styling (smaller fonts, removed spines, etc.) (default: False)
         """
         sys.setrecursionlimit(100000)  # Fix for large dendrograms
         
@@ -794,23 +795,33 @@ class Clusterer:
             if cut_level is not None:
                 # Make reference line thinner and add legend
                 ax.axhline(y=cut_level, color='r', linestyle='--', linewidth=0.5, label='Reference')
-                ax.legend(loc='best', fontsize=6, frameon=False)
+                if gui:
+                    ax.legend(loc='best', fontsize=6, frameon=False)
+                else:
+                    ax.legend(loc='best', frameon=False)
 
-            # Make boundary lines thinner to match embedding figure
-            for spine in ax.spines.values():
-                spine.set_linewidth(0.1)
-                spine.set_visible(False)  # Remove black rectangle border for GUI mode
+            # Apply GUI-specific styling only when gui=True
+            if gui:
+                # Make boundary lines thinner to match embedding figure
+                for spine in ax.spines.values():
+                    spine.set_linewidth(0.1)
+                    spine.set_visible(False)  # Remove black rectangle border for GUI mode
 
-            ax.set_title('Hierarchical Clustering Dendrogram', fontsize=8)
-            ax.set_ylabel('Distance', fontsize=6)
-            ax.tick_params(axis='both', which='major', labelsize=4)
+                ax.set_title('Hierarchical Clustering Dendrogram', fontsize=8)
+                ax.set_ylabel('Distance', fontsize=6)
+                ax.tick_params(axis='both', which='major', labelsize=4)
+            else:
+                # Regular styling for non-GUI mode
+                ax.set_title('Hierarchical Clustering Dendrogram')
+                ax.set_ylabel('Distance')
+            
             return
         
         # Original functionality
         plt.figure(figsize=figsize)
-        plt.title('Hierarchical Clustering Dendrogram', fontsize=8)
+        plt.title('Hierarchical Clustering Dendrogram')
         plt.xlabel('')  # Remove x-label
-        plt.ylabel('Distance', fontsize=6)
+        plt.ylabel('Distance')
         
         with plt.rc_context({'lines.linewidth': 2}):
             hierarchy.dendrogram(
@@ -822,7 +833,10 @@ class Clusterer:
         if cut_level is not None:
             # Make reference line thinner and add legend
             plt.axhline(y=cut_level, color='r', linestyle='-', linewidth=0.5, label='Reference')
-            plt.legend(loc='best', fontsize=4, frameon=False)
+            if gui:
+                plt.legend(loc='best', fontsize=4, frameon=False)
+            else:
+                plt.legend(loc='best', frameon=False)
         
         # Add padding around the dendrogram
         xlim = plt.gca().get_xlim()
@@ -832,14 +846,13 @@ class Clusterer:
         plt.gca().set_xlim(xlim[0] - x_pad, xlim[1] + x_pad)
         plt.gca().set_ylim(ylim[0] - y_pad, ylim[1] + y_pad)
         
-        # Make boundary lines thinner to match embedding figure
-        #for spine in plt.gca().spines.values():
-            #spine.set_linewidth(0.1)
-        
         plt.xticks([])
-        plt.gca().spines['top'].set_visible(False)
-        plt.gca().spines['right'].set_visible(False)
-        plt.gca().tick_params(axis='both', which='major', labelsize=4)
+        
+        # Apply GUI-specific styling only when gui=True
+        if gui:
+            plt.gca().spines['top'].set_visible(False)
+            plt.gca().spines['right'].set_visible(False)
+            plt.gca().tick_params(axis='both', which='major', labelsize=4)
         
         if save_path:
             plt.savefig(save_path + f'/attributions_dendrogram.{file_format}', 
