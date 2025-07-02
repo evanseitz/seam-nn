@@ -1,3 +1,11 @@
+#!/usr/bin/env python3
+"""
+Batch Logo Generation Module
+
+This module provides an optimized version of Logomaker with faster logo generation 
+and batch processing capabilities.
+"""
+
 from __future__ import division
 import numpy as np
 import matplotlib.pyplot as plt
@@ -289,7 +297,7 @@ class BatchLogo:
     
     def draw_single(self, idx, fixed_ylim=True, view_window=None, figsize=None, 
                     highlight_ranges=None, highlight_colors=None, highlight_alpha=0.5,
-                    border=True):
+                    border=True, ax=None):
         """Draw a single logo
         
         Parameters
@@ -299,7 +307,7 @@ class BatchLogo:
         fixed_ylim : bool, default=True
             Whether to use same y-axis limits across all logos
         view_window : list or tuple, optional
-            [start, end] positions to view. If None, show entire logo
+            [start,end] positions to view. If None, show entire logo
         figsize : tuple, optional
             Figure size in inches. If None, use size from initialization
         highlight_ranges : list of tuple/list, optional
@@ -313,26 +321,29 @@ class BatchLogo:
             Alpha transparency for highlights
         border : bool, default=True
             Whether to show the axis spines (border)
+        ax : matplotlib.axes.Axes, optional
+            If provided, draw the logo on this axes. If None, create a new figure/axes.
         """
         if idx not in self.processed_logos:
             raise ValueError(f"Logo {idx} has not been processed yet. Run process_all() first.")
-        
-        fig, ax = plt.subplots(figsize=figsize if figsize is not None else self.figsize)
+        own_fig = False
+        if ax is None:
+            fig, ax = plt.subplots(figsize=figsize if figsize is not None else self.figsize)
+            own_fig = True
+        else:
+            fig = None
         self._draw_single_logo(ax, self.processed_logos[idx], fixed_ylim=fixed_ylim, border=border)
-        
         # Add highlighting if specified
         if highlight_ranges is not None:
             # Convert single tuple/list to list of ranges
             if isinstance(highlight_ranges[0], (int, float)):
                 highlight_ranges = [highlight_ranges]
-            
             # Set default colors if None
             if highlight_colors is None:
                 n_ranges = len(highlight_ranges)
                 highlight_colors = [plt.cm.Pastel1(i % 9) for i in range(n_ranges)]
             elif isinstance(highlight_colors, str):
                 highlight_colors = [highlight_colors]
-            
             # Add highlighting rectangles (using full sequence coordinates)
             for positions, color in zip(highlight_ranges, highlight_colors):
                 # Handle both (start,stop) tuples and [pos1, pos2, ...] lists
@@ -355,14 +366,15 @@ class BatchLogo:
                                 ax.axvspan(start-0.5, end+0.5, color=color, alpha=highlight_alpha, zorder=-1)
                             start = curr
                         prev = curr
-        
         # Apply view window last
         if view_window is not None:
             start, end = view_window
             ax.set_xlim(start-0.5, end-0.5)
-        
         plt.tight_layout()
-        return fig, ax
+        if own_fig:
+            return fig, ax
+        else:
+            return None, ax
     
     def _draw_single_logo(self, ax, logo_data, fixed_ylim=True, border=True):
         """Draw a single logo on the given axes.
