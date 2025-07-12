@@ -993,7 +993,7 @@ class MetaExplainer:
             else:
                 plt.show()
 
-    def compute_background(self, mut_rate=0.01, entropy_multiplier=0.5, adaptive_background_scaling=False):
+    def compute_background(self, mut_rate=0.01, entropy_multiplier=0.5, adaptive_background_scaling=False, process_logos=True):
         """Compute background signal based on entropic positions.
         
         This method identifies and computes background signal patterns for each cluster
@@ -1013,6 +1013,9 @@ class MetaExplainer:
             magnitude of that cluster's background signal. This is useful when different
             clusters have similar background patterns but at different scales. If False,
             uses the same background scale for all clusters.
+        process_logos : bool, default=True
+            If True, creates and processes BatchLogo instances for background visualization.
+            If False, skips logo processing to save time and memory.
             
         Notes
         -----
@@ -1077,15 +1080,17 @@ class MetaExplainer:
         
         self.background_scaling = background_scaling
         
-        # Create BatchLogo instance for backgrounds
-        self.background_logos = BatchLogo(
-            cluster_background,  # Pass the cluster_background directly
-            alphabet=self.alphabet,
-            fig_size=[20, 2.5],
-            batch_size=50,
-            font_name='sans'
-        )
-        self.background_logos.process_all()
+        # Create BatchLogo instance for backgrounds only if requested
+        if process_logos:
+            self.background_logos = BatchLogo(
+                cluster_background,  # Pass the cluster_background directly
+                alphabet=self.alphabet,
+                fig_size=[20, 2.5],
+                batch_size=50,
+            )
+            self.background_logos.process_all()
+        else:
+            self.background_logos = None
         
         return self.background_logos
 
