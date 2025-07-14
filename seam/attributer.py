@@ -353,6 +353,68 @@ class Attributer:
             return avg_grads * (X[0] - baseline[0])
         return avg_grads
     
+    @tf.function
+    def _intgrad_gpu_matches_cpu(self, X, baseline_type='zeros', num_steps=25, multiply_by_inputs=False, seed=None):
+        """GPU-optimized implementation using individual sample processing for mathematical equivalence."""
+        # Ensure input is float32
+        X = tf.cast(X, tf.float32)
+        
+        if seed is not None:
+            tf.random.set_seed(seed)
+        
+        # Explicitly handle each baseline type
+        if baseline_type == 'zeros':
+            baseline = tf.zeros_like(X, dtype=tf.float32)
+        elif baseline_type == 'random_shuffle':
+            baseline = tf.map_fn(self._random_shuffle, X)
+        elif baseline_type == 'dinuc_shuffle':
+            baseline = tf.convert_to_tensor(
+                self._batch_dinuc_shuffle(X.numpy(), num_shuffles=1, seed=seed),
+                dtype=tf.float32
+            )
+        else:
+            raise ValueError("baseline_type must be one of: 'zeros', 'random_shuffle', 'dinuc_shuffle'")
+        
+        # Process each sample individually for mathematical equivalence with CPU version
+        batch_size = tf.shape(X)[0]
+        
+        # Use tf.map_fn to process each sample individually
+        def process_single_sample(args):
+            x, sample_baseline = args
+            
+            # Add batch dimension back for processing
+            x = tf.expand_dims(x, axis=0)  # Shape: (1, L, A)
+            sample_baseline = tf.expand_dims(sample_baseline, axis=0)  # Shape: (1, L, A)
+            
+            # Compute path inputs for single sample
+            alphas = tf.linspace(0.0, 1.0, num_steps+1)
+            alphas = tf.cast(alphas[:, tf.newaxis, tf.newaxis], tf.float32)  # Shape: (num_steps+1, 1, 1)
+            
+            path_inputs = sample_baseline + alphas * (x - sample_baseline)  # Shape: (num_steps+1, 1, L, A)
+            
+            # Compute gradients for single sample (same as CPU version)
+            grads = self._saliency_map(path_inputs)  # Shape: (num_steps+1, 1, L, A)
+            
+            # Riemann trapezoidal approximation
+            grads = (grads[:-1] + grads[1:]) / 2.0  # Shape: (num_steps, 1, L, A)
+            avg_grads = tf.reduce_mean(grads, axis=0, keepdims=True)  # Shape: (1, 1, L, A)
+            
+            if multiply_by_inputs:
+                score = avg_grads * (x - sample_baseline)
+            else:
+                score = avg_grads
+            
+            return score[0]  # Remove batch dimension: Shape: (L, A)
+        
+        # Process all samples using map_fn
+        scores = tf.map_fn(
+            process_single_sample,
+            (X, baseline),
+            fn_output_signature=tf.float32
+        )
+        
+        return scores  # Shape: (batch, L, A)
+    
     def ism(self, X, log2fc=False, gpu=True, snv_window=None):
         """Compute In-Silico Mutagenesis attribution maps.
         

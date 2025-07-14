@@ -87,6 +87,30 @@ def _check_sklearn_available():
         )
     return KMeans, DBSCAN, PCA
 
+def _check_cuml_pca_available():
+    """Check if cuML PCA is available for GPU acceleration.
+    
+    Returns:
+        PCA class from cuml.decomposition if available, None otherwise
+    """
+    try:
+        from cuml.decomposition import PCA as cuPCA
+        return cuPCA
+    except ImportError:
+        return None
+
+def _check_kmeanstf_available():
+    """Check if KMeansTF is available for GPU acceleration.
+    
+    Returns:
+        KMeansTF class from kmeanstf if available, None otherwise
+    """
+    try:
+        from kmeanstf import KMeansTF
+        return KMeansTF
+    except ImportError:
+        return None
+
 class Clusterer:
     """
     Clusterer: A unified interface for embedding and clustering attribution maps
@@ -98,12 +122,12 @@ class Clusterer:
     - UMAP (requires umap-learn)
     - PHATE (requires phate)
     - t-SNE (requires openTSNE)
-    - PCA (requires scikit-learn)
+    - PCA (GPU-accelerated with cuML, CPU fallback with scikit-learn)
     - Diffusion Maps (not yet implemented)
 
     Clustering Methods:
     - Hierarchical (GPU-optimized available)
-    - K-means (requires scikit-learn)
+    - K-means (GPU-accelerated with kmeanstf, CPU fallback with scikit-learn)
     - DBSCAN (requires scikit-learn)
     
     Requirements:
@@ -113,6 +137,8 @@ class Clusterer:
     
     Optional Requirements:
     - tensorflow (for GPU-accelerated hierarchical clustering)
+    - cuml (for GPU-accelerated PCA)
+    - kmeanstf (for GPU-accelerated K-means clustering)
     - umap-learn (for UMAP)
     - phate (for PHATE)
     - openTSNE (for t-SNE)
@@ -285,6 +311,28 @@ class Clusterer:
         Returns:
             numpy.ndarray: PCA embedding
         """
+        # Try GPU PCA first if gpu=True
+        if self.gpu:
+            cuPCA = _check_cuml_pca_available()
+            if cuPCA is not None:
+                print("Using GPU-accelerated PCA (cuML)")
+                try:
+                    pca = cuPCA(**kwargs)
+                    # Use separate fit and transform steps as per cuML documentation
+                    pca.fit(self.maps.astype(np.float32))
+                    embedding = pca.transform(self.maps.astype(np.float32))
+                    
+                    return embedding
+                except Exception as e:
+                    print(f"GPU PCA failed: {e}")
+                    print("Falling back to CPU PCA.")
+                    # Continue to CPU implementation below
+            else:
+                print("cuML not available. Falling back to CPU PCA.")
+                print("For GPU acceleration, install cuml via:")
+                print("pip install cuml-cu11 --extra-index-url=https://pypi.nvidia.com")
+        
+        # CPU PCA (fallback or when gpu=False)
         _, _, PCA = _check_sklearn_available()
         pca = PCA(**kwargs)
         embedding = pca.fit_transform(self.maps)
@@ -409,6 +457,7 @@ class Clusterer:
                 For KMeans:
                     random_state: Random seed (default: 0)
                     n_init: Number of initializations (default: 10)
+                    max_iter: Maximum iterations (default: 300 for GPU, sklearn default for CPU)
                 For Hierarchical:
                     batch_size: Batch size for GPU computation (default: 10000)
                     link_method: Linkage method (default: 'ward')
@@ -438,9 +487,36 @@ class Clusterer:
             embedding = self.embedding
 
         if method in ['kmeans', 'dbscan']:
-            KMeans, DBSCAN, _ = _check_sklearn_available()
-            
             if method == 'kmeans':
+                # Try GPU k-means first if gpu=True
+                if self.gpu:
+                    KMeansTF = _check_kmeanstf_available()
+                    if KMeansTF is not None:
+                        clusterer = KMeansTF(
+                            n_clusters=n_clusters,
+                            init='k-means++',
+                            random_state=kwargs.get('random_state', 0),
+                            n_init=kwargs.get('n_init', 10),
+                            max_iter=kwargs.get('max_iter', 300),
+                            tol=kwargs.get('tol', 0.0001),
+                            verbose=kwargs.get('verbose', 0)
+                        )
+                        # Convert to numpy array to avoid TensorFlow tensor issues
+                        embedding_np = np.array(embedding.astype(np.float32))
+                        clusterer.fit(embedding_np)
+                        self.cluster_labels = clusterer.labels_
+
+                        # Convert TensorFlow tensor to numpy array
+                        if hasattr(self.cluster_labels, 'numpy'):
+                            self.cluster_labels = self.cluster_labels.numpy()
+                        return self.cluster_labels
+                    else:
+                        print("KMeansTF not available. Falling back to CPU K-means.")
+                        print("For GPU acceleration, install kmeanstf:")
+                        print("pip install kmeanstf")
+                
+                # CPU k-means (fallback or when gpu=False)
+                KMeans, _, _ = _check_sklearn_available()
                 clusterer = KMeans(
                     n_clusters=n_clusters,
                     init='k-means++',
@@ -448,6 +524,7 @@ class Clusterer:
                     n_init=kwargs.get('n_init', 10)
                 )
             else:  # dbscan
+                _, DBSCAN, _ = _check_sklearn_available()
                 clusterer = DBSCAN(
                     eps=kwargs.get('eps', 0.01),
                     min_samples=kwargs.get('min_samples', 10)
