@@ -492,24 +492,30 @@ class Clusterer:
                 if self.gpu:
                     KMeansTF = _check_kmeanstf_available()
                     if KMeansTF is not None:
-                        clusterer = KMeansTF(
-                            n_clusters=n_clusters,
-                            init='k-means++',
-                            random_state=kwargs.get('random_state', 0),
-                            n_init=kwargs.get('n_init', 10),
-                            max_iter=kwargs.get('max_iter', 300),
-                            tol=kwargs.get('tol', 0.0001),
-                            verbose=kwargs.get('verbose', 0)
-                        )
-                        # Convert to numpy array to avoid TensorFlow tensor issues
-                        embedding_np = np.array(embedding.astype(np.float32))
-                        clusterer.fit(embedding_np)
-                        self.cluster_labels = clusterer.labels_
+                        print("Using GPU-accelerated K-means (KMeansTF)")
+                        try:
+                            clusterer = KMeansTF(
+                                n_clusters=n_clusters,
+                                init='k-means++',
+                                random_state=kwargs.get('random_state', 0),
+                                n_init=kwargs.get('n_init', 10),
+                                max_iter=kwargs.get('max_iter', 300),
+                                tol=kwargs.get('tol', 0.0001),
+                                verbose=kwargs.get('verbose', 0)
+                            )
+                            # Convert to numpy array to avoid TensorFlow tensor issues
+                            embedding_np = np.array(embedding.astype(np.float32))
+                            clusterer.fit(embedding_np)
+                            self.cluster_labels = clusterer.labels_
 
-                        # Convert TensorFlow tensor to numpy array
-                        if hasattr(self.cluster_labels, 'numpy'):
-                            self.cluster_labels = self.cluster_labels.numpy()
-                        return self.cluster_labels
+                            # Convert TensorFlow tensor to numpy array
+                            if hasattr(self.cluster_labels, 'numpy'):
+                                self.cluster_labels = self.cluster_labels.numpy()
+                            return self.cluster_labels
+                        except Exception as e:
+                            print(f"GPU K-means failed: {e}")
+                            print("Falling back to CPU K-means.")
+                            # Continue to CPU implementation below
                     else:
                         print("KMeansTF not available. Falling back to CPU K-means.")
                         print("For GPU acceleration, install kmeanstf:")
