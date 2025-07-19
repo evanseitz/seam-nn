@@ -393,46 +393,46 @@ import losses
 # TODO: below, get models from Zenodo
 # Download model file for selected fold
 if model_type == 'dnase_thp1':
-    model_url = f"https://drive.google.com/uc?id=1kxbVgnXTC7Z4BgsqKovv-IZ9jbBzIZcc"  # fold 0
+    model_url = f"https://drive.google.com/uc?id=126xlwtTBBUt5JbEorzQaKaQdV9echJ4w"  # fold 0
     if fold_index == 1:
-        model_url = "https://drive.google.com/uc?id=1lrliung0oJfqg9BW0s6VWlUcCk9CyKfw"
+        model_url = "https://drive.google.com/uc?id=12lkf1Fj0t0ThuXdKtVtusl6oBQNi3hA9"
     elif fold_index == 2:
-        model_url = "https://drive.google.com/uc?id=1sgsZyXrrglItP3YeyQwJCiNqI8KkZWUA"
+        model_url = "https://drive.google.com/uc?id=1w6jDVdsUcDFBiTA4IBiN1LqVEGdPYw2C"
     elif fold_index == 3:
-        model_url = "https://drive.google.com/uc?id=1HSl0KY9JuYDPkDFtG_hQm6gZU6enlLhX"
+        model_url = "https://drive.google.com/uc?id=1xt3aV06Gz5WFp4oTphikr2tvAan1Op2L"
     elif fold_index == 4:
-        model_url = "https://drive.google.com/uc?id=1m8pGMqcP2zVROv3L9z-jhxvn2-PnYOk0"
-    model_path = os.path.join(assets_dir, f"dnase_thp1_fold{fold_index}.h5")
+        model_url = "https://drive.google.com/uc?id=1cmMB4wY9tcWtc-t3IN2LHDvxYgp1A_Ik"
+    model_path = os.path.join(assets_dir, f"dnase_thp1_fold{fold_index}_nobias.h5")
 
-elif model_type == 'dnase_thp1_nobias':
-    model_url = f"https://drive.google.com/uc?id=1KaAwg1Q9Jr0IHNNbR-8m_FWx_TRSiNaF"  # fold 0
+elif model_type == 'dnase_thp1_composite':
+    model_url = f"https://drive.google.com/uc?id=1X6MWSuSPE4qX4uD_3HOMcBnAQAX2yvKi"  # fold 0
     if fold_index > 0:
         print("DNase-seq THP1_nobias model fold %s not implemented yet" % fold_index)
-    model_path = os.path.join(assets_dir, f"dnase_thp1_nobias_fold{fold_index}.h5")
+    model_path = os.path.join(assets_dir, f"dnase_thp1_fold{fold_index}_composite.h5")
 
 elif model_type == 'dnase_k562':
-    model_url = "https://drive.google.com/uc?id=18aowmrCI81HIA2SVuJ6hq9PV7DG8Z0PT" # fold 0
+    model_url = "https://drive.google.com/uc?id=1eiulVO-7_jZo0koB-Bg_a-_MGBIPwPBe" # fold 0
     if fold_index > 0:
         print("DNase K562 model fold %s not implemented yet" % fold_index)
-    model_path = os.path.join(assets_dir, f"dnase_k562_fold{fold_index}.h5")
+    model_path = os.path.join(assets_dir, f"dnase_k562_fold{fold_index}_nobias.h5")
 
 elif model_type == 'dnase_jurkat':
-    model_url = "https://drive.google.com/uc?id=1UD9LAND14zrp0yio9dQSOL4FPtDcoIQi" # fold 0
+    model_url = "https://drive.google.com/uc?id=1c_Zx1MrIhTwSkpo3pChK2Nkdj2tWE0fl" # fold 0
     if fold_index > 0:
         print("DNase-seq jurkat model fold %s not implemented" % fold_index)
-    model_path = os.path.join(assets_dir, f"dnase_jurkat_fold{fold_index}.h5")
+    model_path = os.path.join(assets_dir, f"dnase_jurkat_fold{fold_index}_nobias.h5")
 
 elif model_type == 'dnase_jurkat_stim':
-    model_url = "https://drive.google.com/uc?id=1mdRlvTZhdk4kxTIY12tiVmQ1HSJWyck9" # fold 0
+    model_url = "https://drive.google.com/uc?id=1uIyWItsuGxhRGRMZhKKEMJbXypVEbAtU" # fold 0
     if fold_index > 0:
         print("DNase-seq jurkat_stim model fold %s not implemented" % fold_index)
-    model_path = os.path.join(assets_dir, f"dnase_jurkat_stim_fold{fold_index}.h5")
+    model_path = os.path.join(assets_dir, f"dnase_jurkat_stim_fold{fold_index}_nobias.h5")
 
 elif model_type == 'atac_k562':
-    model_url = "https://drive.google.com/uc?id=11_3zZAYMbb_wWo2fzzbfIW4fYI0Uagml" # fold 0
+    model_url = "https://drive.google.com/uc?id=1D8mvnZDB6fFgOyjI158O6H-RAs80LR14" # fold 0
     if fold_index > 0:
         print("ATAC K562 model fold %s not implemented yet" % fold_index)
-    model_path = os.path.join(assets_dir, f"atac_k562_fold{fold_index}.h5")
+    model_path = os.path.join(assets_dir, f"atac_k562_fold{fold_index}_nobias.h5")
 
 download_if_not_exists(model_url, model_path)
 
