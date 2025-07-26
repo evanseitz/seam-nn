@@ -11,56 +11,32 @@ try:
 except ImportError:
     HAS_SHAP = False
 
-def _check_shap_available():
-    try:
-        import shap
-    except ImportError:
-        raise ImportError(
-            "SHAP is required for this functionality. "
-            "Install it with: pip install shap"
-        )
-    return shap
-
 class Attributer:
     """
     Attributer: A unified interface for computing attribution maps in TensorFlow 2.x
 
-    This implementation is optimized for TensorFlow 2.x (tested on 2.17.1) and provides
+    This implementation is optimized for TensorFlow 2.x and provides
     GPU-accelerated implementations of common attribution methods:
     - Saliency Maps
     - SmoothGrad
     - Integrated Gradients
-    - DeepSHAP (via SHAP package)
+    - DeepSHAP (via SHAP package, requires TensorFlow setup before initialization - see below)
     - ISM (In-Silico Mutagenesis)
 
     Requirements:
-    - tensorflow >= 2.10.0
+    - tensorflow
     - numpy
     - tqdm
     - shap (for DeepSHAP only)
 
     Key Features:
-    - Batch processing for all methods
+    - Batch processing for saliency, smoothgrad, integrated gradients, and ISM
+    - DeepSHAP processes sequences one at a time (no batch mode)
     - GPU-optimized implementations for saliency, smoothgrad, and integrated gradients
     - Consistent interface across methods
     - Support for multi-head models
     - Memory-efficient processing of large datasets
     - Flexible sequence windowing for long sequences
-
-    Performance Notes:
-        Benchmarks on 10,000 sequences (249bp) using NVIDIA A100-SXM4-40GB:
-        - Saliency: ~2.4s
-        - IntGrad (GPU): ~4.9s (50 steps)
-        - SmoothGrad (GPU): ~5.8s (50 samples)
-        - ISM (GPU): ~44.6s
-        
-        GPU acceleration provides significant speedup for IntGrad and SmoothGrad.
-        Batch processing is optimized for saliency, intgrad, smoothgrad and ism methods.
-        
-        Hardware used for benchmarks:
-        - GPU: NVIDIA A100-SXM4-40GB
-        - Compute Capability: 8.0
-        - TensorFlow: 2.17.1
 
     Example usage:
         # Basic usage with output reduction function
@@ -70,6 +46,15 @@ class Attributer:
             task_index=0,  # Select first output head
             compress_fun=tf.math.reduce_mean,  # Reduce selected output to scalar
             pred_fun=None  # Not used for gradient-based methods
+        )
+
+        # Example with ChromBPNet compression functions
+        attributer = Attributer(
+            model,
+            method='deepshap',
+            task_index=0,  # Select first output head
+            compress_fun=Attributer.bpnet_profile_deepshap,  # ChromBPNet profile compression with stop_gradient
+            pred_fun=None
         )
 
         # Example with ISM (forward-pass method)
@@ -92,13 +77,31 @@ class Attributer:
         # Method-specific parameters
         attributions = attributer.compute(
             x=input_sequences,
-            num_steps=50,          # for intgrad
-            num_samples=50,        # for smoothgrad
+            num_steps=20,          # for intgrad
+            num_samples=20,        # for smoothgrad
             multiply_by_inputs=False  # for intgrad
             log2fc=False  # for ism
         )
 
     Note: For optimal performance, ensure TensorFlow is configured to use GPU acceleration.
+    
+    DeepSHAP Requirements:
+    DeepSHAP requires specific TensorFlow setup that must be done BEFORE creating the Attributer
+    (because DeepSHAP was designed for earlier TensorFlow versions):
+    1. Disable TensorFlow eager execution: tf.compat.v1.disable_eager_execution()
+    2. Disable TensorFlow v2 behavior: tf.compat.v1.disable_v2_behavior() 
+    3. Load/reload the model from file after disabling eager execution
+    4. Rebuild the model graph by passing a dummy input through it
+    5. Configure SHAP op handlers for TensorFlow compatibility
+    
+    Example setup sequence:
+        tf.compat.v1.disable_eager_execution()
+        tf.compat.v1.disable_v2_behavior()
+        import shap
+        shap.explainers.deep.deep_tf.op_handlers["AddV2"] = shap.explainers.deep.deep_tf.passthrough
+        model = tf.keras.models.load_model(model_path, custom_objects=custom_objects)
+        _ = model(tf.keras.Input(shape=model.input_shape[1:]))
+        # Now create Attributer with the prepared model
     """
     
     SUPPORTED_METHODS = {'saliency', 'smoothgrad', 'intgrad', 'deepshap', 'ism'}
@@ -108,12 +111,12 @@ class Attributer:
         'saliency': 128,
         'intgrad': 128,
         'smoothgrad': 64,
-        'deepshap': 1,    # not optimized for batch mode
-        'ism': 32         # not optimized for batch mode
+        'ism': 32
+        # Note: DeepSHAP does not use batch processing - it processes sequences one at a time
     }
     
-    def __init__(self, model, method='saliency', task_index=None, out_layer=-1, 
-                batch_size=None, num_shuffles=100, compress_fun=tf.math.reduce_mean, 
+    def __init__(self, model, method='saliency', task_index=None,
+                batch_size=None, num_shuffles=20, compress_fun=tf.math.reduce_mean, 
                 pred_fun=None, gpu=True):
         """Initialize the Attributer.
         
@@ -121,14 +124,14 @@ class Attributer:
             model: TensorFlow model to explain
             method: Attribution method (default: 'saliency')
             task_index: Index of output head to explain (optional)
-            out_layer: Output layer index for DeepSHAP
             batch_size: Batch size for computing attributions (optional, defaults to method-specific size)
-            num_shuffles: Number of shuffles for DeepSHAP background
+            num_shuffles: Number of shuffles for DeepSHAP background (default: 20, matches ChromBPNet)
             compress_fun: Function to compress model output to scalar (default: tf.math.reduce_mean)
             pred_fun: Function to use for model predictions in forward-pass methods like ISM.
                      Not used for gradient-based methods (saliency, smoothgrad, intgrad).
                      Default: model.__call__
             gpu: Whether to use GPU-optimized implementation (default: True)
+
         """
         if method not in self.SUPPORTED_METHODS:
             raise ValueError(f"Method must be one of {self.SUPPORTED_METHODS}")
@@ -138,19 +141,16 @@ class Attributer:
         self.task_index = task_index
         self.compress_fun = compress_fun
         self.pred_fun = pred_fun or model.__call__
-        self.out_layer = out_layer
         self.gpu = gpu
         self.num_shuffles = num_shuffles
 
         # Set batch size based on method if not specified
-        self.batch_size = batch_size or self.DEFAULT_BATCH_SIZES[method]
-
-        if self.batch_size > 1 and method == 'deepshap':  # removed ISM from this check
-            print(f"Warning: {method} is not optimized for batch mode. Using batch_size=1")
-            self.batch_size = 1
-
-        if method == 'shap':
-            self.shap = _check_shap_available()
+        # Note: DeepSHAP does not use batch processing
+        if method == 'deepshap':
+            self.batch_size = None  # DeepSHAP doesn't use batching
+            self._check_deepshap_dependencies()
+        else:
+            self.batch_size = batch_size or self.DEFAULT_BATCH_SIZES[method]
 
     @tf.function
     def _saliency_map(self, X):
@@ -174,7 +174,7 @@ class Attributer:
         return self._function_batch(X, self._saliency_map, 
                                   batch_size or self.batch_size)
 
-    def smoothgrad(self, X, num_samples=50, mean=0.0, stddev=0.1, gpu=True, **kwargs):
+    def smoothgrad(self, X, num_samples=20, mean=0.0, stddev=0.1, gpu=True, **kwargs):
         """Compute SmoothGrad attribution maps.
         
         Args:
@@ -193,10 +193,9 @@ class Attributer:
         else:
             return self._smoothgrad_cpu(X, num_samples, mean, stddev)
 
-    def _smoothgrad_cpu(self, X, num_samples=50, mean=0.0, stddev=0.1):
+    def _smoothgrad_cpu(self, X, num_samples=20, mean=0.0, stddev=0.1):
         """CPU implementation of SmoothGrad."""
         scores = []
-        #for x in tqdm(X, desc="Computing SmoothGrad"):
         for x in X:
             x = np.expand_dims(x, axis=0)  # (1, L, A)
             x = tf.cast(x, dtype=tf.float32)
@@ -205,7 +204,7 @@ class Attributer:
             scores.append(tf.reduce_mean(grad, axis=0))
         return np.stack(scores, axis=0)
 
-    def _smoothgrad_gpu(self, X, num_samples=50, mean=0.0, stddev=0.1):
+    def _smoothgrad_gpu(self, X, num_samples=20, mean=0.0, stddev=0.1):
         """GPU-optimized implementation with parallel noise generation."""
         X = tf.cast(X, dtype=tf.float32)
         batch_size = tf.shape(X)[0]
@@ -234,7 +233,7 @@ class Attributer:
         # Average over samples
         return tf.reduce_mean(grads, axis=1)
     
-    def intgrad(self, X, baseline_type='zeros', num_steps=25, gpu=True, multiply_by_inputs=False, seed=None):
+    def intgrad(self, X, baseline_type='zeros', num_steps=20, gpu=True, multiply_by_inputs=False, seed=None):
         """Compute Integrated Gradients attribution maps.
         
         Parameters
@@ -280,7 +279,7 @@ class Attributer:
             return avg_grads * (x - baseline)
         return avg_grads
     
-    def _intgrad_cpu(self, X, baseline_type='zeros', num_steps=25, multiply_by_inputs=False, seed=None):
+    def _intgrad_cpu(self, X, baseline_type='zeros', num_steps=20, multiply_by_inputs=False, seed=None):
         """CPU-optimized implementation using loop-based computation."""
         scores = []
         #for i, x in enumerate(tqdm(X, desc="Computing IntGrad")):
@@ -297,7 +296,11 @@ class Attributer:
                 baseline = self._random_shuffle(x)
             elif baseline_type == 'dinuc_shuffle':
                 if i == 0:  # Only compute all shuffles once at the start
-                    baselines = self._batch_dinuc_shuffle(X, num_shuffles=1, seed=seed)
+                    try:
+                        from deeplift.dinuc_shuffle import dinuc_shuffle
+                        baselines = np.array([dinuc_shuffle(X[i]) for i in range(X.shape[0])])
+                    except ImportError:
+                        raise ImportError("dinuc_shuffle baseline requires deeplift package. Install with: pip install deeplift")
                 baseline = np.expand_dims(baselines[i], axis=0)
             else:
                 raise ValueError("baseline_type must be one of: 'zeros', 'random_shuffle', 'dinuc_shuffle'")
@@ -307,7 +310,7 @@ class Attributer:
         return np.stack(scores, axis=0)  # Stack to get (N, L, A)
 
     @tf.function
-    def _intgrad_gpu(self, X, baseline_type='zeros', num_steps=25, multiply_by_inputs=False, seed=None):
+    def _intgrad_gpu(self, X, baseline_type='zeros', num_steps=20, multiply_by_inputs=False, seed=None):
         """GPU-optimized implementation using vectorized computation."""
         # Ensure input is float32
         X = tf.cast(X, tf.float32)
@@ -321,10 +324,12 @@ class Attributer:
         elif baseline_type == 'random_shuffle':
             baseline = tf.map_fn(self._random_shuffle, X)
         elif baseline_type == 'dinuc_shuffle':
-            baseline = tf.convert_to_tensor(
-                self._batch_dinuc_shuffle(X.numpy(), num_shuffles=1, seed=seed),
-                dtype=tf.float32
-            )
+            try:
+                from deeplift.dinuc_shuffle import dinuc_shuffle
+                baselines = np.array([dinuc_shuffle(X[i].numpy()) for i in range(X.shape[0])])
+                baseline = tf.convert_to_tensor(baselines, dtype=tf.float32)
+            except ImportError:
+                raise ImportError("dinuc_shuffle baseline requires deeplift package. Install with: pip install deeplift")
         else:
             raise ValueError("baseline_type must be one of: 'zeros', 'random_shuffle', 'dinuc_shuffle'")
         
@@ -354,7 +359,7 @@ class Attributer:
         return avg_grads
     
     @tf.function
-    def _intgrad_gpu_matches_cpu(self, X, baseline_type='zeros', num_steps=25, multiply_by_inputs=False, seed=None):
+    def _intgrad_gpu_matches_cpu(self, X, baseline_type='zeros', num_steps=20, multiply_by_inputs=False, seed=None):
         """GPU-optimized implementation using individual sample processing for mathematical equivalence."""
         # Ensure input is float32
         X = tf.cast(X, tf.float32)
@@ -368,10 +373,12 @@ class Attributer:
         elif baseline_type == 'random_shuffle':
             baseline = tf.map_fn(self._random_shuffle, X)
         elif baseline_type == 'dinuc_shuffle':
-            baseline = tf.convert_to_tensor(
-                self._batch_dinuc_shuffle(X.numpy(), num_shuffles=1, seed=seed),
-                dtype=tf.float32
-            )
+            try:
+                from deeplift.dinuc_shuffle import dinuc_shuffle
+                baselines = np.array([dinuc_shuffle(X[i].numpy()) for i in range(X.shape[0])])
+                baseline = tf.convert_to_tensor(baselines, dtype=tf.float32)
+            except ImportError:
+                raise ImportError("dinuc_shuffle baseline requires deeplift package. Install with: pip install deeplift")
         else:
             raise ValueError("baseline_type must be one of: 'zeros', 'random_shuffle', 'dinuc_shuffle'")
         
@@ -474,10 +481,7 @@ class Attributer:
             wt_output = self.pred_fun(tf.constant(x, dtype=tf.float32))
             if self.task_index is not None:
                 wt_output = wt_output[self.task_index]
-            # Convert to tensor and compress to scalar
-            #wt_output = tf.convert_to_tensor(wt_output)
-            #if wt_output.shape.ndims > 2:
-            #    wt_output = tf.squeeze(wt_output)
+
             wt_pred = float(self.compress_fun(wt_output))
             
             # Store all mutation predictions first
@@ -496,10 +500,7 @@ class Attributer:
                     mut_output = self.pred_fun(tf.constant(mut_seq))
                     if self.task_index is not None:
                         mut_output = mut_output[self.task_index]
-                    # Convert to tensor and compress to scalar
-                    #mut_output = tf.convert_to_tensor(mut_output)
-                    #if mut_output.shape.ndims > 2:
-                    #    mut_output = tf.squeeze(mut_output)
+
                     mut_preds[idx] = float(self.compress_fun(mut_output))
                     
                     mut_locs.append((pos, new_base))
@@ -606,20 +607,7 @@ class Attributer:
 
         # Get wild-type predictions
         wt_preds = self.pred_fun(X)
-        '''
-        if isinstance(wt_preds, list):
-            if self.task_index is not None:
-                wt_preds = wt_preds[self.task_index]
-            wt_preds = tf.convert_to_tensor(wt_preds)
-            # Keep the batch dimension for list outputs
-            if wt_preds.shape.ndims > 2:
-                wt_preds = tf.squeeze(wt_preds)  # Remove extra dims but keep batch
-        elif self.task_index is not None:
-            wt_preds = wt_preds[self.task_index]
-            # For non-list outputs, use the compression function if needed
-            if wt_preds.shape.ndims > 1:
-                wt_preds = self.compress_fun(wt_preds)
-        '''
+
         if self.task_index is not None:
             wt_preds = wt_preds[self.task_index]
         wt_preds = tf.cast(self.compress_fun(wt_preds), tf.float32)  # Apply compression to get scalar values
@@ -650,19 +638,7 @@ class Attributer:
             
             if self.task_index is not None:
                 batch_preds = batch_preds[self.task_index]
-            '''
-            if isinstance(batch_preds, list):
-                reduced_preds = tf.convert_to_tensor(batch_preds)
-            elif hasattr(batch_preds, 'shape'):
-                if batch_preds.shape.ndims == 1:
-                    reduced_preds = batch_preds
-                elif batch_preds.shape[0] == end_idx - i:  # If first dim matches batch size
-                    reduced_preds = tf.squeeze(batch_preds)  # Remove extra dims but keep batch
-                else:
-                    reduced_preds = self.compress_fun(batch_preds)
-            else:
-                reduced_preds = self.compress_fun(batch_preds)
-            '''
+
             # Apply compression function to get scalar values
             batch_preds = tf.cast(self.compress_fun(batch_preds), tf.float32)
             
@@ -680,7 +656,7 @@ class Attributer:
         sequence_indices = tf.repeat(tf.range(N), mutations_per_seq)  # Shape: (N * mutations_per_seq,)
         
         # Ensure mut_preds has correct shape for gathering
-        mut_preds = tf.reshape(mut_preds, [-1])  # Ensure 1D tensor #TODO: is the generalizable?
+        mut_preds = tf.reshape(mut_preds, [-1])  # Ensure 1D tensor # TODO: is the generalizable?
         
         # Restore predictions to full mutation set and get corresponding wild-types
         full_mut_preds = tf.gather(mut_preds, restore_indices)  # Shape: (N * L * A,)            
@@ -742,151 +718,6 @@ class Attributer:
             outputs.append(func(x, **kwargs))
         return np.concatenate(outputs, axis=0)
 
-
-    @staticmethod
-    def _one_hot_to_tokens(one_hot):
-        """Convert an L x D one-hot encoding into an L-vector of integers.
-        
-        Parameters
-        ----------
-        one_hot : np.ndarray
-            One-hot encoded sequence with shape (length, D)
-            
-        Returns
-        -------
-        np.ndarray
-            Vector of integers representing sequence
-        """
-        tokens = np.tile(one_hot.shape[1], one_hot.shape[0])
-        seq_inds, dim_inds = np.where(one_hot)
-        tokens[seq_inds] = dim_inds
-        return tokens
-
-    @staticmethod
-    def _tokens_to_one_hot(tokens, one_hot_dim):
-        """Convert an L-vector of integers to an L x D one-hot encoding.
-        
-        Parameters
-        ----------
-        tokens : np.ndarray
-            Vector of integers representing sequence
-        one_hot_dim : int
-            Dimension of one-hot encoding (usually 4 for DNA)
-            
-        Returns
-        -------
-        np.ndarray
-            One-hot encoded sequence
-        """
-        identity = np.identity(one_hot_dim + 1)[:, :-1]
-        return identity[tokens]
-
-    @staticmethod
-    def _dinuc_shuffle(seq, rng=None):
-        """Create shuffle of sequence preserving dinucleotide frequencies.
-        
-        Parameters
-        ----------
-        seq : np.ndarray
-            L x D one-hot encoded sequence
-        rng : np.random.RandomState, optional
-            Random number generator
-            
-        Returns
-        -------
-        np.ndarray
-            Shuffled sequence preserving dinucleotide frequencies
-        """
-        if rng is None:
-            rng = np.random.RandomState()
-            
-        # Convert to tokens
-        tokens = Attributer._one_hot_to_tokens(seq)
-        
-        # Get unique tokens
-        chars, tokens = np.unique(tokens, return_inverse=True)
-        
-        # Get next indices for each token
-        shuf_next_inds = []
-        for t in range(len(chars)):
-            mask = tokens[:-1] == t
-            inds = np.where(mask)[0]
-            shuf_next_inds.append(inds + 1)
-        
-        # Shuffle next indices
-        for t in range(len(chars)):
-            inds = np.arange(len(shuf_next_inds[t]))
-            if len(inds) > 1:
-                inds[:-1] = rng.permutation(len(inds) - 1)
-            shuf_next_inds[t] = shuf_next_inds[t][inds]
-        
-        # Build result
-        counters = [0] * len(chars)
-        ind = 0
-        result = np.empty_like(tokens)
-        result[0] = tokens[ind]
-        
-        for j in range(1, len(tokens)):
-            t = tokens[ind]
-            ind = shuf_next_inds[t][counters[t]]
-            counters[t] += 1
-            result[j] = tokens[ind]
-        
-        return Attributer._tokens_to_one_hot(chars[result], seq.shape[1])
-
-    @staticmethod
-    def _batch_dinuc_shuffle(
-        sequence: np.ndarray,
-        num_shuffles: int = 1,
-        seed: Optional[int] = None
-    ) -> np.ndarray:
-        """Generate multiple dinucleotide-preserved shuffles efficiently.
-        
-        Parameters
-        ----------
-        sequence : np.ndarray
-            One-hot encoded sequence(s) with shape (length, 4), (1, length, 4),
-            or (batch_size, length, 4)
-        num_shuffles : int
-            Number of shuffled sequences to generate per input sequence
-        seed : int, optional
-            Random seed for reproducibility
-            
-        Returns
-        -------
-        np.ndarray
-            Batch of shuffled sequences with shape (batch_size, length, 4)
-            or (num_shuffles, length, 4) for single input
-        """
-        # Handle different input shapes
-        if len(sequence.shape) == 2:  # (length, 4)
-            sequence = sequence[np.newaxis, ...]  # Add batch dimension
-            single_sequence = True
-        elif len(sequence.shape) == 3:  # (batch_size, length, 4) or (1, length, 4)
-            single_sequence = sequence.shape[0] == 1
-        else:
-            raise ValueError("Input sequence must have shape (length, 4), (1, length, 4), or (batch_size, length, 4)")
-        
-        # Create RandomState with seed
-        rng = np.random.RandomState(seed)
-        
-        if single_sequence:
-            # Generate shuffles for single sequence
-            shuffled_sequences = [
-                Attributer._dinuc_shuffle(sequence[0], rng=rng) 
-                for _ in range(num_shuffles)
-            ]
-            shuffled = np.stack(shuffled_sequences, axis=0)
-        else:
-            # Generate one shuffle per sequence
-            shuffled_sequences = [
-                Attributer._dinuc_shuffle(seq, rng=rng)
-                for seq in sequence
-            ]
-            shuffled = np.stack(shuffled_sequences, axis=0)
-            
-        return shuffled
-
     @staticmethod
     def _random_shuffle(x):
         """Randomly shuffle sequence using appropriate backend."""
@@ -911,13 +742,13 @@ class Attributer:
         return [shuffled]
     
     def compute(self, x, x_ref=None, batch_size=128, save_window=None, **kwargs):
-        """Compute attribution maps in batch mode.
+        """Compute attribution maps.
         
         Args:
             x: One-hot sequences (shape: (N, L, A))
             x_ref: One-hot reference sequence (shape: (1, L, A)) for windowed analysis.
                 Not used for DeepSHAP background data, which is handled during initialization.
-            batch_size: Number of attribution maps per batch
+            batch_size: Number of attribution maps per batch (ignored for DeepSHAP)
             save_window: Window [start, stop] for computing attributions. If provided along with x_ref,
                         the input sequences will be padded with the reference sequence outside this window.
                         This allows computing attributions for a subset of positions while maintaining
@@ -929,7 +760,8 @@ class Attributer:
                 - num_samples: Samples for smoothgrad (default: 50)
                 - mean, stddev: Parameters for smoothgrad noise
                 - multiply_by_inputs: Whether to multiply gradients by inputs (default: False)
-                - background: Background sequences for DeepSHAP (shape: (N, L, A))
+                - baseline_type: Background type for intgrad and deepshap ('zeros', 'random_shuffle', 'dinuc_shuffle')
+                - background: Background sequences for DeepSHAP (shape: (N, L, A)) - overrides baseline_type
                 - snv_window: Window [start, end] for ISM to compute variants (default: None)
         
         Returns:
@@ -944,6 +776,13 @@ class Attributer:
             if x_ref.ndim == 2:
                 x_ref = x_ref[np.newaxis, :]
 
+        # DeepSHAP processes all sequences at once (no batching)
+        if self.method == 'deepshap':
+            attribution_values = self._process_batch(x, x_ref, save_window, batch_size, **kwargs)
+            self.attributions = attribution_values
+            return attribution_values
+
+        # For other methods, use batch processing
         N, L, A = x.shape
         num_batches = int(np.floor(N/batch_size))
         attribution_values = []
@@ -970,27 +809,57 @@ class Attributer:
             x_batch = self._apply_save_window(x_batch, x_ref, save_window)
 
         if self.method == 'deepshap':
+            # NOTE: DeepSHAP processes sequences one at a time, not in batches
+            # The TFDeepExplainer loops through each sequence individually
             # Initialize explainer if not already done
             if not hasattr(self, 'explainer'):
-                shap.explainers.deep.deep_tf.op_handlers["AddV2"] = shap.explainers.deep.deep_tf.passthrough
-                background = kwargs.get('background', None)
-                if background is None:
-                    background = self._generate_background_data(x_batch, self.num_shuffles)
-                else:
-                    background = [background]  # DeepSHAP expects a list
+                # Get background type from kwargs (default to 'dinuc_shuffle' for DeepSHAP)
+                baseline_type = kwargs.get('baseline_type', 'dinuc_shuffle')
                 
-                self.explainer = shap.DeepExplainer(
-                    (self.model.layers[0].input, self.model.layers[self.out_layer].output),
-                    data=background
+                # Generate background data based on baseline_type
+                if baseline_type == 'dinuc_shuffle':
+                    background = self._shuffle_several_times
+                elif baseline_type == 'random_shuffle':
+                    background = self._random_shuffle
+                elif baseline_type == 'zeros':
+                    # For zeros baseline, create a function that returns zero sequences
+                    def zeros_background(s):
+                        if len(s) == 2:
+                            return [np.zeros_like(s[0]), s[1]]
+                        else:
+                            return [np.zeros_like(s[0])]
+                    background = zeros_background
+                else:
+                    raise ValueError(f"Unsupported baseline_type '{baseline_type}' for DeepSHAP. "
+                                   f"Supported types: 'dinuc_shuffle', 'random_shuffle', 'zeros'")
+                
+                # Allow override with custom background function
+                custom_background = kwargs.get('background', None)
+                if custom_background is not None:
+                    background = custom_background
+                
+                # DeepSHAP expects a list for background
+                if not isinstance(background, list):
+                    background = [background]
+                
+                # For DeepSHAP, use the provided compress_fun to create target output
+                target_output = self.compress_fun(self.model)
+                
+                # Always use TFDeepExplainer with combine_mult_and_diffref for ChromBPNet compatibility
+                self.explainer = shap.explainers.deep.TFDeepExplainer(
+                    (self.model.input, target_output),
+                    background,
+                    combine_mult_and_diffref=self._combine_mult_and_diffref
                 )
-            batch_values = self.explainer.shap_values(x_batch)[0]
+            
+            batch_values = self.explainer.shap_values(x_batch, progress_message=100)
         elif self.method == 'saliency':
             batch_values = self.saliency(x_batch, batch_size=batch_size)
         elif self.method == 'smoothgrad':
             gpu = kwargs.get('gpu', self.gpu)
             batch_values = self.smoothgrad(
                 x_batch,
-                num_samples=kwargs.get('num_samples', 50),
+                num_samples=kwargs.get('num_samples', 20),
                 mean=kwargs.get('mean', 0.0),
                 stddev=kwargs.get('stddev', 0.1),
                 gpu=gpu
@@ -1002,7 +871,7 @@ class Attributer:
             batch_values = self.intgrad(
                 x_batch, 
                 baseline_type=baseline_type,
-                num_steps=kwargs.get('num_steps', 50),
+                num_steps=kwargs.get('num_steps', 20),
                 gpu=gpu,
                 multiply_by_inputs=multiply_by_inputs,
                 seed=kwargs.get('seed', None)
@@ -1087,7 +956,6 @@ class Attributer:
                         'Required if model output is not already a scalar.')
             },
             'deepshap': {
-                'batch_size': 'int, Batch size for processing (default: 1)',
                 'background': ('array, Background sequences for DeepSHAP (optional). Shape: (N, L, A). '
                             'If not provided, will generate shuffled backgrounds using num_shuffles.')
             },
@@ -1139,96 +1007,171 @@ class Attributer:
                 print("\n" + "-"*50)
 
     @staticmethod
-    @tf.function
-    def _batch_dinuc_shuffle_gpu(sequence: tf.Tensor, num_shuffles: int = 1, seed: Optional[int] = None) -> tf.Tensor:
-        """Generate multiple dinucleotide-preserved shuffles using TensorFlow ops.
+    def _check_deepshap_dependencies():
+        """Check if all dependencies for ChromBPNet DeepSHAP are available.
         
-        Parameters
-        ----------
-        sequence : tf.Tensor
-            One-hot encoded sequence(s) with shape (batch_size, length, 4)
-        num_shuffles : int
-            Number of shuffled sequences to generate per input sequence
-        seed : int, optional
-            Random seed for reproducibility
+        Returns:
+            shap module if all dependencies are available
             
-        Returns
-        -------
-        tf.Tensor
-            Batch of shuffled sequences with shape (batch_size, length, 4)
-            or (num_shuffles, length, 4) for single input
+        Raises:
+            ImportError: If any required dependency is missing
         """
-        if seed is not None:
-            tf.random.set_seed(seed)
-        
-        # Handle single sequence case
-        if len(tf.shape(sequence)) == 2:  # (length, 4)
-            sequence = tf.expand_dims(sequence, 0)  # Add batch dimension
-            single_sequence = True
-        else:
-            single_sequence = tf.shape(sequence)[0] == 1
-        
-        # Convert one-hot to indices
-        tokens = tf.argmax(sequence, axis=-1)  # (batch_size, length)
-        
-        # Get unique tokens and their counts for each sequence
-        def shuffle_sequence(seq_tokens):
-            # Get dinucleotide transitions
-            prev_tokens = seq_tokens[:-1]  # (length-1,)
-            next_tokens = seq_tokens[1:]   # (length-1,)
+        if not HAS_SHAP:
+            error_msg = "Missing required dependency for ChromBPNet DeepSHAP: kundajelab-shap\n\n"
+            error_msg += "Install missing package with:\n"
+            error_msg += "  pip install kundajelab-shap==1\n"
+            error_msg += "Note: ChromBPNet DeepSHAP requires the Kundaje SHAP package."
             
-            # Create transition matrix (4x4) counting occurrences
-            transitions = tf.zeros((4, 4), dtype=tf.int32)
-            transitions = tf.tensor_scatter_nd_add(
-                transitions,
-                tf.stack([prev_tokens, next_tokens], axis=1),
-                tf.ones_like(prev_tokens, dtype=tf.int32)
-            )
-            
-            # Initialize result with first token
-            result = tf.TensorArray(tf.int32, size=tf.shape(seq_tokens)[0])
-            result = result.write(0, seq_tokens[0])
-            
-            # For each position after first
-            for i in tf.range(1, tf.shape(seq_tokens)[0]):
-                prev_token = result.read(i-1)
-                
-                # Get possible next tokens and their counts
-                possible_next = transitions[prev_token]
-                
-                # Sample next token based on transition probabilities
-                probs = tf.cast(possible_next, tf.float32)
-                probs = probs / (tf.reduce_sum(probs) + 1e-10)
-                next_token = tf.random.categorical(tf.expand_dims(tf.math.log(probs + 1e-10), 0), 1)[0, 0]
-                
-                # Update transition matrix
-                transitions = tf.tensor_scatter_nd_sub(
-                    transitions,
-                    [[prev_token, next_token]],
-                    [1]
-                )
-                
-                result = result.write(i, next_token)
-            
-            # Convert back to sequence
-            shuffled_tokens = result.stack()
-            return tf.one_hot(shuffled_tokens, depth=4)
+            raise ImportError(error_msg)
         
-        # Apply shuffling to each sequence
-        if single_sequence and num_shuffles > 1:
-            # Generate multiple shuffles for single sequence
-            shuffled = tf.map_fn(
-                lambda _: shuffle_sequence(tokens[0]),
-                tf.zeros(num_shuffles),
-                fn_output_signature=tf.float32
-            )
-        else:
-            # Generate one shuffle per sequence
-            shuffled = tf.map_fn(
-                shuffle_sequence,
-                tokens,
-                fn_output_signature=tf.float32
-            )
-        
-        return shuffled
+        return shap
 
+    @staticmethod
+    def _combine_mult_and_diffref(mult, orig_inp, bg_data):
+        """Combine multipliers and difference from reference for DeepSHAP.
+        
+        This function implements the ChromBPNet-specific multiplier combination
+        that projects hypothetical contributions onto the actual sequence.
+        
+        Args:
+            mult: Multipliers from DeepSHAP
+            orig_inp: Original input sequence
+            bg_data: Background data
+            
+        Returns:
+            list: Combined attribution scores
+        """
+        to_return = []
+        
+        for l in [0]:
+            projected_hypothetical_contribs = \
+                np.zeros_like(bg_data[l]).astype("float")
+            assert len(orig_inp[l].shape)==2
+            
+            # At each position in the input sequence, we iterate over the
+            # one-hot encoding possibilities (eg: for genomic sequence, 
+            # this is ACGT i.e. 1000, 0100, 0010 and 0001) and compute the
+            # hypothetical difference-from-reference in each case. We then 
+            # multiply the hypothetical differences-from-reference with 
+            # the multipliers to get the hypothetical contributions. For 
+            # each of the one-hot encoding possibilities, the hypothetical
+            # contributions are then summed across the ACGT axis to 
+            # estimate the total hypothetical contribution of each 
+            # position. This per-position hypothetical contribution is then
+            # assigned ("projected") onto whichever base was present in the
+            # hypothetical sequence. The reason this is a fast estimate of
+            # what the importance scores *would* look like if different 
+            # bases were present in the underlying sequence is that the
+            # multipliers are computed once using the original sequence, 
+            # and are not computed again for each hypothetical sequence.
+            for i in range(orig_inp[l].shape[-1]):
+                hypothetical_input = np.zeros_like(orig_inp[l]).astype("float")
+                hypothetical_input[:, i] = 1.0
+                hypothetical_difference_from_reference = \
+                    (hypothetical_input[None, :, :] - bg_data[l])
+                hypothetical_contribs = hypothetical_difference_from_reference * \
+                                        mult[l]
+                projected_hypothetical_contribs[:, :, i] = \
+                    np.sum(hypothetical_contribs, axis=-1) 
+                
+            to_return.append(np.mean(projected_hypothetical_contribs,axis=0))
+
+        if len(orig_inp)>1:
+            to_return.append(np.zeros_like(orig_inp[1]))
+        
+        return to_return
+
+    @staticmethod
+    def _shuffle_several_times(s, numshuffles=20):
+        """Generate multiple dinucleotide shuffles for DeepSHAP background.
+        
+        This implements the exact same approach as the ChromBPNet repository.
+        
+        Args:
+            s: Input sequence
+            numshuffles: Number of shuffles to generate (default: 20, matches ChromBPNet)
+            
+        Returns:
+            list: List of shuffled sequences
+        """
+        try:
+            # Try to use the deeplift dinuc_shuffle function (same as ChromBPNet)
+            from deeplift.dinuc_shuffle import dinuc_shuffle
+            
+            if len(s)==2:
+                return [np.array([dinuc_shuffle(s[0]) for i in range(numshuffles)]),
+                        np.array([s[1] for i in range(numshuffles)])]
+            else:
+                return [np.array([dinuc_shuffle(s[0]) for i in range(numshuffles)])]
+        except ImportError:
+            # Fallback to random shuffle if deeplift is not available
+            print("WARNING: deeplift package not found. Dinucleotide shuffling unavailable.")
+            print("Falling back to random shuffling for DeepSHAP background generation.")
+            print("For optimal results with genomic sequences, install deeplift: pip install deeplift")
+            
+            if len(s)==2:
+                return [np.array([Attributer._random_shuffle(s[0]) for i in range(numshuffles)]),
+                        np.array([s[1] for i in range(numshuffles)])]
+            else:
+                return [np.array([Attributer._random_shuffle(s[0]) for i in range(numshuffles)])]
+
+    @staticmethod
+    def bpnet_profile(x):
+        """ChromBPNet profile compression function.
+        
+        This function implements the ChromBPNet profile task compression.
+        For DeepSHAP, x should be the model. For other methods, x should be the output tensor.
+        
+        Args:
+            x: Model output tensor (profile logits) or model (for DeepSHAP)
+            
+        Returns:
+            tf.Tensor: Weighted sum of mean-normalized logits
+        """
+        # Check if x is a model (has outputs attribute) or a tensor
+        if hasattr(x, 'outputs'):
+            # x is a model - create target output tensor for DeepSHAP
+            meannormed_logits = (x.outputs[0] - 
+                               tf.reduce_mean(x.outputs[0], axis=1, keepdims=True))
+            
+            # 'stop_gradient' will prevent importance from being propagated
+            # through this operation; we do this because we just want to treat
+            # the post-softmax probabilities as 'weights' on the different 
+            # logits, without having the network explain how the probabilities
+            # themselves were derived. Could be worth contrasting explanations
+            # derived with and without stop_gradient enabled
+            stopgrad_meannormed_logits = tf.stop_gradient(meannormed_logits)
+            softmax_out = tf.nn.softmax(stopgrad_meannormed_logits, axis=1)
+        else:
+            # x is the output tensor - compress it (existing behavior)
+            meannormed_logits = x - tf.reduce_mean(x, axis=1, keepdims=True)
+            
+            # Apply softmax to meannormed logits (without stop_gradient for non-DeepSHAP methods)
+            softmax_out = tf.nn.softmax(meannormed_logits, axis=1)
+        
+        # Weight the logits according to softmax probabilities and sum
+        weightedsum = tf.reduce_sum(softmax_out * meannormed_logits, axis=1)
+        return weightedsum
+
+    @staticmethod
+    def bpnet_counts(x):
+        """ChromBPNet counts compression function.
+        
+        This function implements the ChromBPNet counts task compression.
+        For DeepSHAP, x should be the model. For other methods, x should be the output tensor.
+        
+        Args:
+            x: Model output tensor (counts logits) or model (for DeepSHAP)
+            
+        Returns:
+            tf.Tensor: For DeepSHAP: sum of counts across output dimension
+                     For other methods: tensor as-is (no reduction)
+        """
+        # Check if x is a model (has outputs attribute) or a tensor
+        if hasattr(x, 'outputs'):
+            # x is a model - create target output tensor for DeepSHAP
+            # For DeepSHAP, we need to reduce to scalar to avoid list output
+            return tf.reduce_sum(x.outputs[1], axis=-1)
+        else:
+            # x is the output tensor - return as-is for other methods (no reduction)
+            return x

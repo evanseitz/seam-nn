@@ -8,7 +8,7 @@ Model:
 Parameters:
     - 100,000 sequences
     - 10% mutation rate
-    - Saliency maps
+    - Integrated gradients
     - Hierarchical clustering (ward)
 
 Tested on GPUs using:
@@ -37,8 +37,6 @@ Note on model type:
     https://github.com/kundajelab/chrombpnet/blob/master/chrombpnet/helpers/postprocessing/reformat_chrombpnet_h5.py
     e.g., python reformat_chrombpnet_h5.py -cnb model.chrombpnet_nobias.fold_0.ENCSR000EOT.h5 -bm model.bias_scaled.fold_0.ENCSR000EOT.h5 -o .
 """
-
-# TODO: test DeepSHAP profile head in Attributer()
 
 import os, sys, time
 import random
@@ -69,7 +67,6 @@ mut_rate = 0.1  # mutation rate for in silico mutagenesis
 num_seqs = 100000  # number of sequences to generate
 n_clusters = 200 # number of clusters for hierarchical clustering
 attribution_method = 'intgrad'  # {saliency, smoothgrad, intgrad, ism, deepshap}
-# Note: DeepSHAP is not optimized for batch processing of SEAM's in silico mutagenesis library, and may also not be calibrated for several modern TF2 operations.
 
 # =============================================================================
 # Overhead user settings
@@ -164,11 +161,7 @@ class ChromBPNetPredictor(squid.predictor.BasePredictor):
         self.batch_size = batch_size
         # Default compression functions for each task type
         self.compress_fun = compress_fun or {
-            0: lambda x: tf.reduce_sum(  # Profile task (index 0)
-                (x - tf.reduce_mean(x, axis=-1, keepdims=True)) * 
-                tf.nn.softmax(x - tf.reduce_mean(x, axis=-1, keepdims=True), axis=-1),
-                axis=-1
-            ),
+            0: Attributer.bpnet_profile,  # Profile task (index 0)
             1: lambda x: x  # Counts task (index 1)
         }[task_idx]
         squid.predictor.BasePredictor.save_dir = save_dir
@@ -219,167 +212,6 @@ class ChromBPNetPredictor(squid.predictor.BasePredictor):
         
         preds = np.concatenate(pred, axis=0)
         return preds.reshape(-1, 1)  # Ensure 2D output for SQUID
-
-class DeepSHAPAttributer:
-    """Class for computing DeepSHAP attribution maps for ChromBPNet models."""
-    
-    def __init__(self, model, task_type='counts', use_dinuc_shuffle=True, dinuc_shuffle_n=20):
-        """Initialize DeepSHAPAttributer.
-        
-        Parameters
-        ----------
-        model : tf.keras.Model
-            ChromBPNet model
-        task_type : str
-            'counts' or 'profile'
-        use_dinuc_shuffle : bool
-            Whether to use dinucleotide shuffling (vs random) for background
-        dinuc_shuffle_n : int
-            Number of dinucleotide shuffles for background
-        """
-        self.model = model
-        self.task_type = task_type
-        self.use_dinuc_shuffle = use_dinuc_shuffle
-        self.dinuc_shuffle_n = dinuc_shuffle_n
-        
-        # Import required libraries for DeepSHAP
-        try:
-            import shap
-            from deeplift.dinuc_shuffle import dinuc_shuffle
-            
-            # Import shap_utils (will be downloaded in the main script if needed)
-            if assets_dir not in sys.path:
-                sys.path.append(assets_dir)
-                
-            try:
-                import shap_utils
-            except ImportError:
-                raise ImportError("Could not import shap_utils. Make sure it's available in the assets directory.")
-            
-            # TensorFlow eager execution should already be disabled at the top of the script
-                
-        except ImportError as e:
-            error_msg = f"DeepSHAP requires additional packages. Error: {e}\n\n"
-            error_msg += "Please ensure the following packages are installed:\n"
-            error_msg += "  pip install shap\n"
-            error_msg += "  pip install deeplift\n"
-            error_msg += "  pip install kundajelab-shap\n"
-            raise ImportError(error_msg)
-        
-        self.shap = shap
-        self.dinuc_shuffle = dinuc_shuffle
-        self.shap_utils = shap_utils
-        
-        # Create explainer based on task type
-        if self.use_dinuc_shuffle:
-            background_fn = self.dinuc_shuffle_several_times
-        else:
-            background_fn = self.random_shuffle
-            
-        if task_type == 'counts':
-            self.explainer = shap.explainers.deep.TFDeepExplainer(
-                (model.input, tf.reduce_sum(model.outputs[1], axis=-1)),
-                background_fn,
-                combine_mult_and_diffref=shap_utils.combine_mult_and_diffref,
-            )
-        elif task_type == 'profile':
-            weightedsum_meannormed_logits = shap_utils.get_weightedsum_meannormed_logits(model)
-            self.explainer = shap.explainers.deep.TFDeepExplainer(
-                (model.input, weightedsum_meannormed_logits),
-                background_fn,
-            )
-        else:
-            raise ValueError(f"Invalid task_type: {task_type}. Must be 'counts' or 'profile'")
-    
-    def dinuc_shuffle_several_times(self, list_containing_input_modes_for_an_example, seed=1234):
-        """Generate multiple dinucleotide shuffled sequences as background."""
-        assert len(list_containing_input_modes_for_an_example)==1
-        onehot_seq = list_containing_input_modes_for_an_example[0]
-        rng = np.random.RandomState(seed)
-        to_return = np.array([self.dinuc_shuffle(onehot_seq, rng=rng) for i in range(self.dinuc_shuffle_n)])
-        return [to_return]  # wrap in list for compatibility with multiple modes
-    
-    def random_shuffle(self, list_containing_input_modes_for_an_example, alphabet=['A','C','G','T']):
-        """Generate multiple random sequences as background."""
-        import random
-        onehot_seq = list_containing_input_modes_for_an_example[0]
-        seqs = np.zeros(shape=(self.dinuc_shuffle_n, onehot_seq.shape[0], onehot_seq.shape[1]))
-        for seq_idx in range(self.dinuc_shuffle_n):
-            random_seq = ''.join(random.choices(str(''.join(alphabet)), k=onehot_seq.shape[0]))
-            seqs[seq_idx,:,:] = squid.utils.seq2oh(random_seq, alphabet)
-        return [seqs]
-    
-    def interpret(self, seqs):
-        """Compute DeepSHAP values for sequences."""
-        shap_values = self.explainer.shap_values(seqs)
-        # DeepSHAP returns a list with one element for TFDeepExplainer
-        if isinstance(shap_values, list):
-            return shap_values[0]
-        return shap_values
-    
-    def compute(self, x, x_ref, save_window=None, batch_size=16, gpu=True):
-        """Compute attribution maps for all sequences.
-        
-        Parameters
-        ----------
-        x : numpy.ndarray
-            One-hot sequences (shape: (N, L, A))
-        x_ref : numpy.ndarray
-            Reference sequence (shape: (L, A))
-        save_window : list
-            [start, end] positions to save attributions for
-        batch_size : int
-            Number of sequences per batch (not used, kept for API compatibility)
-        gpu : bool
-            Whether to use GPU (not used, kept for API compatibility)
-            
-        Returns
-        -------
-        numpy.ndarray
-            Attribution maps (shape: (N, window_size, A))
-        """
-        N, L, A = x.shape
-        window_size = save_window[1] - save_window[0] if save_window else L
-        map_stack = np.zeros((N, window_size, A), dtype='float32')
-        
-        # Process one sequence at a time (no batching in current implementation)
-        x_ref = x_ref[np.newaxis, :].astype('uint8')
-        
-        for i in tqdm(range(N), desc="Computing DeepSHAP attributions"):
-            # Get the current sequence
-            x_seq = x[i][np.newaxis, :]
-            
-            # Pad sequence with reference sequence outside the mutation window
-            if save_window is not None:
-                x_ref_start = np.broadcast_to(x_ref[:, :save_window[0], :], 
-                                            (1, save_window[0], x_ref.shape[2]))
-                x_ref_stop = np.broadcast_to(x_ref[:, save_window[1]:, :], 
-                                           (1, x_ref.shape[1] - save_window[1], x_ref.shape[2]))
-                x_padded = np.concatenate([x_ref_start, x_seq[:, save_window[0]:save_window[1], :], x_ref_stop], axis=1).astype(np.float32)
-            else:
-                x_padded = x_seq.astype(np.float32)
-            
-            try:
-                # Compute attribution map for the entire sequence
-                attribution_scores = self.interpret(seqs=x_padded)
-                
-                # Extract the attribution scores for the region of interest
-                if save_window is not None:
-                    if attribution_scores.ndim == 3:  # If shape is (batch, seq_len, 4)
-                        map_stack[i] = attribution_scores[0, save_window[0]:save_window[1], :]
-                    else:  # If shape is (seq_len, 4)
-                        map_stack[i] = attribution_scores[save_window[0]:save_window[1], :]
-                else:
-                    if attribution_scores.ndim == 3:  # If shape is (batch, seq_len, 4)
-                        map_stack[i] = attribution_scores[0]
-                    else:  # If shape is (seq_len, 4)
-                        map_stack[i] = attribution_scores
-            except Exception as e:
-                print(f"Error computing DeepSHAP for sequence {i}: {e}")
-                # Fill with zeros for this sequence
-                map_stack[i] = np.zeros((window_size, A), dtype='float32')
-        
-        return map_stack
 
 # Download losses script
 losses_url = "https://raw.githubusercontent.com/kundajelab/chrombpnet/master/chrombpnet/training/utils/losses.py"
@@ -519,6 +351,8 @@ else:
 mut_window = [map_start, map_end]
 
 if load_previous_library is False:
+    t1 = time.time()
+
     # Set up predictor class for in silico MAVE
     pred_generator = ChromBPNetPredictor(
         pred_fun=model.predict_on_batch,
@@ -541,6 +375,9 @@ if load_previous_library is False:
     )
 
     x_mut, y_mut = mave.generate(x_ref[0], num_sim=num_seqs)
+
+    t2 = time.time() - t1
+    print('Inference time:', t2)
 
     if save_data:
         np.save(os.path.join(save_path, 'x_mut.npy'), x_mut)
@@ -592,75 +429,69 @@ if load_previous_attributions is False:
             import shap
             # Handle AddV2 operation (element-wise addition) as a linear operation
             shap.explainers.deep.deep_tf.op_handlers["AddV2"] = shap.explainers.deep.deep_tf.passthrough
-            # Note: Warnings about other modern TF2 operations can also be handled with the passthrough handler if they are purely linear operations;
-            # For warnings about nonlinear operations, implement a custom op_handler
 
             # Load the model after eager execution is disabled
-            model = tf.keras.models.load_model(model_path)
+            model = tf.keras.models.load_model(model_path, custom_objects=custom_objects)
             
             # Rebuild model to ensure proper graph construction
             _ = model(tf.keras.Input(shape=model.input_shape[1:]))
             
-        except:
-            print("Warning: Could not disable TensorFlow eager execution. DeepSHAP may not work properly.")
-
-        dinuc_shuffle_n = 20  # Number of dinucleotide shuffles for DeepSHAP
-        use_dinuc_shuffle = True  # Whether to use dinucleotide shuffling (vs random) for DeepSHAP
+        except Exception as e:
+            print(f"Warning: Could not setup TensorFlow for DeepSHAP. Error: {e}")
+            print("DeepSHAP may not work properly.")
         
-        # Download necessary files for DeepSHAP
-        shap_utils_path = os.path.join(assets_dir, "shap_utils.py")
-        if not os.path.exists(shap_utils_path):
-            print("Downloading shap_utils.py...")
-            shap_utils_url = "https://raw.githubusercontent.com/kundajelab/chrombpnet/master/chrombpnet/evaluation/interpret/shap_utils.py"
-            download_if_not_exists(shap_utils_url, shap_utils_path)
+        # Determine compression function based on task type
+        if task_type == 'profile':
+            compress_fun = Attributer.bpnet_profile
+        elif task_type == 'counts':
+            compress_fun = Attributer.bpnet_counts
         
-        # Add assets_dir to sys.path if not already there
-        if assets_dir not in sys.path:
-            sys.path.append(assets_dir)
-        
-        # Use DeepSHAPAttributer for deepshap method
-        attributer = DeepSHAPAttributer(
-            model,
-            task_type=task_type,
-            use_dinuc_shuffle=use_dinuc_shuffle,
-            dinuc_shuffle_n=dinuc_shuffle_n
-        )
-        
-        t1 = time.time()
-        attributions = attributer.compute(
-            x=x_mut,
-            x_ref=x_ref[0],
-            save_window=None,
-            batch_size=16,
-            gpu=gpu
-        )
-        t2 = time.time() - t1
-        print('Attribution time:', t2)
-    else:
-        # Use standard Attributer for other methods
+        # Create attributer for DeepSHAP
         attributer = Attributer(
             model,
             method=attribution_method,
             task_index=task_index,
-            compress_fun={
-                0: lambda x: tf.reduce_sum(  # Profile task (index 0)
-                    (x - tf.reduce_mean(x, axis=-1, keepdims=True)) * 
-                    tf.nn.softmax(x - tf.reduce_mean(x, axis=-1, keepdims=True), axis=-1),
-                    axis=-1,
-                    keepdims=True  # Keep batch dimension to avoid scalar output
-                ),
-                1: lambda x: x  # Counts task (index 1)
-            }[task_index]  # Select compression function based on task_index
+            compress_fun=compress_fun
         )
-
+        
         t1 = time.time()
         attributions = attributer.compute(
             x=x_mut,
             x_ref=x_ref,
             save_window=None,
-            batch_size=16,
+            batch_size=16,  # ignored for DeepSHAP
+            gpu=gpu
+        )
+        t2 = time.time() - t1
+        print('Attribution time:', t2)
+    else:
+        # Use unified Attributer for other methods
+        # Determine compression function based on task type
+        if task_type == 'profile':
+            compress_fun = Attributer.bpnet_profile
+        elif task_type == 'counts':
+            compress_fun = Attributer.bpnet_counts
+
+        # =============================================================================
+        # Compute attribution maps
+        # =============================================================================
+        attributer = Attributer(
+            model,
+            method=attribution_method,
+            task_index=task_index,
+            compress_fun=compress_fun
+        )
+
+        # Note: DeepSHAP processes sequences one at a time (no batch mode)
+        # Other methods (saliency, smoothgrad, intgrad, ism) can use batch processing
+        t1 = time.time()
+        attributions = attributer.compute(
+            x=x_mut,
+            x_ref=x_ref,
+            save_window=None,
+            batch_size=16,  # ignored for DeepSHAP
             gpu=gpu,
-            snv_window=[map_start, map_end] # if using ISM, compute variants only at positions within the specified window
+            snv_window=[map_start, map_end] if attribution_method == 'ism' else None
         )
         t2 = time.time() - t1
         print('Attribution time:', t2)
