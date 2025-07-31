@@ -1,4 +1,4 @@
-"""
+""" TODO: Add deepshapp code
 # SEAM example of local library using DeepSTARR enhancer to annotate all TFBSs and quantify epistatic interactions (Fig.2a)
 
 Model:
@@ -467,7 +467,7 @@ if render_logos is True:
     if sort_method is not None:
         ref_cluster = meta.membership_df.loc[ref_index, 'Cluster_Sorted']
     else:
-        ref_cluster = ref_index
+        ref_cluster = meta.membership_df.loc[ref_index, 'Cluster']
 
     # Compare reference map with and without noise reduction and background separation
     # Reference logo
@@ -529,6 +529,22 @@ if render_logos is True:
 # Save average background data to numpy array
 if save_data:
     np.save(os.path.join(save_path, 'average_background.npy'), meta.background)
+    
+    if sort_method is not None:
+        ref_cluster = meta.membership_df.loc[ref_index, 'Cluster_Sorted']
+    else:
+        ref_cluster = meta.membership_df.loc[ref_index, 'Cluster']
+    
+    # Calculate reference cluster-averaged attribution matrix
+    ref_cluster_avg = np.mean(meta.get_cluster_maps(ref_cluster), axis=0)
+    np.save(os.path.join(save_path, 'averagre_reference_cluster.npy'), ref_cluster_avg)
+    
+    # Average FG (foreground = average reference cluster - average background)
+    foreground = ref_cluster_avg - meta.background
+    np.save(os.path.join(save_path, 'average_foreground.npy'), foreground)
+    
+    # 4. MSM data as CSV
+    msm.to_csv(os.path.join(save_path, 'msm.csv'), index=False)
 
 # =============================================================================
 # SEAM API

@@ -76,7 +76,7 @@ SEAM’s analysis pipeline is organized into modular components, with outputs fr
 
 - **Compiler**: Standardizes sequence analysis by converting one-hot encoded sequences to string format and computing associated metrics. Compiles sequences and functional properties into a DataFrame, with support for metrics such as Hamming distances and global importance analysis scores. Implements GPU-accelerated sequence conversion and vectorized operations.
 
-- **Attributer**: Computes attribution maps that quantify the base-wise contribution to regulatory activity. SEAM provides GPU-accelerated implementations of Saliency Maps, IntGrad, SmoothGrad, and ISM. DeepSHAP is not yet optimized for efficient batch processing across the sequence library. Examples for incorportating DeepSHAP using external scripts are provided in the `examples` folder.
+- **Attributer**: Computes attribution maps that quantify the base-wise contribution to regulatory activity. SEAM provides GPU-accelerated implementations of Saliency Maps, IntGrad, SmoothGrad, and ISM. DeepSHAP is not yet optimized for efficient batch processing across the sequence library.
 
 - **Clusterer**: Computes mechanistic clusters and embeddings from attribution maps to identify distinct regulatory mechanisms. Supports hierarchical clustering (GPU-optimized), K-means, and DBSCAN algorithms, with optional dimensionality reduction (UMAP, t-SNE, PCA) for complementary interpretability.
 
@@ -124,7 +124,7 @@ SEAM’s analysis pipeline is organized into modular components, with outputs fr
 	- Global library with 100k sequences | Integrated gradients; UMAP with K-Means clustering
 	- Expected run time: **~3.9 minutes** on Colab A100 GPU
 
-**Python script examples** are provided in the `examples` folder for locally running SEAM and exporting outputs to file. Some of these examples include models that are not compatible with the latest libraries supported by Google Colab, including:
+**Python script examples** are provided in the `examples` folder for locally running SEAM and exporting outputs to file. Some of these examples include models and/or attribution methods that are not compatible with the latest libraries supported by Google Colab, including:
 
 - [Local library to analyze foreground and background signals at human promotors and enhancers](https://github.com/evanseitz/seam-nn/blob/main/examples/example_chrombpnet_local_ppif.py)
 	- ChromBPNet: PPIF promoter/enhancer (Fig.3)

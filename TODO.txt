@@ -67,6 +67,7 @@ Documentation:
 - Attributer:
     - Pre-release:
         - option to use PyTorch / import Captum
+        - attributer_tf.py and attributer_torch.py
     
     - Post-release:
         - Methods:
@@ -76,19 +77,14 @@ Documentation:
                     - Batch_size check against memory
                 - check gpu version time per batch over batches (memory leakage?)
             - DeepSHAP
-                - add old TF1 version
-                - Refactor DeepSHAP code for newer TF versions
-                - DeepSHAP for TF2: dinuc_shuffle, etc. in batch mode with GPUs
-                - pytorch version?
-                - no longer need sequence_utils.py?
-                - dinuc shuffling vs training set option
-                - ChromBPNet profile mode with stop_gradient gives worse looking results than without stop_gradient, and vs. intgrad
+                - DeepSHAP for TF2 in batch mode with GPUs
+                - check DeepSHAP is working with baselines = {zeros, random}
             - IntGrad
-                - Plot each map within a given int grad trajectory
-                - Test that dinuc_shuffle is able to call the numpy version of batch_dinuc_shuffle
-                - baseline_type=None for pre-generated baseline? (e.g., training set)
+                - Plot each map within a given int grad trajectory (for intuition only)
                 - Leo's sub-batch code?
-
+                - check dinuc (CPU, GPU) - do we still need old batch_dinuc? (see /backups)
+                    - make sure it is unique for each input?
+                - test profile mode with stop_grad
 
 - Clusterer:
     - Pre-release:
@@ -146,6 +142,9 @@ Documentation:
         - minimize other redundancies between functions in identifier.py and clusterer.py
     - add Bokeh plots for colab
 
+- Logomaker_batch
+    - add GPU support
+    - create standalone repository
 
 - GUI Class:
     - Pre-release:
