@@ -838,17 +838,26 @@ class Attributer:
                 if custom_background is not None:
                     background = custom_background
                 
-                # DeepSHAP expects a list for background
-                if not isinstance(background, list):
-                    background = [background]
-                
                 # For DeepSHAP, use the provided compress_fun to create target output
                 target_output = self.compress_fun(self.model)
+                
+                # Generate background data from function
+                if callable(background):
+                    # The background function expects the actual sequence data, not batched data
+                    # x_ref has shape (1, L, A), so we need to pass the actual sequence
+                    sequence_data = x_ref[0]  # Shape (L, A)
+                    background_data = background([sequence_data])  # Pass as list [sequence_data]
+                else:
+                    background_data = background
+                
+                # DeepSHAP expects a list for background
+                if not isinstance(background_data, list):
+                    background_data = [background_data]
                 
                 # Always use TFDeepExplainer with combine_mult_and_diffref for ChromBPNet compatibility
                 self.explainer = shap.explainers.deep.TFDeepExplainer(
                     (self.model.input, target_output),
-                    background,
+                    background_data,
                     combine_mult_and_diffref=self._combine_mult_and_diffref
                 )
             

@@ -1,11 +1,11 @@
-""" TODO: Add deepshapp code
-# SEAM example of local library using DeepSTARR enhancer to annotate all TFBSs and quantify epistatic interactions (Fig.2a)
+"""
+SEAM example of local library using DeepSTARR enhancer to annotate all TFBSs and quantify epistatic interactions (Fig.2a)
 
 Model:
     - DeepSTARR
 
 Parameters:
-    - 30,000 sequences # TODO: set to 10,000 for faster runtime
+    - 30,000 sequences
     - 10% mutation rate
     - Integrated gradients
     - Hierarchical clustering (ward)
@@ -46,9 +46,9 @@ seq_index = 20647  # Example locus from DeepSTARR test set used in SEAM Figure 2
 task_index = 1  # Housekeeping (Hk) program
 
 mut_rate = 0.1 # mutation rate for in silico mutagenesis
-num_seqs = 100000 # number of sequences to generate
+num_seqs = 30000 # number of sequences to generate
 n_clusters = 30 # number of clusters for hierarchical clustering
-attribution_method = 'intgrad' # {saliency, smoothgrad, intgrad, deepshap, ism} # TODO: deepshap under construction
+attribution_method = 'intgrad' # {saliency, smoothgrad, intgrad, deepshap, ism}
 
 gpu = len(tf.config.list_physical_devices('GPU')) > 0 # Whether to use GPU (Boolean)
 save_figs = True # Whether to save quantitative figures (Boolean)
@@ -213,27 +213,102 @@ if save_data:
 # Compute attribution maps for each sequence in library
 # =============================================================================
 if load_previous_attributions is False:
-    attributer = Attributer(
-        model,
-        method=attribution_method,
-        task_index=task_index,
-        compress_fun=lambda x: x, # identity
-        pred_fun=model.predict_on_batch,
-    )
+    if attribution_method == 'deepshap':
+        try:
+            # Disable eager execution first
+            tf.compat.v1.disable_eager_execution()
+            tf.compat.v1.disable_v2_behavior()
+            print("TensorFlow eager execution disabled for DeepSHAP compatibility")
+            
+            # Import SHAP to configure handlers
+            try:
+                import shap
+            except ImportError:
+                print("ERROR: SHAP package is not installed.")
+                print("To install SHAP for DeepSHAP attribution, run:")
+                print("pip install kundajelab-shap==1")
+                raise ImportError("SHAP package required for DeepSHAP attribution")
+            
+            # Handle AddV2 operation (element-wise addition) as a linear operation
+            shap.explainers.deep.deep_tf.op_handlers["AddV2"] = shap.explainers.deep.deep_tf.passthrough
 
-    # Show params for specific method
-    attributer.show_params(attribution_method)
+            # Load the model after eager execution is disabled
+            keras_model = model_from_json(open(keras_model_json).read(), custom_objects={'Functional': tf.keras.Model})
+            np.random.seed(113)
+            random.seed(0)
+            keras_model.load_weights(keras_model_weights)
+            model = keras_model
+            
+            # Rebuild model to ensure proper graph construction
+            _ = model(tf.keras.Input(shape=model.input_shape[1:]))
+            
+        except ImportError:
+            # Re-raise ImportError to stop execution
+            raise
+        except Exception as e:
+            print(f"Warning: Could not setup TensorFlow for DeepSHAP. Error: {e}")
+            print("DeepSHAP may not work properly.")
+        
+        # Create attributer for DeepSHAP
+        def deepstarr_compress(x):
+            """DeepSTARR compression function for DeepSHAP.
+            
+            For DeepSHAP, x is the model. For other methods, x is the output tensor.
+            DeepSTARR has two scalar outputs (Dev and Hk), so we return the selected output.
+            """
+            if hasattr(x, 'outputs'):
+                # x is a model - create target output tensor for DeepSHAP
+                # For DeepSHAP, we need to reduce to scalar to avoid list output
+                return tf.reduce_sum(x.outputs[task_index], axis=-1)
+            else:
+                # x is the output tensor - return as-is for other methods
+                return x
 
-    t1 = time.time()
-    attributions = attributer.compute(
-        x=x_mut,
-        x_ref=x_ref,
-        save_window=None,
-        batch_size=256,
-        gpu=gpu
-    )
-    t2 = time.time() - t1
-    print('Attribution time:', t2)
+        attributer = Attributer(
+            model,
+            method=attribution_method,
+            task_index=task_index,
+            compress_fun=deepstarr_compress
+        )
+
+        # Show params for specific method
+        attributer.show_params(attribution_method)
+
+        t1 = time.time()
+        attributions = attributer.compute(
+            x=x_mut,
+            x_ref=x_ref,
+            save_window=None,
+            batch_size=16,  # ignored for DeepSHAP
+            gpu=gpu,
+        )
+        t2 = time.time() - t1
+        print('Attribution time:', t2)
+    else:
+        # Use unified Attributer for other methods
+        attributer = Attributer(
+            model,
+            method=attribution_method,
+            task_index=task_index,
+            compress_fun=lambda x: x, # identity
+            pred_fun=model.predict_on_batch,
+        )
+
+        # Show params for specific method
+        attributer.show_params(attribution_method)
+
+        # Note: DeepSHAP processes sequences one at a time (no batch mode)
+        # Other methods (saliency, smoothgrad, intgrad, ism) can use batch processing
+        t1 = time.time()
+        attributions = attributer.compute(
+            x=x_mut,
+            x_ref=x_ref,
+            save_window=None,
+            batch_size=256,
+            gpu=gpu
+        )
+        t2 = time.time() - t1
+        print('Attribution time:', t2)
 
     if save_data:
         np.save(os.path.join(save_path, f'attributions_{attribution_method}.npy'), attributions)

@@ -1,5 +1,5 @@
 """
-# SEAM example of local library using ChromBPNet to analyze PPIF foreground and background signals at human enhancers and promoters
+SEAM example of local library using ChromBPNet to analyze PPIF foreground and background signals at human enhancers and promoters
 
 Model:
     - ChromBPNet
@@ -426,7 +426,14 @@ if load_previous_attributions is False:
             print("TensorFlow eager execution disabled for DeepSHAP compatibility")
             
             # Import SHAP to configure handlers
-            import shap
+            try:
+                import shap
+            except ImportError:
+                print("ERROR: SHAP package is not installed.")
+                print("To install SHAP for DeepSHAP attribution, run:")
+                print("pip install kundajelab-shap==1")
+                raise ImportError("SHAP package required for DeepSHAP attribution")
+
             # Handle AddV2 operation (element-wise addition) as a linear operation
             shap.explainers.deep.deep_tf.op_handlers["AddV2"] = shap.explainers.deep.deep_tf.passthrough
 
