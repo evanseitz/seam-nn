@@ -377,7 +377,7 @@ if load_previous_library is False:
     x_mut, y_mut = mave.generate(x_ref[0], num_sim=num_seqs)
 
     t2 = time.time() - t1
-    print('Inference time:', t2)
+    print(f'Inference time: {t2/60:.2f} minutes')
 
     if save_data:
         np.save(os.path.join(save_path, 'x_mut.npy'), x_mut)
@@ -470,7 +470,7 @@ if load_previous_attributions is False:
             gpu=gpu
         )
         t2 = time.time() - t1
-        print('Attribution time:', t2)
+        print(f'Attribution time: {t2/60:.2f} minutes')
     else:
         # Use unified Attributer for other methods
         # Determine compression function based on task type
@@ -501,7 +501,7 @@ if load_previous_attributions is False:
             snv_window=[map_start, map_end] if attribution_method == 'ism' else None
         )
         t2 = time.time() - t1
-        print('Attribution time:', t2)
+        print(f'Attribution time: {t2/60:.2f} minutes')
 
     if save_data:
         np.save(os.path.join(save_path, f'attributions_{attribution_method}.npy'), attributions)

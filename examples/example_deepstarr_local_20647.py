@@ -153,6 +153,8 @@ print(f"\nWild-type prediction: {pred[0][0]}")
 # Create in silico mutagenesis library
 # =============================================================================
 if load_previous_library is False:
+    t1 = time.time()
+
     # Set up predictor class for in silico MAVE
     pred_generator = squid.predictor.ScalarPredictor(
         pred_fun=model.predict_on_batch,
@@ -173,7 +175,11 @@ if load_previous_library is False:
         seq_length,
         mut_window=mut_window
     )
+
     x_mut, y_mut = mave.generate(x_ref[0], num_sim=num_seqs)
+
+    t2 = time.time() - t1
+    print(f'Inference time: {t2/60:.2f} minutes')
 
     if save_data:
         np.save(os.path.join(save_path, 'x_mut.npy'), x_mut)
@@ -283,7 +289,7 @@ if load_previous_attributions is False:
             gpu=gpu,
         )
         t2 = time.time() - t1
-        print('Attribution time:', t2)
+        print(f'Attribution time: {t2/60:.2f} minutes')
     else:
         # Use unified Attributer for other methods
         attributer = Attributer(
@@ -308,7 +314,7 @@ if load_previous_attributions is False:
             gpu=gpu
         )
         t2 = time.time() - t1
-        print('Attribution time:', t2)
+        print(f'Attribution time: {t2/60:.2f} minutes')
 
     if save_data:
         np.save(os.path.join(save_path, f'attributions_{attribution_method}.npy'), attributions)
@@ -340,29 +346,61 @@ if render_logos is True:
 
 # =============================================================================
 # SEAM API
-# Cluster attribution maps directly using Hierarchical Clustering
+# Cluster attribution maps: choose Hierarchical (if 1) or PCA + KMeans (else)
 # =============================================================================
 if load_previous_linkage is False:
-    clusterer = Clusterer(
-        attributions,
-        gpu=gpu
-    )
+    if 1:
+        # Hierarchical clustering
+        clusterer = Clusterer(
+            attributions,
+            gpu=gpu
+        )
 
-    # Perform hierarchical clustering directly on attribution maps
-    link_method = 'ward'
-    linkage = clusterer.cluster(
-        method='hierarchical',
-        link_method=link_method
-    )
+        link_method = 'ward'
+        linkage = clusterer.cluster(
+            method='hierarchical',
+            link_method=link_method
+        )
 
-    if save_data:
-        np.save(os.path.join(save_path, f'hierarchical_linkage_{link_method}_{attribution_method}.npy'), linkage)
+        if save_data:
+            np.save(os.path.join(save_path, f'hierarchical_linkage_{link_method}_{attribution_method}.npy'), linkage)
 
-labels_n, cut_level = clusterer.get_cluster_labels(
-    linkage,
-    criterion='maxclust',
-    n_clusters=n_clusters
-)
+        labels_n, cut_level = clusterer.get_cluster_labels(
+            linkage,
+            criterion='maxclust',
+            n_clusters=n_clusters
+        )
+    else:
+        # PCA + KMeans
+        clusterer = Clusterer(
+            attributions,
+            method='pca',
+            gpu=gpu
+        )
+
+        t_embed = time.time()
+        pca_embedding = clusterer.embed(
+            n_components=20,
+            plot_eigenvalues=False,
+            save_path=None
+        )
+        t_embed = time.time() - t_embed
+        print(f'Embedding (PCA) time: {t_embed/60:.2f} minutes')
+
+        t_kmeans = time.time()
+        labels_n = clusterer.cluster(
+            embedding=pca_embedding,
+            method='kmeans',
+            n_clusters=n_clusters,
+            random_state=42,
+            n_init=10,
+            max_iter=300
+        )
+        t_kmeans = time.time() - t_kmeans
+        print(f'KMeans clustering time: {t_kmeans/60:.2f} minutes')
+
+        linkage = None
+        cut_level = None
 
 # Plot dendrogram to visualize hierarchy
 if 0:
