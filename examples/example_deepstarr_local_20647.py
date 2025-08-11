@@ -303,8 +303,6 @@ if load_previous_attributions is False:
         # Show params for specific method
         attributer.show_params(attribution_method)
 
-        # Note: DeepSHAP processes sequences one at a time (no batch mode)
-        # Other methods (saliency, smoothgrad, intgrad, ism) can use batch processing
         t1 = time.time()
         attributions = attributer.compute(
             x=x_mut,

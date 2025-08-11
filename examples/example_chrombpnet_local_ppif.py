@@ -489,14 +489,12 @@ if load_previous_attributions is False:
             compress_fun=compress_fun
         )
 
-        # Note: DeepSHAP processes sequences one at a time (no batch mode)
-        # Other methods (saliency, smoothgrad, intgrad, ism) can use batch processing
         t1 = time.time()
         attributions = attributer.compute(
             x=x_mut,
             x_ref=x_ref,
             save_window=None,
-            batch_size=16,  # ignored for DeepSHAP
+            batch_size=16,
             gpu=gpu,
             snv_window=[map_start, map_end] if attribution_method == 'ism' else None
         )

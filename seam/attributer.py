@@ -124,6 +124,9 @@ class Attributer:
             model: TensorFlow model to explain
             method: Attribution method (default: 'saliency')
             task_index: Index of output head to explain (optional)
+                       - For single-output models: leave as None (default)
+                       - For multi-output models: specify index (e.g., 0 for first output)
+                       - Setting task_index=0 with single-output models will cause errors
             batch_size: Batch size for computing attributions (optional, defaults to method-specific size)
             num_shuffles: Number of shuffles for DeepSHAP background (default: 20, matches ChromBPNet)
             compress_fun: Function to compress model output to scalar (default: tf.math.reduce_mean)
