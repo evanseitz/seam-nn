@@ -76,7 +76,7 @@ SEAM’s analysis pipeline is organized into modular components, with outputs fr
 
 - **Compiler**: Standardizes sequence analysis by converting one-hot encoded sequences to string format and computing associated metrics. Compiles sequences and functional properties into a DataFrame, with support for metrics such as Hamming distances and global importance analysis scores. Implements GPU-accelerated sequence conversion and vectorized operations.
 
-- **Attributer**: Computes attribution maps that quantify the base-wise contribution to regulatory activity. SEAM provides GPU-accelerated implementations of Saliency Maps, IntGrad, SmoothGrad, and ISM. DeepSHAP is not yet optimized for efficient batch processing across the sequence library.
+- **Attributer**: Computes attribution maps that quantify the base-wise contribution to regulatory activity. SEAM provides TensorFlow 2 GPU-accelerated implementations of Saliency Maps, IntGrad, SmoothGrad, and ISM. (DeepSHAP in TF2 is not yet optimized for efficient batch processing across the sequence library and requires external libraries `pip install kundajelab-shap==1` and `pip install deeplift`).
 
 - **Clusterer**: Computes mechanistic clusters and embeddings from attribution maps to identify distinct regulatory mechanisms. Supports hierarchical clustering (GPU-optimized), K-means, and DBSCAN algorithms, with optional dimensionality reduction (UMAP, t-SNE, PCA) for complementary interpretability.
 

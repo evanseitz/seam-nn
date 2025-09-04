@@ -54,6 +54,7 @@ gpu = len(tf.config.list_physical_devices('GPU')) > 0 # Whether to use GPU (Bool
 save_figs = True # Whether to save quantitative figures (Boolean)
 render_logos = True # Whether to render sequence logos (Boolean)
 save_logos = True # Whether to save sequence logos (Boolean); render_logos must be True
+view_window = [50,170]#None # plot MSM and logos within a specific position window, e.g., [50,170] or None for default (all positions)
 dpi = 200 # DPI for saved figures
 save_data = True # Whether to save output data (Boolean)
 delete_downloads = False # Whether to delete downloaded models/data after use (Boolean)
@@ -400,6 +401,14 @@ if load_previous_linkage is False:
         linkage = None
         cut_level = None
 
+# Set cluster labels (only for hierarchical clustering)
+if linkage is not None:
+    labels_n, cut_level = clusterer.get_cluster_labels(
+        linkage,
+        criterion='maxclust',
+        n_clusters=n_clusters
+    )
+
 # Plot dendrogram to visualize hierarchy
 if 0:
     clusterer.plot_dendrogram(
@@ -464,8 +473,6 @@ msm = meta.generate_msm(
 )
 
 # Plot MSM with different options
-view_window = [50,170]
-
 meta.plot_msm(column='Entropy',
     square_cells=True,
     view_window=view_window,
