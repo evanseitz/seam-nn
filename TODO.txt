@@ -10,21 +10,16 @@ TODO:
         - Colabs:
             - replace all download links with zenodo wget
             - update all Title lines with final figure numbers (currently Fig.TODO)
-        - PCA/K-means version of Local library to annotate all TFBSs and biophysical states
         - REVO / BEAM
         - CLIPNET Python example
             - PIK3R3
-            - add note in readme about CLIPNET version (original)
         - ProCapNet Python example
             - Captum/PyTorch support -> add to docs, readme, manuscript
             - MYC profiles
             - PPIF background
-        - Create predictors.py script (for ChromBPNet, etc.)
 
 
 - SQUID:
-    - Pre-release
-        - move SQUID Mutagenizer into SEAM API?
     - Post-release
         - add copies of all colab tutorials (with import versions) to GitHub folder
         - plot_y_hist() in impress.py needs option to set new axvline ref_idx or None
@@ -43,11 +38,8 @@ Documentation:
         - read through and verify API in ReadTheDocs
         - add Colab copies to ReadTheDocs
         - make sure requirements and installation are consistent with setup.py
-        - update all terms in the backend code to reflect those used in final manuscript (MSM --> SSM, etc.)
+        - update all terms in the backend code to reflect those used in final manuscript (MSM --> CSM, etc.)
             - and in all Python/Colab examples
-        - Note in readme about DeepSHAP only in examples due to conflicts in eager mode defaulted in modern Colab (TF). Also mention PyTorch
-            - note that DeepSHAP takes about an hour for 100,000 sequences (DeepSTARR), so other methods used in examples
-        - check if you can just add matplotlib at end of current env -- "Likewise you can also add this line at the end of the standard seam environment (above)."
 
 
 - Compiler:
@@ -96,8 +88,6 @@ Documentation:
         - implement other methods from cuml.manifold?
             - tsne CPU, GPU
         - phate GPU?
-        - add diffusion maps code
-        - reuse DM distance matrix for clustering?
         - hierarchical vs embedding discrepancy:
             - hierarchical doesn't take method as hyperparam: clusterer = Clusterer(attributions,gpu=gpu)
         - Does hierarchical cpu not run out of memory when gpu does? Is the memmap problematic? 
@@ -109,16 +99,17 @@ Documentation:
             - currently: background_entropy = entropy([null_rate, (1-null_rate)/3, (1-null_rate)/3, (1-null_rate)/3], base=2)
 
     - Post-release:
-        - add mutual information plot to explainer?
+        - add mutual information plot to explainer? --> use for genome-wide FG discovery?
         - test plot_cluster_profiles
             - check profile plotting functionality (lines 741-753 from meta_explainer_orig.py)
                 - plot individual profiles for each cluster
                 - handle alpha blending for overlays
-        - line up the MSM with the logos below them, and with the bar plot to their right (see below)
-        - use marginal bar plots on the right side of the MSM figure
-        - plot_msm() needs xtick_spacing
-        - ability to plot a single row (cluster) of MSM, and given a position, view the nucleotide frequencies
-        - change Blues to viridis for percent mismatch palette (recall, sns.color_palette('rocket', n_colors=100); sns.color_palette('viridis', n_colors=100)
+        - make CSM accept an ax object
+            - line up the CSM with the logos below them, and with the bar plot to their right (see below)
+            - use marginal bar plots on the right side of the CSM figure
+        - plot_msm() needs xtick_spacing (and call it plot_csm())
+        - ability to plot a single row (cluster) of CSM, and given a position, view the nucleotide frequencies
+        - change Blues to viridis for percent mismatch palette (recall, sns.color_palette('rocket', n_colors=100); sns.color_palette('viridis', n_colors=100))
 
 
 - Identifier:
@@ -160,11 +151,12 @@ Documentation:
             - Blog post
 
     - Post-release:
+        - check if you can just add matplotlib at end of current env -- "Likewise you can also add this line at the end of the standard seam environment (above)."
         - Interactive dendrogram on tab 3 (Plotly?)
         - update dendrogram toolbar (x=, y=, cluster= and occupancy=) as Choose Cluster is altered (instead of on hover)
         - File structure checks on tab 1 (remove from processing step)
             - load data during processing (not upon file import)
-        - MSM: option to map SEAM coordinates to new number (e.g., chr1:A-B)
+        - CSM: option to map SEAM coordinates to new number (e.g., chr1:A-B)
         - when variability and average background widgets are checked on P3, just freeze out all other widgets
         - Save mismatch table in Marginal Window of GUI; popup window showing location of saved file
         - Update P3 UMAP when Custom.plt_step is changed on P2 (needs to update Predef.cluster_colors)
@@ -200,10 +192,6 @@ Documentation:
     - (N, L, A)
 
 
-- Old code:
-    - add readme for seam_manuscript stating old code
-
-
 - Other:
     - sampling new sequences from clusters
     - epistasis robustness:
@@ -236,9 +224,5 @@ Documentation:
 
 - Manuscript / figures:
     - PIK3R3:
-        - SSM wrong color map
+        - CSM wrong color map
         - Redo with adaptive scaling
-    - Chrombpnet: 
-        - cite old zenodo (not new)
-        - for profile DeepSHAP, see me chrombpnet methods
-

@@ -113,7 +113,7 @@ seam/logomaker_batch/__pycache__
 seam/deepshap_tf2_batch/testing/deepstarr_assets
 
 examples/assets_deepstarr
-examples/outputs_deepstarr_local_20647_intgrad
+examples/outputs_deepstarr_local_20647_task1_intgrad
 
 examples/assets_chrombpnet
 

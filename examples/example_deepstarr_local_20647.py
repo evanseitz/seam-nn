@@ -42,8 +42,8 @@ if not os.path.exists(assets_dir):
 # =============================================================================
 # TODO: set up for a clean run before pushing to github (and change to intgrad with 30000 seqs)
 
-seq_index = 20647  # Example locus from DeepSTARR test set used in SEAM Figure 2
-task_index = 1  # Housekeeping (Hk) program
+seq_index = 20647 # Example locus from DeepSTARR test set used in SEAM Figure 2
+task_index = 1 # Housekeeping (Hk) program
 
 mut_rate = 0.1 # mutation rate for in silico mutagenesis
 num_seqs = 30000 # number of sequences to generate
@@ -54,11 +54,11 @@ gpu = len(tf.config.list_physical_devices('GPU')) > 0 # Whether to use GPU (Bool
 save_figs = True # Whether to save quantitative figures (Boolean)
 render_logos = True # Whether to render sequence logos (Boolean)
 save_logos = True # Whether to save sequence logos (Boolean); render_logos must be True
-view_window = [50,170]#None # plot MSM and logos within a specific position window, e.g., [50,170] or None for default (all positions)
+view_window = [50, 170]#None # plot MSM and logos within a specific position window, e.g., [50,170] or None for default (all positions)
+ylim_mode = 'fixed' # {'fixed', 'adaptive'} - fixed uses global y-limits across all clusters, adaptive uses individual cluster limits
 dpi = 200 # DPI for saved figures
 save_data = True # Whether to save output data (Boolean)
 delete_downloads = False # Whether to delete downloaded models/data after use (Boolean)
-# TODO: view_dendrogram = False for even faster debugging
 
 # If starting from scratch, set all to False:
 load_previous_library = False # Whether to load previously-generated x_mut and y_mut (Boolean)
@@ -69,7 +69,7 @@ load_previous_linkage = False # Whether to load previously-generated linkage mat
 # Initial setup based on user settings
 # =============================================================================
 if save_data:# or load_previous_library or load_previous_attributions or load_previous_linkage:
-    save_path = os.path.join(py_dir, f'outputs_deepstarr_local_{seq_index}_{attribution_method}')
+    save_path = os.path.join(py_dir, f'outputs_deepstarr_local_{seq_index}_task{task_index}_{attribution_method}')
     if not os.path.exists(save_path):
         os.makedirs(save_path)
     if save_figs:
@@ -139,6 +139,7 @@ alphabet = ['A','C','G','T']
 
 x_ref = X_test[seq_index]
 x_ref = np.expand_dims(x_ref,0)
+
 
 # Define mutagenesis window for sequence
 seq_length = x_ref.shape[1]
@@ -515,8 +516,8 @@ if render_logos is True:
     for cluster_index in tqdm(range(n_clusters), desc='Generating logos'):
         fig, ax = meta_logos.draw_single(
             cluster_index,
-            fixed_ylim=True, # fixed y-axis limits as defined over all cluster-averaged logos
-            figsize=(10, 2.5),
+            fixed_ylim=(ylim_mode == 'fixed'), # fixed y-axis limits as defined over all cluster-averaged logos
+            figsize=(20, 2.5) if view_window is None else (10, 2.5),
             border=False,
             view_window=view_window
         )
@@ -528,7 +529,7 @@ if render_logos is True:
 
     # Generate variability logo, representing the overlap of all averaged cluster logos
     fig, ax = meta_logos.draw_variability_logo(
-        figsize=(10,2.5),
+        figsize=(20, 2.5) if view_window is None else (10, 2.5),
         view_window=view_window
     )
     if save_logos:
@@ -587,12 +588,22 @@ if render_logos is True:
     else:
         ref_cluster = meta.membership_df.loc[ref_index, 'Cluster']
 
+    # Get global y-limits for fixed mode (only for 1_*, 2_*, 3_*, 4_* logos)
+    global_y_min_max = meta_logos.y_min_max if ylim_mode == 'fixed' else None
+    
+    # Update y-limits for specific logos when using fixed mode
+    if ylim_mode == 'fixed' and global_y_min_max is not None:
+        if 'reference_logo' in locals():
+            reference_logo.y_min_max = global_y_min_max
+        average_background_logo.y_min_max = global_y_min_max
+        meta_logos_no_bg.y_min_max = global_y_min_max
+
     # Compare reference map with and without noise reduction and background separation
     # Reference logo
     fig, ax = reference_logo.draw_single(
         0,
-        fixed_ylim=False,
-        figsize=(10, 2.5),
+        fixed_ylim=(ylim_mode == 'fixed'),
+        figsize=(20, 2.5) if view_window is None else (10, 2.5),
         border=False,
         view_window=view_window
         )
@@ -605,8 +616,8 @@ if render_logos is True:
     # Reference cluster: noise reduction via averaging
     fig, ax = meta_logos.draw_single(
         ref_cluster,
-        fixed_ylim=False,
-        figsize=(10,2.5),
+        fixed_ylim=(ylim_mode == 'fixed'),
+        figsize=(20, 2.5) if view_window is None else (10, 2.5),
         border=False,
         view_window=view_window
         )
@@ -619,8 +630,8 @@ if render_logos is True:
     # Reference cluster: noise reduction and background separation
     fig, ax = meta_logos_no_bg.draw_single(
         ref_cluster,
-        fixed_ylim=False,
-        figsize=(10,2.5),
+        fixed_ylim=(ylim_mode == 'fixed'),
+        figsize=(20, 2.5) if view_window is None else (10, 2.5),
         border=False,
         view_window=view_window
         )
@@ -633,13 +644,42 @@ if render_logos is True:
     # Background averaged over all clusters
     fig, ax = average_background_logo.draw_single(
         0,
-        fixed_ylim=False,
-        figsize=(10,2.5),
+        fixed_ylim=(ylim_mode == 'fixed'),
+        figsize=(20, 2.5) if view_window is None else (10, 2.5),
         border=False,
         view_window=view_window
         )
     if save_logos:
         fig.savefig(os.path.join(save_path_logos, '4_average_background.png'), facecolor='w', dpi=dpi, bbox_inches='tight')
+        plt.close()
+    else:
+        plt.show()
+
+    # Reference logo with background subtracted
+    reference_no_bg_matrix = attributions[ref_index] - meta.background
+    reference_no_bg_logo = BatchLogo(
+        reference_no_bg_matrix[np.newaxis, :, :],
+        alphabet=alphabet,
+        figsize=[20, 2.5],
+        batch_size=1,
+        font_name='Arial Rounded MT Bold',
+        fade_below=0.5,
+        shade_below=0.5,
+        width=0.9,
+        center_values=True,
+        y_min_max=global_y_min_max if ylim_mode == 'fixed' else None
+    )
+    reference_no_bg_logo.process_all()
+
+    fig, ax = reference_no_bg_logo.draw_single(
+        0,
+        fixed_ylim=(ylim_mode == 'fixed'),
+        figsize=(20, 2.5) if view_window is None else (10, 2.5),
+        border=False,
+        view_window=view_window
+        )
+    if save_logos:
+        fig.savefig(os.path.join(save_path_logos, '5_reference_no_bg.png'), facecolor='w', dpi=dpi, bbox_inches='tight')
         plt.close()
     else:
         plt.show()
@@ -777,8 +817,8 @@ if render_logos is True:
         # Plot clusters with background removed and active TFBSs highlighted
         fig, ax = meta_logos_no_bg.draw_single(
             cluster_index,
-            fixed_ylim=True,
-            figsize=(10, 2.5),
+            fixed_ylim=(ylim_mode == 'fixed'),
+            figsize=(20, 2.5) if view_window is None else (10, 2.5),
             border=False,
             view_window=view_window,
             highlight_ranges=active_positions if active_positions else None,
@@ -792,7 +832,7 @@ if render_logos is True:
 
     # Generate background-separated variability logo
     fig, ax = meta_logos_no_bg.draw_variability_logo(
-        figsize=(10,2.5),
+        figsize=(20, 2.5) if view_window is None else (10, 2.5),
         view_window=view_window
     )
     if save_logos:
