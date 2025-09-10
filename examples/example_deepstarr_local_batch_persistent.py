@@ -728,14 +728,15 @@ def process_sequence(seq_index, task_index=0):
             'array_shapes': [str(ref_cluster_avg.shape) + '|' + str(background_float16.shape) + '|' + str(background_sequence.shape)],
             'array_dtypes': [str(ref_cluster_avg.dtype) + '|' + str(background_float16.dtype) + '|' + str(background_sequence.dtype)],
             'cluster_order': [meta.cluster_order.tolist() if meta.cluster_order is not None else None],
-            'sort_method': [sort_method]
+            'sort_method': [sort_method],
+            'reference_cluster_index': [ref_cluster]
         })
         
         # Create new schema with metadata
         metadata = {
             b'seq_index': str(seq_index).encode(),
             b'task_index': str(task_index).encode(),
-            b'description': b'SEAM essential data: ref_cluster_avg_bytes, avg_bg_bytes, bg_seq_onehot_bytes, msm, array_shapes'
+            b'description': b'SEAM essential data: ref_cluster_avg_bytes, avg_bg_bytes, bg_seq_onehot_bytes, msm, array_shapes, ref_cluster_idx'
         }
     else:  # Version with reference attribution included
         table = pa.table({
@@ -747,14 +748,15 @@ def process_sequence(seq_index, task_index=0):
             'array_shapes': [str(reference_attribution.shape) + '|' + str(ref_cluster_avg.shape) + '|' + str(background_float16.shape) + '|' + str(background_sequence.shape)],
             'array_dtypes': [str(reference_attribution.dtype) + '|' + str(ref_cluster_avg.dtype) + '|' + str(background_float16.dtype) + '|' + str(background_sequence.dtype)],
             'cluster_order': [meta.cluster_order.tolist() if meta.cluster_order is not None else None],
-            'sort_method': [sort_method]
+            'sort_method': [sort_method],
+            'reference_cluster_index': [ref_cluster]
         })
         
         # Create new schema with metadata
         metadata = {
             b'seq_index': str(seq_index).encode(),
             b'task_index': str(task_index).encode(),
-            b'description': b'SEAM essential data: ref_attribution_bytes, ref_cluster_avg_bytes, avg_bg_bytes, bg_seq_onehot_bytes, msm, array_shapes'
+            b'description': b'SEAM essential data: ref_attribution_bytes, ref_cluster_avg_bytes, avg_bg_bytes, bg_seq_onehot_bytes, msm, array_shapes, ref_cluster_idx'
         }
     table = table.replace_schema_metadata(metadata)
     
@@ -944,8 +946,10 @@ def load_arrow_data(filepath):
     # Load sorting information
     cluster_order = df['cluster_order'][0] if 'cluster_order' in df.columns else None
     sort_method = df['sort_method'][0] if 'sort_method' in df.columns else None
+    reference_cluster_index = df['reference_cluster_index'][0] if 'reference_cluster_index' in df.columns else None
     print(f"Sort method: {sort_method}")
     print(f"Cluster order: {cluster_order}")
+    print(f"Reference cluster index: {reference_cluster_index}")
     
     return {
         'seq_index': seq_index,
@@ -956,6 +960,7 @@ def load_arrow_data(filepath):
         'msm_df': msm_df,
         'cluster_order': cluster_order,
         'sort_method': sort_method,
+        'reference_cluster_index': reference_cluster_index,
         'shapes': {
             'ref_cluster': ref_cluster_shape,
             'background': background_shape,
@@ -1028,9 +1033,13 @@ def extract_essential_summary(loaded_data):
     # Get shape information
     shapes_info = [data['shapes'] for data in loaded_data]
     
+    # Extract reference cluster indices
+    reference_cluster_indices = [data['reference_cluster_index'] for data in loaded_data]
+    
     print(f"Summary: {len(loaded_data)} sequences across tasks {unique_tasks}")
     print(f"Sequence indices: {seq_indices}")
     print(f"MSM data: {len(msm_dfs)} DataFrames")
+    print(f"Reference cluster indices: {reference_cluster_indices}")
     
     return {
         'num_sequences': len(loaded_data),
@@ -1040,6 +1049,7 @@ def extract_essential_summary(loaded_data):
         'backgrounds': backgrounds,
         'msm_dataframes': msm_dfs,
         'shapes_info': shapes_info,
+        'reference_cluster_indices': reference_cluster_indices,
         'loaded_data': loaded_data
     }
 
@@ -1051,9 +1061,11 @@ def extract_essential_summary(loaded_data):
 #     # print(f"Loaded data for sequence {data['seq_index']}, task {data['task_index']}")
 #     # print(f"Reference cluster average shape: {data['ref_cluster_avg'].shape}")
 #     # print(f"MSM DataFrame shape: {data['msm_df'].shape}")
+#     # print(f"Reference cluster index: {data['reference_cluster_index']}")
 #     
 #     # Load multiple Arrow files
 #     # all_data = load_multiple_arrow_files('outputs_deepstarr_local_intgrad')
 #     # summary = extract_essential_summary(all_data)
 #     # print(f"Loaded {summary['num_sequences']} sequences across tasks {summary['unique_tasks']}")
 #     # print(f"MSM DataFrames: {len(summary['msm_dataframes'])}")
+#     # print(f"Reference cluster indices: {summary['reference_cluster_indices']}")
