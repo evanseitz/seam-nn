@@ -1,5 +1,10 @@
-""" TODO: Add deepshapp code
+"""
 SEAM example of local library using DeepSTARR enhancers - GPU-ONLY PERSISTENT WORKER WITH MEMORY POOLING
+
+ARROW FILE LOADING:
+At the end of this script, there is minimalistic code to load saved Arrow files and extract
+the essential data (reference cluster averages, background sequences, MSM data, etc.) for
+downstream genome-wide SEAM-based annotation workflows.
 
 This script implements a persistent TensorFlow worker that loads the model once and keeps it in GPU memory
 for processing multiple sequences efficiently. This eliminates the overhead of repeated model loading.
@@ -842,3 +847,213 @@ if __name__ == '__main__':
     if successful_sequences > 0:
         print(f"Average time per successful sequence: {batch_time/successful_sequences:.2f}s")
     print(f"{'='*60}")
+
+
+# =============================================================================
+# ARROW FILE LOADING UTILITIES
+# Minimalistic code to load saved Arrow files and extract essential data
+# =============================================================================
+
+def load_arrow_data(filepath):
+    """
+    Load essential data from a saved Arrow file.
+    
+    Args:
+        filepath: Path to the Arrow file
+        
+    Returns:
+        dict: Dictionary containing all essential data arrays and metadata
+    """
+    print(f"Loading data from: {filepath}")
+    
+    # Read Arrow file using PyArrow's native reader to preserve metadata
+    try:
+        with pa.ipc.open_file(filepath) as reader:
+            table = reader.read_all()
+    except:
+        # Fallback to feather reader
+        table = feather.read_feather(filepath)
+        # If it's a DataFrame, convert to Table
+        if hasattr(table, 'to_arrow'):
+            table = table.to_arrow()
+    
+    # Extract metadata
+    metadata = table.schema.metadata
+    seq_index = metadata[b'seq_index'].decode()
+    task_index = metadata[b'task_index'].decode()
+    description = metadata[b'description'].decode()
+    
+    print(f"Sequence index: {seq_index}")
+    print(f"Task index: {task_index}")
+    print(f"Description: {description}")
+    
+    # Convert to pandas for easier data access
+    df = table.to_pandas()
+    
+    # Parse array shapes and dtypes
+    shapes_str = df['array_shapes'][0]
+    shapes = shapes_str.split('|')
+    ref_cluster_shape = eval(shapes[0])
+    background_shape = eval(shapes[1])
+    bg_seq_shape = eval(shapes[2])
+    
+    # Parse array dtypes (with fallback for old files)
+    try:
+        dtypes_str = df['array_dtypes'][0]
+        dtypes = dtypes_str.split('|')
+        ref_cluster_dtype = np.dtype(dtypes[0])
+        background_dtype = np.dtype(dtypes[1])
+        bg_seq_dtype = np.dtype(dtypes[2])
+        print("Using stored dtypes from Arrow file")
+    except (KeyError, IndexError):
+        # Fallback for old Arrow files without dtype information
+        print("No dtype information found in Arrow file, using default dtypes...")
+        # Use the correct dtypes based on what the example script saves
+        ref_cluster_dtype = np.float16
+        background_dtype = np.float16
+        bg_seq_dtype = np.int8
+    
+    print(f"Array shapes: ref_cluster={ref_cluster_shape}, background={background_shape}, bg_seq={bg_seq_shape}")
+    print(f"Array dtypes: ref_cluster={ref_cluster_dtype}, background={background_dtype}, bg_seq={bg_seq_dtype}")
+    
+    # Extract bytes
+    ref_cluster_bytes = df['reference_cluster_average'][0]
+    background_bytes = df['average_background'][0]
+    bg_seq_bytes = df['background_sequence_onehot'][0]
+    
+    # Debug: print byte sizes to understand the data type
+    print(f"Byte sizes: ref_cluster={len(ref_cluster_bytes)}, background={len(background_bytes)}, bg_seq={len(bg_seq_bytes)}")
+    
+    # Reconstruct arrays using the stored dtypes
+    ref_cluster_avg = np.frombuffer(ref_cluster_bytes, dtype=ref_cluster_dtype).reshape(ref_cluster_shape)
+    background = np.frombuffer(background_bytes, dtype=background_dtype).reshape(background_shape)
+    background_sequence = np.frombuffer(bg_seq_bytes, dtype=bg_seq_dtype).reshape(bg_seq_shape)
+    
+    print(f"ref_cluster_avg: min={np.min(ref_cluster_avg):.6f}, max={np.max(ref_cluster_avg):.6f}, mean={np.mean(ref_cluster_avg):.6f}")
+    print(f"background: min={np.min(background):.6f}, max={np.max(background):.6f}, mean={np.mean(background):.6f}")
+    print(f"background_sequence: min={np.min(background_sequence):.6f}, max={np.max(background_sequence):.6f}, mean={np.mean(background_sequence):.6f}")
+    
+    # Load MSM data
+    msm_data = df['msm_data'][0]
+    # Unwrap the list of dictionaries into a proper DataFrame
+    # Use json_normalize to properly expand the dictionaries
+    msm_df = pd.json_normalize(msm_data)
+    print(f"MSM data loaded: {len(msm_data)} records")
+    print(f"MSM DataFrame columns after normalization: {list(msm_df.columns)}")
+    
+    # Load sorting information
+    cluster_order = df['cluster_order'][0] if 'cluster_order' in df.columns else None
+    sort_method = df['sort_method'][0] if 'sort_method' in df.columns else None
+    print(f"Sort method: {sort_method}")
+    print(f"Cluster order: {cluster_order}")
+    
+    return {
+        'seq_index': seq_index,
+        'task_index': task_index,
+        'ref_cluster_avg': ref_cluster_avg,
+        'background': background,
+        'background_sequence': background_sequence,
+        'msm_df': msm_df,
+        'cluster_order': cluster_order,
+        'sort_method': sort_method,
+        'shapes': {
+            'ref_cluster': ref_cluster_shape,
+            'background': background_shape,
+            'bg_seq': bg_seq_shape
+        }
+    }
+
+
+def load_multiple_arrow_files(output_dir, pattern="seq*_task*.arrow"):
+    """
+    Load multiple Arrow files from a directory.
+    
+    Args:
+        output_dir: Directory containing Arrow files
+        pattern: Glob pattern to match Arrow files
+        
+    Returns:
+        list: List of dictionaries containing loaded data
+    """
+    import glob
+    
+    arrow_files = glob.glob(os.path.join(output_dir, pattern))
+    loaded_data = []
+    
+    print(f"Found {len(arrow_files)} Arrow files matching pattern '{pattern}'")
+    
+    for filepath in arrow_files:
+        try:
+            data = load_arrow_data(filepath)
+            loaded_data.append(data)
+            print(f"✓ Loaded: {os.path.basename(filepath)} (seq {data['seq_index']}, task {data['task_index']})")
+        except Exception as e:
+            print(f"✗ Error loading {filepath}: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    print(f"Successfully loaded {len(loaded_data)}/{len(arrow_files)} Arrow files")
+    return loaded_data
+
+
+def extract_essential_summary(loaded_data):
+    """
+    Extract a summary of essential data across multiple sequences.
+    
+    Args:
+        loaded_data: List of loaded data dictionaries
+        
+    Returns:
+        dict: Summary statistics and aggregated data
+    """
+    if not loaded_data:
+        return {}
+    
+    # Aggregate reference cluster averages
+    ref_cluster_avgs = [data['ref_cluster_avg'] for data in loaded_data]
+    
+    # Aggregate backgrounds
+    backgrounds = [data['background'] for data in loaded_data]
+    
+    # Extract sequence indices and task indices
+    seq_indices = [data['seq_index'] for data in loaded_data]
+    task_indices = [data['task_index'] for data in loaded_data]
+    
+    # Get unique tasks
+    unique_tasks = list(set(task_indices))
+    
+    # Aggregate MSM data
+    msm_dfs = [data['msm_df'] for data in loaded_data]
+    
+    # Get shape information
+    shapes_info = [data['shapes'] for data in loaded_data]
+    
+    print(f"Summary: {len(loaded_data)} sequences across tasks {unique_tasks}")
+    print(f"Sequence indices: {seq_indices}")
+    print(f"MSM data: {len(msm_dfs)} DataFrames")
+    
+    return {
+        'num_sequences': len(loaded_data),
+        'sequence_indices': seq_indices,
+        'unique_tasks': unique_tasks,
+        'reference_cluster_averages': ref_cluster_avgs,
+        'backgrounds': backgrounds,
+        'msm_dataframes': msm_dfs,
+        'shapes_info': shapes_info,
+        'loaded_data': loaded_data
+    }
+
+
+# Example usage (uncomment to test):
+# if __name__ == '__main__':
+#     # Load a single Arrow file
+#     # data = load_arrow_data('outputs_deepstarr_local_intgrad/seq463513_task1.arrow')
+#     # print(f"Loaded data for sequence {data['seq_index']}, task {data['task_index']}")
+#     # print(f"Reference cluster average shape: {data['ref_cluster_avg'].shape}")
+#     # print(f"MSM DataFrame shape: {data['msm_df'].shape}")
+#     
+#     # Load multiple Arrow files
+#     # all_data = load_multiple_arrow_files('outputs_deepstarr_local_intgrad')
+#     # summary = extract_essential_summary(all_data)
+#     # print(f"Loaded {summary['num_sequences']} sequences across tasks {summary['unique_tasks']}")
+#     # print(f"MSM DataFrames: {len(summary['msm_dataframes'])}")

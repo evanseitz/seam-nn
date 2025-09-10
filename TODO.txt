@@ -17,6 +17,7 @@ TODO:
             - Captum/PyTorch support -> add to docs, readme, manuscript
             - MYC profiles
             - PPIF background
+        - need to say CREB is 15 flanks; DRE is 10 flanks; AP1 is 10 flanks
 
 
 - SQUID:
@@ -90,7 +91,10 @@ Documentation:
         - phate GPU?
         - hierarchical vs embedding discrepancy:
             - hierarchical doesn't take method as hyperparam: clusterer = Clusterer(attributions,gpu=gpu)
-        - Does hierarchical cpu not run out of memory when gpu does? Is the memmap problematic? 
+        - Does hierarchical cpu not run out of memory when gpu does? Is the memmap problematic?
+        - SFig: 'ward' vs other linkages
+        - Choose number of clusters based on the average IQR of median predictions per cluster?
+
 
 
 - MetaExplainer:
@@ -200,10 +204,22 @@ Documentation:
             - smallest hamming
             - specifically shuffle region and re-compute preserved
         - view variability logo for each cluster
-        - consistency across attribution methods
+        - consistency across attribution methods: 
+            - show attribution error via Euclidean distance to mean (SQUID)
     - CLIPNET: PIK3CA (most commonly mutated proto-oncogene; mutated in 13% of cancers), TERT
     - hierarchy of driver mutations
     - logo profile showing mutational sensitivity
+    - library composition schematics
+    - For example used in Fig. 1 schematic
+        - compare to SQUID pairwise
+        - compare to average of all maps in library (and smoothgrad)
+    - ResidualBind-32: TEAD (CATTCC) all output heads (see 49_Supergroup… slide 52)
+        - seam-preliminary/Figures/c_surrogate_outputs/model…
+        - Sequence 13748: redo with same dataset as SEAM
+    - check ENCODE profiles for each TF
+
+
+
 
 
 - Zenodo:
