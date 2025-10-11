@@ -165,9 +165,21 @@ Finally, when you are done using the environment, always exit via `conda deactiv
 
 
 ## Citation:
-If this code is useful in your work, please cite our paper.
+If this code is useful in your work, please cite our paper:
 
-bibtex TODO
+```bibtex
+@article{Seitz2025.10.07.681052,
+	author = {Seitz, Evan and McCandlish, David Martin and Kinney, Justin Block and Koo, Peter},
+	title = {Uncovering the Mechanistic Landscape of Regulatory DNA with Deep Learning},
+	elocation-id = {2025.10.07.681052},
+	year = {2025},
+	doi = {10.1101/2025.10.07.681052},
+	publisher = {Cold Spring Harbor Laboratory},
+	URL = {https://www.biorxiv.org/content/early/2025/10/08/2025.10.07.681052},
+	eprint = {https://www.biorxiv.org/content/early/2025/10/08/2025.10.07.681052.full.pdf},
+	journal = {bioRxiv}
+}
+```
 
 ## License:
 Copyright (C) 2023–2025 Evan Seitz, David McCandlish, Justin Kinney, Peter Koo
