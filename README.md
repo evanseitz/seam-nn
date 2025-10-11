@@ -3,7 +3,7 @@ SEAM: systematic explanation of attribution-based mechanisms for regulatory geno
 [![PyPI version](https://badge.fury.io/py/seam-nn.svg)](https://badge.fury.io/py/seam-nn)
 [![Downloads](https://static.pepy.tech/badge/seam-nn)](https://pepy.tech/project/seam-nn) 
 [![Documentation Status](https://readthedocs.org/projects/seam-nn/badge/?version=latest)](https://seam-nn.readthedocs.io/en/latest/?badge=latest)
-<!-- [![DOI](https://zenodo.org/badge/711703377.svg)](https://zenodo.org/doi/10.5281/zenodo.11060671) -->
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17314557.svg)](https://doi.org/10.5281/zenodo.17314557)
 
 <p align="center">
 	<img src="https://raw.githubusercontent.com/evanseitz/seam-nn/main/docs/_static/seam_logo_light.png#gh-light-mode-only" width="250" height="250">
@@ -12,11 +12,9 @@ SEAM: systematic explanation of attribution-based mechanisms for regulatory geno
 	<img src="https://raw.githubusercontent.com/evanseitz/seam-nn/main/docs/_static/seam_logo_dark.png#gh-dark-mode-only" width="250" height="250">
 </p>
 
-This repository contains the Python implementation of **SEAM** (**S**ystematic **E**xplanation of **A**ttribution-based **M**echanisms), an AI interpretation framework that systematically investigates how mutations reshape regulatory mechanisms. For an extended discussion of this approach and its applications, please refer to our manuscript, which we presented at the [ICLR 2025](https://iclr.cc/) [GEM Workshop](https://www.gembio.ai/):
+This repository contains the Python implementation of **SEAM** (**S**ystematic **E**xplanation of **A**ttribution-based **M**echanisms), an AI interpretation framework that systematically investigates how mutations reshape regulatory mechanisms. For an extended discussion of this approach and its applications, please refer to our manuscript, which is currently in review:
 
-* Seitz, E.E., McCandlish, D.M., Kinney, J.B., and Koo P.K. Decoding the Mechanistic Impact of Genetic Variation on Regulatory Sequences with Deep Learning. *Workshop on Generative and Experimental Perspectives for Biomolecular Design*, *International Conference on Learning Representations*, April 15, 2025. https://openreview.net/forum?id=PtjMeyHcTt
-
-A bioRxiv preprint is also currently underway.
+* Seitz, E.E., McCandlish, D.M., Kinney, J.B., and Koo P.K. Uncovering the Mechanistic Landscape of Regulatory DNA with Deep Learning. *bioRxiv*, October 8, 2025. https://www.biorxiv.org/content/10.1101/2025.10.07.681052v1
 
 ---
 
@@ -84,8 +82,11 @@ SEAM’s analysis pipeline is organized into modular components, with outputs fr
 
 - **Identifier**: Analyzes cluster-averaged attribution maps in conjunction with the MSM to identify such properties as the precise locations of motifs and their epistatic interactions.
 
+> **Note on terminology**: Our API and examples currently use the legacy terminology "MSM" (Mechanism Summary Matrix), which corresponds to the renamed "CSM" (Cluster Summary Matrix) in our bioRxiv preprint. A future update will address this terminology inconsistency.
 
 ## Examples
+
+**Reproducible pipelines, configurations, and processed data** for reproducing the SEAM manuscript results are available on Zenodo: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17314557.svg)](https://doi.org/10.5281/zenodo.17314557) ([https://zenodo.org/records/17314557](https://zenodo.org/records/17314557))
 
 **Google Colab examples** for applying SEAM on previously-published deep learning models (e.g., DeepSTARR) and experimental datasets (e.g., PBMs) are available at the links below.
 
