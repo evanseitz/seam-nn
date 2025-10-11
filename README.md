@@ -86,9 +86,7 @@ SEAM’s analysis pipeline is organized into modular components, with outputs fr
 
 ## Examples
 
-**Reproducible pipelines, configurations, and processed data** for reproducing the SEAM manuscript results are available on [Zenodo](https://zenodo.org/records/17314557).
-
-**Google Colab examples** for applying SEAM on previously-published deep learning models (e.g., DeepSTARR) and experimental datasets (e.g., PBMs) are available at the links below.
+**Google Colab examples** for applying SEAM on previously-published deep learning models (DeepSTARR) and experimental datasets (PBMs) are available at the links below.
 
 > **Note:** Due to memory requirements for calculating distance matrices, Colab Pro may be required for examples using hierarchical clustering with their current settings.
 
@@ -125,13 +123,15 @@ SEAM’s analysis pipeline is organized into modular components, with outputs fr
 	- Global library with 100k sequences | Integrated gradients; UMAP with K-Means clustering
 	- Expected run time: **~3.9 minutes** on Colab A100 GPU
 
-**Python script examples** are provided in the `examples` folder for locally running SEAM and exporting outputs to file. Some of these examples include models and/or attribution methods that are not compatible with the latest libraries supported by Google Colab, including:
+**Python script examples** are provided in the `examples` folder for locally running SEAM and exporting outputs to file. These examples additionally include ChromBPNet models and attribution methods that are not compatible with the latest libraries supported by Google Colab:
 
 - [Local library to analyze foreground and background signals at human promotors and enhancers](https://github.com/evanseitz/seam-nn/blob/main/examples/example_chrombpnet_local_ppif.py)
 	- ChromBPNet: PPIF promoter/enhancer (Fig.3)
 	- Local library with 100k sequences and 10% mutation rate | {Saliency, IntGrad, SmoothGrad, ISM}; Hierarchical clustering
 
 Additional dependencies for these Python examples may be required and outlined at the top of each script.
+
+**Complete reproducible pipelines, configurations, and processed data** for reproducing all analyses and figures from the SEAM manuscript, including additional models beyond DeepSTARR, PBMs, and ChromBPNet, are available on [Zenodo](https://zenodo.org/records/17314557).
 
 
 ## SEAM Interactive Interpretability Tool:
