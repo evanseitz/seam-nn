@@ -86,7 +86,7 @@ SEAM’s analysis pipeline is organized into modular components, with outputs fr
 
 ## Examples
 
-**Reproducible pipelines, configurations, and processed data** for reproducing the SEAM manuscript results are available on Zenodo: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17314557.svg)](https://doi.org/10.5281/zenodo.17314557) ([https://zenodo.org/records/17314557](https://zenodo.org/records/17314557))
+**Reproducible pipelines, configurations, and processed data** for reproducing the SEAM manuscript results are available on [Zenodo](https://zenodo.org/records/17314557).
 
 **Google Colab examples** for applying SEAM on previously-published deep learning models (e.g., DeepSTARR) and experimental datasets (e.g., PBMs) are available at the links below.
 
