@@ -131,7 +131,7 @@ SEAM’s analysis pipeline is organized into modular components, with outputs fr
 
 Additional dependencies for these Python examples may be required and outlined at the top of each script.
 
-**Complete reproducible pipelines, configurations, and processed data** for reproducing all analyses and figures from the SEAM manuscript, including additional models beyond DeepSTARR, PBMs, and ChromBPNet, are available on [Zenodo](https://zenodo.org/records/17314557).
+**Complete pipelines, configurations, and processed data** for reproducing all analyses and figures from the SEAM manuscript, including additional models beyond DeepSTARR, PBMs, and ChromBPNet, are available on [Zenodo](https://zenodo.org/records/17314557).
 
 
 ## SEAM Interactive Interpretability Tool:
