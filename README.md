@@ -3,7 +3,7 @@ SEAM: systematic explanation of attribution-based mechanisms for regulatory geno
 [![PyPI version](https://badge.fury.io/py/seam-nn.svg)](https://badge.fury.io/py/seam-nn)
 [![Downloads](https://static.pepy.tech/badge/seam-nn)](https://pepy.tech/project/seam-nn) 
 [![Documentation Status](https://readthedocs.org/projects/seam-nn/badge/?version=latest)](https://seam-nn.readthedocs.io/en/latest/?badge=latest)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17314557.svg)](https://doi.org/10.5281/zenodo.17314557)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17314556.svg)](https://doi.org/10.5281/zenodo.17314556)
 
 <p align="center">
 	<img src="https://raw.githubusercontent.com/evanseitz/seam-nn/main/docs/_static/seam_logo_light.png#gh-light-mode-only" width="250" height="250">
@@ -131,7 +131,7 @@ SEAM’s analysis pipeline is organized into modular components, with outputs fr
 
 Additional dependencies for these Python examples may be required and outlined at the top of each script.
 
-**Complete pipelines, configurations, and processed data** for reproducing all analyses and figures from the SEAM manuscript, including additional models beyond DeepSTARR, PBMs, and ChromBPNet, are available on [Zenodo](https://zenodo.org/records/17314557).
+**Complete pipelines, configurations, and processed data** for reproducing all analyses and figures from the SEAM manuscript, including additional models beyond DeepSTARR, PBMs, and ChromBPNet, are available on [Zenodo](https://zenodo.org/records/17314556).
 
 
 ## SEAM Interactive Interpretability Tool:
