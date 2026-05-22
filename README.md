@@ -34,6 +34,33 @@ pip install seam-nn
 
 Finally, when you are done using the environment, always exit via `conda deactivate`.
 
+### GPU Support (TensorFlow + CUDA)
+
+SEAM's `Attributer` module (and optional GPU paths in `Clusterer`) relies on TensorFlow, which requires a compatible CUDA toolkit to use your GPU. Installing `seam-nn` via pip pulls in TensorFlow, but **does not install the CUDA/cuDNN runtime libraries**. If you see warnings like `Could not find cuda drivers on your machine, GPU will not be used` when importing TensorFlow, your GPU is likely present but the CUDA runtime is missing.
+
+To enable GPU support, install the matching CUDA toolkit for your TensorFlow version. For example, with TensorFlow 2.12–2.15:
+
+```bash
+conda install -c conda-forge cudatoolkit=11.8 cudnn=8.6
+```
+
+Alternatively, on newer TensorFlow versions (2.16+), you can use:
+
+```bash
+pip install tensorflow[and-cuda]
+```
+
+You can verify GPU detection with:
+
+```python
+import tensorflow as tf
+print(tf.config.list_physical_devices('GPU'))
+```
+
+If the output is an empty list, the CUDA runtime is not properly configured. See the [TensorFlow GPU guide](https://www.tensorflow.org/install/pip) for version-specific instructions.
+
+> **Note:** GPU access is **not required** to use SEAM. All modules except `Attributer` work without TensorFlow, and `Attributer` itself will fall back to CPU if no GPU is detected. However, attribution computation on large sequence libraries will be substantially slower on CPU.
+
 > If you have any issues installing SEAM, please see:
 > - https://seam-nn.readthedocs.io/en/latest/installation.html
 > - https://github.com/evanseitz/seam-nn/issues

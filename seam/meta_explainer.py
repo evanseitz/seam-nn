@@ -20,7 +20,7 @@ import itertools
 from Bio import motifs  # For PWM/enrichment logos
 
 # BatchLogo package imports
-from logomaker_batch.batch_logo import BatchLogo
+from .logomaker_batch.batch_logo import BatchLogo
 
 # Local utilities
 try:  # Try relative import first (for pip package)
@@ -906,7 +906,7 @@ class MetaExplainer:
         batch_logos = BatchLogo(
             logo_array,
             alphabet=self.alphabet,
-            fig_size=figsize,
+            figsize=figsize,
             batch_size=batch_size,
             font_name=font_name,
             stack_order=stack_order,
@@ -1083,9 +1083,9 @@ class MetaExplainer:
         # Create BatchLogo instance for backgrounds only if requested
         if process_logos:
             self.background_logos = BatchLogo(
-                cluster_background,  # Pass the cluster_background directly
+                cluster_background,
                 alphabet=self.alphabet,
-                fig_size=[20, 2.5],
+                figsize=[20, 2.5],
                 batch_size=50,
             )
             self.background_logos.process_all()

@@ -39,8 +39,22 @@ class BatchLogo:
     _transform_cache = {}
     _font_cache = {}
     
-    def __init__(self, values, alphabet=None, figsize=[10,2.5], batch_size=50, gpu=False, font_name='sans', y_min_max=None, ref_seq=None, show_progress=True, **kwargs):
-        """Initialize BatchLogo processor"""
+    def __init__(self, values, alphabet=None, figsize=[10,2.5], batch_size=50, gpu=False, font_name='sans', y_min_max=None, ref_seq=None, show_progress=True, sequences=None, contribution=False, **kwargs):
+        """Initialize BatchLogo processor.
+
+        Parameters
+        ----------
+        values : array-like
+            Attribution values of shape (N, L, A).
+        sequences : list of str or numpy.ndarray, optional
+            Sequences corresponding to each logo. Required when contribution=True.
+            If strings, converted to one-hot internally using alphabet.
+            If array, must be one-hot encoded with shape (N, L, A).
+        contribution : bool, default=False
+            If True, multiply attribution values by sequence one-hot encodings
+            to show only the contributions of observed nucleotides (contribution
+            mode). When enabled, center_values is forced to False.
+        """
         if gpu:
             print("Warning: GPU acceleration not yet implemented, falling back to CPU")
             
@@ -49,6 +63,15 @@ class BatchLogo:
         self._m_path_cache = {}
         self._transform_cache = {}
         self._font_cache = {}  # Reset font cache
+
+        # Apply contribution mode: mask values by sequence one-hot
+        if contribution:
+            if sequences is None:
+                raise ValueError("sequences must be provided when contribution=True")
+            values = np.array(values)
+            oh = self._sequences_to_onehot(sequences, alphabet or ['A', 'C', 'G', 'T'])
+            values = values * oh
+            kwargs['center_values'] = False
 
         # Handle centering if requested
         center_values = kwargs.pop('center_values', False)
@@ -505,8 +528,30 @@ class BatchLogo:
 
     def _center_matrix(self, values):
         """Center the values in each position (row) of the matrix"""
-        # For each position, subtract the mean of that position
         return values - values.mean(axis=-1, keepdims=True)
+
+    @staticmethod
+    def _sequences_to_onehot(sequences, alphabet):
+        """Convert sequences to one-hot encoding array.
+
+        Accepts either a list of strings or a pre-encoded numpy array of
+        shape (N, L, A). String sequences are converted using the provided
+        alphabet.
+        """
+        arr = np.asarray(sequences)
+        if arr.ndim == 3:
+            return arr.astype(np.float64)
+        char_to_idx = {c: i for i, c in enumerate(alphabet)}
+        A = len(alphabet)
+        N = len(sequences)
+        L = len(sequences[0])
+        oh = np.zeros((N, L, A), dtype=np.float64)
+        for n, seq in enumerate(sequences):
+            for pos, char in enumerate(seq):
+                idx = char_to_idx.get(char)
+                if idx is not None:
+                    oh[n, pos, idx] = 1.0
+        return oh
 
     def draw_variability_logo(self, view_window=None, figsize=None, border=True):
         """Draw a variability logo showing all glyphs from all clusters overlaid at each position.
