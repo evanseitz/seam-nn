@@ -43,13 +43,13 @@ Finally, when you are done using the environment, always exit via `conda deactiv
 
 ### GPU Support (Optional)
 
-SEAM uses TensorFlow for GPU acceleration in **`Attributer`** and in **`Clusterer`** hierarchical clustering (distance-matrix computation). To utilize GPU acceleration, your environment must have a strictly matched combination of Python, TensorFlow, CUDA, and cuDNN.
+SEAM uses TensorFlow for GPU acceleration in **`Attributer`** and in **`Clusterer`** hierarchical clustering (distance-matrix computation). To utilize GPU acceleration, your Python, TensorFlow, CUDA, cuDNN, and NVIDIA driver versions must be compatible with one another.
 
-Installing `seam-nn` via pip pulls in TensorFlow, but does not guarantee the correct CUDA/cuDNN runtime libraries are installed. If you see the warning `Could not find cuda drivers on your machine, GPU will not be used`, your GPU is present but the CUDA runtime is missing or mismatched.
+Installing `seam-nn` via pip pulls in TensorFlow, but does not guarantee that the CUDA, cuDNN, and NVIDIA driver stack required for GPU acceleration is correctly configured. If you see the warning `Could not find cuda drivers on your machine, GPU will not be used`, TensorFlow was unable to access a compatible CUDA installation and will fall back to CPU execution.
 
 #### Recommended: Python 3.9+ with TensorFlow 2.16+
 
-TensorFlow 2.16+ bundles the required NVIDIA libraries via pip. You do not need to install CUDA via Conda. **Use Python 3.9 or later** and install GPU-enabled TensorFlow before SEAM:
+TensorFlow 2.16+ supports GPU installation through tensorflow[and-cuda], which installs the required NVIDIA CUDA/cuDNN runtime packages via pip. In most cases, you do not need to install CUDA or cuDNN separately through Conda. **Use Python 3.9 or later** and install GPU-enabled TensorFlow before SEAM:
 
 ```bash
 conda create --name seam-gpu python=3.9
@@ -58,11 +58,11 @@ pip install "tensorflow[and-cuda]"
 pip install seam-nn
 ```
 
-On Python 3.9+, `pip install seam-nn` alone may also enable GPU support (as it pulls a recent TensorFlow), but installing `tensorflow[and-cuda]` first is the most reliable approach.
+On Python 3.9+, `pip install seam-nn` may be sufficient for GPU support on some systems because it installs a recent TensorFlow release. However, explicitly installing `tensorflow[and-cuda]` first is the recommended and more reproducible approach.
 
 #### Legacy GPU Environments (Python 3.8 or TensorFlow < 2.16)
 
-If you use **Python 3.8**, pip installs TensorFlow 2.13, which does **not** support `tensorflow[and-cuda]`. You must manually install the exact CUDA Toolkit and cuDNN versions that match your TensorFlow version. For example, TensorFlow 2.12–2.14 requires CUDA 11.8 and cuDNN 8.6:
+If you use Python 3.8, you will generally receive an older TensorFlow release (currently 2.13.x) that does not support `tensorflow[and-cuda]`. You must manually install the exact CUDA Toolkit and cuDNN versions that match your TensorFlow version. For example, TensorFlow 2.12–2.14 requires CUDA 11.8 and cuDNN 8.6:
 
 ```bash
 conda install -c conda-forge cudatoolkit=11.8 cudnn=8.6
@@ -76,10 +76,16 @@ If `cudnn=8.6` is unavailable on your platform, try `conda install -c conda-forg
 
 You can verify GPU detection with:
 
+```bash
+nvidia-smi
+```
+
 ```python
 import tensorflow as tf
 print(tf.config.list_physical_devices('GPU'))
 ```
+
+If no GPU is detected, first verify that the NVIDIA driver is visible to the operating system using `nvidia-smi`.
 
 > If you have any issues installing SEAM, please see:
 > - https://seam-nn.readthedocs.io/en/latest/installation.html
