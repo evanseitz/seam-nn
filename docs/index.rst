@@ -16,9 +16,11 @@ Quick Install
 
 .. code-block:: bash
 
+   conda create --name seam python=3.9
+   conda activate seam
    pip install seam-nn
 
-For detailed installation instructions, see :doc:`installation`.
+For CPU and GPU installation instructions, Python version notes, and troubleshooting, see :doc:`installation`.
 
 Indices and tables
 ==================

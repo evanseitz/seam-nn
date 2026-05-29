@@ -20,35 +20,59 @@ This repository contains the Python implementation of **SEAM** (**S**ystematic *
 
 ## Installation:
 
-With [Anaconda](https://docs.anaconda.com/free/anaconda/install/index.html) sourced, create a new environment via the command line:
+### Standard Install (CPU)
+
+With [Anaconda](https://docs.anaconda.com/free/anaconda/install/index.html) sourced, create a new environment with **Python 3.8 or later**:
 
 ```bash
-conda create --name seam python==3.8*
+conda create --name seam python=3.9
 ```
 
-Next, activate this environment via `conda activate seam`, and install the following packages:
+Next, activate this environment and install SEAM:
 
 ```bash
+conda activate seam
 pip install seam-nn
 ```
 
 Finally, when you are done using the environment, always exit via `conda deactivate`.
 
-### GPU Support (TensorFlow + CUDA)
+> **Note:** Some specialized workflows (e.g., the SEAM GUI, certain example scripts, or model-specific pipelines) may require older Python or package versions. Review the installation notes at the top of any relevant script before creating your environment.
 
-SEAM's `Attributer` module (and optional GPU paths in `Clusterer`) relies on TensorFlow, which requires a compatible CUDA toolkit to use your GPU. Installing `seam-nn` via pip pulls in TensorFlow, but **does not install the CUDA/cuDNN runtime libraries**. If you see warnings like `Could not find cuda drivers on your machine, GPU will not be used` when importing TensorFlow, your GPU is likely present but the CUDA runtime is missing.
+> **Note:** GPU access is **not required** to use SEAM. `pip install seam-nn` installs TensorFlow as a dependency, but GPU acceleration is only used by optional code paths—primarily **`Attributer`** (attribution maps) and **`Clusterer`** (hierarchical clustering distance matrices). **`Compiler`**, **`MetaExplainer`**, and **`Identifier`** do not require a GPU. All GPU-enabled paths fall back to CPU when no GPU is detected; attribution and hierarchical clustering on large sequence libraries are the steps most noticeably slower without one.
 
-To enable GPU support, install the matching CUDA toolkit for your TensorFlow version. For example, with TensorFlow 2.12–2.15:
+### GPU Support (Optional)
+
+SEAM uses TensorFlow for GPU acceleration in **`Attributer`** and in **`Clusterer`** hierarchical clustering (distance-matrix computation). To utilize GPU acceleration, your environment must have a strictly matched combination of Python, TensorFlow, CUDA, and cuDNN.
+
+Installing `seam-nn` via pip pulls in TensorFlow, but does not guarantee the correct CUDA/cuDNN runtime libraries are installed. If you see the warning `Could not find cuda drivers on your machine, GPU will not be used`, your GPU is present but the CUDA runtime is missing or mismatched.
+
+#### Recommended: Python 3.9+ with TensorFlow 2.16+
+
+TensorFlow 2.16+ bundles the required NVIDIA libraries via pip. You do not need to install CUDA via Conda. **Use Python 3.9 or later** and install GPU-enabled TensorFlow before SEAM:
+
+```bash
+conda create --name seam-gpu python=3.9
+conda activate seam-gpu
+pip install "tensorflow[and-cuda]"
+pip install seam-nn
+```
+
+On Python 3.9+, `pip install seam-nn` alone may also enable GPU support (as it pulls a recent TensorFlow), but installing `tensorflow[and-cuda]` first is the most reliable approach.
+
+#### Legacy GPU Environments (Python 3.8 or TensorFlow < 2.16)
+
+If you use **Python 3.8**, pip installs TensorFlow 2.13, which does **not** support `tensorflow[and-cuda]`. You must manually install the exact CUDA Toolkit and cuDNN versions that match your TensorFlow version. For example, TensorFlow 2.12–2.14 requires CUDA 11.8 and cuDNN 8.6:
 
 ```bash
 conda install -c conda-forge cudatoolkit=11.8 cudnn=8.6
+export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
+pip install seam-nn
 ```
 
-Alternatively, on newer TensorFlow versions (2.16+), you can use:
+If `cudnn=8.6` is unavailable on your platform, try `conda install -c conda-forge cudnn` without a version pin. You may need to add the `LD_LIBRARY_PATH` export to your shell profile or job script so it persists across sessions.
 
-```bash
-pip install tensorflow[and-cuda]
-```
+> **⚠️ Troubleshooting:** If you are managing dependencies manually, you must consult the official [TensorFlow Tested Build Configurations Table](https://www.tensorflow.org/install/source#gpu) to find the exact CUDA and cuDNN versions required for your specific version of TensorFlow and Python.
 
 You can verify GPU detection with:
 
@@ -56,10 +80,6 @@ You can verify GPU detection with:
 import tensorflow as tf
 print(tf.config.list_physical_devices('GPU'))
 ```
-
-If the output is an empty list, the CUDA runtime is not properly configured. See the [TensorFlow GPU guide](https://www.tensorflow.org/install/pip) for version-specific instructions.
-
-> **Note:** GPU access is **not required** to use SEAM. All modules except `Attributer` work without TensorFlow, and `Attributer` itself will fall back to CPU if no GPU is detected. However, attribution computation on large sequence libraries will be substantially slower on CPU.
 
 > If you have any issues installing SEAM, please see:
 > - https://seam-nn.readthedocs.io/en/latest/installation.html
@@ -105,7 +125,7 @@ SEAM’s analysis pipeline is organized into modular components, with outputs fr
 
 - **Clusterer**: Computes mechanistic clusters and embeddings from attribution maps to identify distinct regulatory mechanisms. Supports hierarchical clustering (GPU-optimized), K-means, and DBSCAN algorithms, with optional dimensionality reduction (UMAP, t-SNE, PCA) for complementary interpretability.
 
-- **MetaExplainer**: The core SEAM module that integrates results to identify and interpret mechanistic patterns. Generates cluster-averaged attribution maps (shape: (L, A) for each cluster) and the Mechanism Summary Matrix (MSM), a DataFrame containing position-wise statistics (entropy, consensus matches, reference mismatches) for each cluster. Also implements background separation and provides visualization tools for sequence logos, attribution logos, and cluster statistics, with support for both PWM-based and enrichment-based analysis. Features GPU acceleration with CPU fallbacks.
+- **MetaExplainer**: The core SEAM module that integrates results to identify and interpret mechanistic patterns. Generates cluster-averaged attribution maps (shape: (L, A) for each cluster) and the Mechanism Summary Matrix (MSM), a DataFrame containing position-wise statistics (entropy, consensus matches, reference mismatches) for each cluster. Also implements background separation and provides visualization tools for sequence logos, attribution logos, and cluster statistics, with support for both PWM-based and enrichment-based analysis.
 
 - **Identifier**: Analyzes cluster-averaged attribution maps in conjunction with the MSM to identify such properties as the precise locations of motifs and their epistatic interactions.
 
