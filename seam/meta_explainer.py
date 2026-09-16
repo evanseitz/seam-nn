@@ -801,6 +801,10 @@ class MetaExplainer:
             - 'fixed': Fixed order (A, C, G, T)
         center_values : bool, default=True
             Whether to center values in each position. Only applies to 'average' logos.
+            This is a gauge transformation applied to the rendered logos only: the
+            matrices stored in self.cluster_maps and self.cluster_maps_no_bg remain
+            uncentered. Use get_cluster_matrix(..., center_values=True) to retrieve
+            the matrix as drawn.
         color_scheme : str or dict, default='classic'
             Color scheme for logo characters.
         font_weight : str or int, optional
@@ -865,7 +869,7 @@ class MetaExplainer:
         # Stack matrices into 3D array
         logo_array = np.stack(cluster_matrices)
         
-        # Store both raw and background-separated maps
+        # Store both raw and background-separated maps (uncentered; see get_cluster_matrix)
         if logo_type == 'average':
             if background_separation:
                 # Store both versions - the raw maps and the background-separated maps
@@ -1041,7 +1045,7 @@ class MetaExplainer:
         cluster_background = np.zeros(shape=(n_clusters, seq_length, n_chars))
         
         # Compute background for each cluster
-        for idx, k in enumerate(self.get_cluster_order()):
+        for idx, k in enumerate(self.get_cluster_order(sort_method=self.sort_method)):
             k_idxs = self.mave['Cluster'] == k
             child_maps = self.attributions[k_idxs]
             
@@ -1161,6 +1165,49 @@ class MetaExplainer:
         cluster_maps = self.attributions[self.mave['Cluster'] == original_idx]
         
         return cluster_maps
+
+    def get_cluster_matrix(self, cluster_idx, background_separation=True, center_values=False):
+        """Get the cluster-averaged attribution matrix used to render a cluster logo.
+
+        Requires a prior call to generate_logos(logo_type='average'), which computes
+        and stores these matrices.
+
+        Parameters
+        ----------
+        cluster_idx : int
+            Index of cluster to get the matrix for. If sorting was specified during
+            initialization, this index refers to the sorted order, matching the index
+            used by BatchLogo.draw_single() (e.g., membership_df['Cluster_Sorted']).
+        background_separation : bool, default=True
+            If True, return the background-separated matrix (self.cluster_maps_no_bg);
+            requires generate_logos(background_separation=True). If False, return the
+            raw cluster-averaged matrix (self.cluster_maps).
+        center_values : bool, default=False
+            If False, return the matrix in its raw (uncentered) gauge, as stored.
+            If True, subtract the mean over characters at each position, reproducing
+            the gauge that generate_logos(center_values=True) renders.
+
+        Returns
+        -------
+        numpy.ndarray
+            Attribution matrix of shape (seq_length, n_characters).
+        """
+        if background_separation:
+            if not hasattr(self, 'cluster_maps_no_bg'):
+                raise ValueError("Background-separated matrices not available. Call "
+                                 "generate_logos(logo_type='average', background_separation=True) first.")
+            matrix = self.cluster_maps_no_bg[cluster_idx]
+        else:
+            if not hasattr(self, 'cluster_maps'):
+                raise ValueError("Cluster-averaged matrices not available. Call "
+                                 "generate_logos(logo_type='average') first.")
+            matrix = self.cluster_maps[cluster_idx]
+
+        matrix = matrix.copy()
+        if center_values:
+            matrix -= matrix.mean(axis=-1, keepdims=True)
+
+        return matrix
 
     def plot_attribution_variation(self, scope='all', metric='std', save_path=None, view_window=None, 
                                  figsize=None, dpi=600, colors=None, xtick_spacing=5, file_format='png'):

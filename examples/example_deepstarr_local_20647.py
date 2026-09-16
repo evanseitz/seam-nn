@@ -565,7 +565,8 @@ meta_logos_no_bg = meta.generate_logos(
     mut_rate=mut_rate,
     entropy_multiplier=background_multiplier,
     adaptive_background_scaling=True,
-    figsize=(20, 2.5)
+    figsize=(20, 2.5),
+    center_values=True
 )
 
 # View average background over all clusters
